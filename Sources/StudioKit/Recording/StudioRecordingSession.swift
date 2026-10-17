@@ -138,8 +138,8 @@ final class StudioRecordingSession {
             do {
                 let content = try await ScreenCapturer.shareableContent()
                 guard let display = content.displays.first(where: { $0.displayID == displayID }) else { throw ScreenCapturer.CaptureError.noDisplay }
-                let me = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
-                let filter = SCContentFilter(display: display, excludingApplications: me, exceptingWindows: [])
+                let filter = SCContentFilter(display: display, excludingWindows:
+                    CaptureExclusion.excludedWindows(in: content, flagged: CaptureExclusion.flaggedWindowIDs))
                 let cfg = StudioScreenRecorder.Config(
                     url: package.screenURL, filter: filter, sourceRect: local,
                     pixelWidth: Int((local.width * scale / 2).rounded()) * 2, pixelHeight: Int((local.height * scale / 2).rounded()) * 2,

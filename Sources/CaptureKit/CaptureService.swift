@@ -161,7 +161,7 @@ final class CaptureService: CaptureServicing {
             let held = await icons.beginTemporaryHide()
             var config = base
             if freeze {
-                do { config.frozen = try await CaptureEngine.captureAllScreens(includeWindows: icons.coverWindowIDs) }
+                do { config.frozen = try await CaptureEngine.captureAllScreens() }
                 catch { Log.capture.error("Freeze failed: \(error.localizedDescription, privacy: .public)") }
             }
             guard generation == prepareGeneration else {
@@ -266,7 +266,7 @@ final class CaptureService: CaptureServicing {
         // Let the overlay leave the screen and the previously active windows repaint.
         try? await Task.sleep(nanoseconds: 80_000_000)
         do {
-            return try await CaptureEngine.capture(rect: rect, includeWindows: icons.coverWindowIDs)
+            return try await ScreenCapturer.capture(globalRect: rect)
         } catch {
             Alerts.error("Couldn't capture the screen.", error)
             return nil

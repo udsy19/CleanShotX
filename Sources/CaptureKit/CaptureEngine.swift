@@ -33,59 +33,19 @@ struct FrozenScreens {
     }
 }
 
-/// Screen pixels for CaptureKit. Wraps `ScreenCapturer`, adding the ability to include some of our own
-/// windows (the desktop-icon covers) that ScreenCaptureKit would otherwise exclude with the rest of the app.
+/// Screen pixels for CaptureKit, on top of `ScreenCapturer` (which already keeps the desktop-icon covers, since
+/// they sit below the floating level).
 @MainActor
 enum CaptureEngine {
 
-    /// Captures a (possibly multi-display) global rect. `includeWindows` are own-app windows to keep.
-    static func capture(rect: CGRect, includeWindows: [CGWindowID]) async throws -> (CGImage, CGFloat) {
-        if includeWindows.isEmpty { return try await ScreenCapturer.capture(globalRect: rect) }
-        let screens = NSScreen.screens.filter { $0.frame.intersects(rect) }
-        guard !screens.isEmpty else { throw ScreenCapturer.CaptureError.noDisplay }
-        let content = try await ScreenCapturer.shareableContent()
-        var parts: [(CGRect, CGImage, CGFloat)] = []
-        for screen in screens {
-            let part = rect.intersection(screen.frame)
-            let img = try await capture(part, on: screen, content: content, includeWindows: includeWindows)
-            parts.append((part, img, screen.backingScaleFactor))
-        }
-        guard let out = stitch(parts, rect: rect) else { throw ScreenCapturer.CaptureError.failed }
-        return out
-    }
-
     /// Captures every display (for freezing / the magnifier).
-    static func captureAllScreens(includeWindows: [CGWindowID]) async throws -> FrozenScreens {
-        let screens = NSScreen.screens
-        let content = try await ScreenCapturer.shareableContent()
+    static func captureAllScreens() async throws -> FrozenScreens {
         var frozen = FrozenScreens()
-        for screen in screens {
-            let img = try await capture(screen.frame, on: screen, content: content, includeWindows: includeWindows)
+        for screen in NSScreen.screens {
+            let img = try await ScreenCapturer.capture(screen: screen)
             frozen.shots[screen.displayID] = .init(frame: screen.frame, image: img)
         }
         return frozen
-    }
-
-    private static func capture(_ cocoaRect: CGRect, on screen: NSScreen, content: SCShareableContent,
-                                includeWindows: [CGWindowID]) async throws -> CGImage {
-        if includeWindows.isEmpty { return try await ScreenCapturer.capture(rect: cocoaRect, on: screen) }
-        guard let display = content.displays.first(where: { $0.displayID == screen.displayID }) else {
-            throw ScreenCapturer.CaptureError.noDisplay
-        }
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let own = content.applications.filter { $0.processID == pid }
-        let keep = content.windows.filter { includeWindows.contains($0.windowID) }
-        let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: keep)
-        let config = SCStreamConfiguration()
-        let local = ScreenGeometry.displayLocalRect(cocoaRect.intersection(screen.frame), on: screen)
-        let scale = screen.backingScaleFactor
-        config.sourceRect = local
-        config.width = Int((local.width * scale).rounded())
-        config.height = Int((local.height * scale).rounded())
-        config.showsCursor = Defaults[.showCursorOnScreenshots]
-        config.captureResolution = .best
-        config.colorSpaceName = CGColorSpace.sRGB
-        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }
 
     /// Composes per-display parts into one image of `rect`. A single part is returned as-is.

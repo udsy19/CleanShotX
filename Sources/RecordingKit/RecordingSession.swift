@@ -154,12 +154,11 @@ final class RecordingSession {
         guard let display = content.displays.first(where: { $0.displayID == screen.displayID }) else {
             throw ScreenCapturer.CaptureError.noDisplay
         }
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let ownApps = content.applications.filter { $0.processID == pid }
-        // Our decorative overlays are burned into the video; every other Shotcraft window is excluded.
+        // Our decorative overlays (click highlights, keystrokes, camera) are burned into the video; other transient
+        // Shotcraft UI is excluded by the shared rule, while pins and editor windows stay visible like any app.
         let keep = Set([decoration?.window.windowNumber, camera?.windowNumber].compactMap { $0 }.map { CGWindowID($0) })
-        let excepted = content.windows.filter { keep.contains($0.windowID) }
-        let filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: excepted)
+        let excluded = CaptureExclusion.excludedWindows(in: content, flagged: CaptureExclusion.flaggedWindowIDs, keeping: keep)
+        let filter = SCContentFilter(display: display, excludingWindows: excluded)
 
         let w = Int(pixelSize.width), h = Int(pixelSize.height)
         var local = ScreenGeometry.displayLocalRect(area, on: screen)

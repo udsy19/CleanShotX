@@ -1,8 +1,33 @@
 import AppKit
 import ScreenCaptureKit
 
-/// Still-image capture via ScreenCaptureKit (`SCScreenshotManager`, macOS 14+).
-/// Our own windows (overlays, HUDs) are excluded unless `includeOwnWindows` is true.
+/// Which of Shotcraft's own windows stay out of captures. Like CleanShot, screenshots include pinned
+/// screenshots, editor and settings windows (they are part of the user's screen), but never our transient UI:
+/// anything above the floating window level (selection overlays, Quick Access cards, HUDs, alerts) plus windows a
+/// module explicitly flags with `exclude(_:)`. Recordings use the same rule.
+public enum CaptureExclusion {
+    @MainActor private static let flagged = NSHashTable<NSWindow>.weakObjects()
+
+    /// Keep `window` out of every capture (e.g. a floating-level control panel).
+    @MainActor public static func exclude(_ window: NSWindow) { flagged.add(window) }
+
+    @MainActor public static var flaggedWindowIDs: Set<CGWindowID> {
+        Set(flagged.allObjects.map { CGWindowID($0.windowNumber) })
+    }
+
+    /// Own-app windows to exclude from `content`, except those listed in `keeping`.
+    public static func excludedWindows(in content: SCShareableContent, flagged: Set<CGWindowID>,
+                                       keeping: Set<CGWindowID> = []) -> [SCWindow] {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let floating = Int(CGWindowLevelForKey(.floatingWindow))
+        return content.windows.filter { w in
+            w.owningApplication?.processID == pid && !keeping.contains(w.windowID)
+                && (w.windowLayer > floating || flagged.contains(w.windowID))
+        }
+    }
+}
+
+/// Still-image capture via ScreenCaptureKit (`SCScreenshotManager`, macOS 14+), honoring `CaptureExclusion`.
 public enum ScreenCapturer {
     public enum CaptureError: LocalizedError {
         case noDisplay, noWindow, failed
@@ -20,12 +45,12 @@ public enum ScreenCapturer {
     }
 
     /// Captures `cocoaRect` (global Cocoa coords) from the display of `screen`, at the display's backing scale.
-    public static func capture(rect cocoaRect: CGRect, on screen: NSScreen, showsCursor: Bool = Defaults[.showCursorOnScreenshots],
-                               includeOwnWindows: Bool = false) async throws -> CGImage {
+    public static func capture(rect cocoaRect: CGRect, on screen: NSScreen,
+                               showsCursor: Bool = Defaults[.showCursorOnScreenshots]) async throws -> CGImage {
         let content = try await shareableContent()
         guard let display = content.displays.first(where: { $0.displayID == screen.displayID }) else { throw CaptureError.noDisplay }
-        let excluded = includeOwnWindows ? [] : content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
-        let filter = SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
+        let flagged = await MainActor.run { CaptureExclusion.flaggedWindowIDs }
+        let filter = SCContentFilter(display: display, excludingWindows: CaptureExclusion.excludedWindows(in: content, flagged: flagged))
         let config = SCStreamConfiguration()
         let local = ScreenGeometry.displayLocalRect(cocoaRect.intersection(screen.frame), on: screen)
         let scale = screen.backingScaleFactor
@@ -39,9 +64,8 @@ public enum ScreenCapturer {
     }
 
     /// Captures an entire display.
-    public static func capture(screen: NSScreen, showsCursor: Bool = Defaults[.showCursorOnScreenshots],
-                               includeOwnWindows: Bool = false) async throws -> CGImage {
-        try await capture(rect: screen.frame, on: screen, showsCursor: showsCursor, includeOwnWindows: includeOwnWindows)
+    public static func capture(screen: NSScreen, showsCursor: Bool = Defaults[.showCursorOnScreenshots]) async throws -> CGImage {
+        try await capture(rect: screen.frame, on: screen, showsCursor: showsCursor)
     }
 
     /// Captures a single window (desktop-independent), optionally with its drop shadow.

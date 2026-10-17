@@ -17,7 +17,6 @@ final class DesktopIconsController {
 
     var isShowing: Bool { !covers.isEmpty }
     /// Window numbers of the covers, to keep them in ScreenCaptureKit captures.
-    var coverWindowIDs: [CGWindowID] { covers.values.map { CGWindowID($0.windowNumber) } }
 
     func setUserHidden(_ hidden: Bool) {
         userHidden = hidden

@@ -149,7 +149,7 @@ final class SelectionSession {
         guard pixels == nil, !loadingPixels else { return }
         loadingPixels = true
         Task { [weak self] in
-            let shots = try? await CaptureEngine.captureAllScreens(includeWindows: [])
+            let shots = try? await CaptureEngine.captureAllScreens()
             guard let self else { return }
             self.loadingPixels = false
             guard let shots, !self.finished else { return }

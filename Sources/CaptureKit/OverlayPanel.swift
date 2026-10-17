@@ -26,6 +26,9 @@ final class OverlayPanel: NSPanel {
         hidesOnDeactivate = false
         animationBehavior = .none
         acceptsMouseMovedEvents = true
+        // Explicitly false: otherwise AppKit passes clicks through fully transparent pixels of a non-opaque window,
+        // e.g. the undimmed hole over a hovered window, and the click lands in the app underneath.
+        ignoresMouseEvents = false
         isMovable = false
         becomesKeyOnlyIfNeeded = false
 
@@ -46,6 +49,7 @@ final class OverlayPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
     override var acceptsFirstResponder: Bool { true }
 
     /// Esc that reaches the window (e.g. from a control) cancels the session.

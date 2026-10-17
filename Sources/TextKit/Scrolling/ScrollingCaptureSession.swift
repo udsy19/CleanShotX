@@ -39,6 +39,8 @@ import ShotcraftCore
         self.options = options
         self.onEnd = onEnd
         frameWindow.level = .floating
+        // It sits at the floating level (so it's included by default) but must never appear in grabbed frames.
+        CaptureExclusion.exclude(frameWindow)
         frameView.area = self.area.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY)
         frameWindow.contentView = frameView
         hint.anchor = CGPoint(x: self.area.midX, y: self.area.midY)
