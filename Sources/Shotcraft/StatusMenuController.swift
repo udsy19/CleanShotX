@@ -15,6 +15,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
     override init() {
         super.init()
         menu.delegate = self
+        // Roomier than the system default (13 pt text, ~22 pt rows) so the menu reads at a glance.
+        menu.font = .menuFont(ofSize: 13.5)
+        menu.minimumWidth = 240
         Defaults.publisher(.showMenuBarIcon).sink { [weak self] show in self?.setVisible(show) }.store(in: &cancellables)
         StatusBar.setRecording = { [weak self] active, elapsed in self?.setRecording(active, elapsed: elapsed) }
         StatusBar.setProgress = { [weak self] p in self?.progress = p; self?.updateIcon() }
@@ -131,9 +134,24 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
             i.keyEquivalent = s.keyEquivalent
             i.keyEquivalentModifierMask = s.modifiers
         }
-        i.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        i.image = Self.menuIcon(symbol)
         menu.addItem(i)
         return i
+    }
+
+    /// SF Symbol at 14 pt, centred on a 22×24 canvas: the canvas height sets the row height.
+    private static func menuIcon(_ symbol: String) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        guard let glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        else { return nil }
+        let canvas = NSSize(width: 22, height: 24)
+        let img = NSImage(size: canvas, flipped: false) { r in
+            let g = glyph.size
+            glyph.draw(in: NSRect(x: (r.width - g.width) / 2, y: (r.height - g.height) / 2, width: g.width, height: g.height))
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 
     @discardableResult
@@ -150,7 +168,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
         if upload.isUploading {
             let cancel = NSMenuItem(title: "Cancel Upload", action: #selector(cancelUploads), keyEquivalent: "")
             cancel.target = self
-            cancel.image = NSImage(systemSymbolName: "xmark.icloud", accessibilityDescription: nil)
+            cancel.image = Self.menuIcon("xmark.icloud")
             menu.addItem(cancel)
         }
         let recent = upload.recentUploads.prefix(3)
@@ -168,7 +186,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
         all.target = self
         sub.addItem(all)
         let parent = NSMenuItem(title: "Recent Uploads", action: nil, keyEquivalent: "")
-        parent.image = NSImage(systemSymbolName: "icloud", accessibilityDescription: nil)
+        parent.image = Self.menuIcon("icloud")
         parent.submenu = sub
         menu.addItem(parent)
     }
