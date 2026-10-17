@@ -6,68 +6,83 @@ import OverlayKit
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
 func registerOverlayKitTests() {
     SelfTest.cases.append(("OverlayKit.cardSize", {
-        let normal = QuickAccessLayout.cardSize(for: CGSize(width: 1600, height: 1000), scale: 1)
-        check(normal == CGSize(width: 174, height: 124), "16:10 card at the default size is ~174×124 (ui-reference §4)")
-        let square = QuickAccessLayout.cardSize(for: CGSize(width: 500, height: 500), scale: 1)
-        check(square == CGSize(width: 174, height: 174), "height follows the aspect inside the clamp")
-        let wide = QuickAccessLayout.cardSize(for: CGSize(width: 1000, height: 100), scale: 1)
-        check(wide.height == 124, "very wide media clamps to min aspect")
-        let tall = QuickAccessLayout.cardSize(for: CGSize(width: 100, height: 1000), scale: 1)
-        check(tall.height == 218, "very tall media clamps to max aspect")
-        check(QuickAccessLayout.cardSize(for: .zero, scale: 1).width == 174, "zero size falls back")
-        check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 3).width == 244, "scale clamped to 1.4")
-        check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 0.1).width == 104, "scale clamped to 0.6")
+        check(QuickAccessSize.widths == [140, 168, 210, 250, 350], "popupSize widths table (binary)")
+        let sizes = (0...4).map { QuickAccessLayout.cardSize(sizeIndex: $0) }
+        check(sizes.map(\.width) == QuickAccessSize.widths, "width per size index")
+        check(sizes.allSatisfy { $0.height == ($0.width / 1.4).rounded() }, "height = width / 1.4 for every index")
+        check(sizes[2] == CGSize(width: 210, height: 150), "default index is 210×150")
+        check(sizes[0] == CGSize(width: 140, height: 100) && sizes[4] == CGSize(width: 350, height: 250), "smallest and largest")
+        check(QuickAccessLayout.cardSize(sizeIndex: -3) == sizes[0] && QuickAccessLayout.cardSize(sizeIndex: 9) == sizes[4],
+              "out-of-range index clamped")
+        check(QuickAccessSize.defaultIndex(mainScreenWidth: 1512) == 2, "wide main screen defaults to 210 pt")
+        check(QuickAccessSize.defaultIndex(mainScreenWidth: 900) == 1, "≤ 900 pt main screen defaults to 168 pt")
+        check((0...4).map { QuickAccessLayout.cornerButtonSide(sizeIndex: $0) } == [18, 20, 22, 24, 26],
+              "corner buttons are 18 + 2 × size index")
     }))
 
     SelfTest.cases.append(("OverlayKit.thumbnailMaxPixel", {
-        let card = CGSize(width: 174, height: 124)
-        check(QuickAccessLayout.thumbnailMaxPixel(card: card, media: CGSize(width: 1740, height: 1240), backingScale: 2) == 348,
+        let card = CGSize(width: 210, height: 150)
+        check(QuickAccessLayout.thumbnailMaxPixel(card: card, media: CGSize(width: 2100, height: 1500), backingScale: 2) == 420,
               "matching aspect: card width × backing scale")
         let wide = QuickAccessLayout.thumbnailMaxPixel(card: card, media: CGSize(width: 3000, height: 1000), backingScale: 2)
-        check(wide == 744, "wide capture cropped by aspect-fill still fills the card height without upscaling")
-        check(QuickAccessLayout.thumbnailMaxPixel(card: card, media: .zero, backingScale: 2) == 348, "unknown size falls back")
+        check(wide == 900, "wide capture cropped by aspect-fill still fills the card height without upscaling")
+        check(QuickAccessLayout.thumbnailMaxPixel(card: card, media: .zero, backingScale: 2) == 420, "unknown size falls back")
     }))
 
     SelfTest.cases.append(("OverlayKit.stackLayout", {
-        let vis = CGRect(x: 0, y: 0, width: 1000, height: 800)
-        let card = CGSize(width: 200, height: 125)
-        let two = QuickAccessLayout.layout(newestFirst: [card, card], in: vis, side: .left, scale: 1)
-        check(two.cards[0] == CGRect(x: 16, y: 16, width: 200, height: 125), "newest at bottom-left")
-        check(two.cards[1] == CGRect(x: 16, y: 153, width: 200, height: 125), "older stacked above with spacing")
-        check(two.header == nil, "no header below threshold")
+        // 14" MacBook Pro: 1512×982 pt frame; the visible frame loses the menu bar and the Dock.
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let visible = CGRect(x: 0, y: 70, width: 1512, height: 875)
+        let card = QuickAccessLayout.cardSize(sizeIndex: 2)
+        let left = QuickAccessLayout.layout(count: 3, cardSize: card, screen: screen, visible: visible, side: .left)
+        check(left.cards == [CGRect(x: 40, y: 100, width: 210, height: 150), CGRect(x: 40, y: 260, width: 210, height: 150),
+                             CGRect(x: 40, y: 420, width: 210, height: 150)],
+              "left: 40 pt side margin, newest 100 pt above the screen frame's bottom, 10 pt gaps")
+        let right = QuickAccessLayout.layout(count: 3, cardSize: card, screen: screen, visible: visible, side: .right)
+        check(right.cards == [CGRect(x: 1262, y: 100, width: 210, height: 150), CGRect(x: 1262, y: 260, width: 210, height: 150),
+                              CGRect(x: 1262, y: 420, width: 210, height: 150)],
+              "right: maxX − width − 40")
+        check(left.header == CGRect(x: 40, y: 580, width: 210, height: 30), "header above the topmost card, card-wide")
+        check(QuickAccessLayout.layout(count: 2, cardSize: card, screen: screen, visible: visible, side: .left).header == nil,
+              "no header below threshold")
 
-        let right = QuickAccessLayout.layout(newestFirst: [card], in: vis, side: .right, scale: 1)
-        check(right.cards[0]?.minX == 784, "right side aligned to edge margin")
+        let offset = CGRect(x: 1512, y: -200, width: 1000, height: 800)   // secondary display
+        let o = QuickAccessLayout.layout(count: 1, cardSize: card, screen: offset, visible: offset, side: .left)
+        check(o.cards[0]?.origin == CGPoint(x: 1552, y: -100), "respects the screen origin")
 
-        let offset = CGRect(x: 1000, y: -200, width: 1000, height: 800)   // secondary display
-        let o = QuickAccessLayout.layout(newestFirst: [card], in: offset, side: .left, scale: 1)
-        check(o.cards[0]?.origin == CGPoint(x: 1016, y: -184), "respects screen origin")
+        let overflow = QuickAccessLayout.layout(count: 7, cardSize: card, screen: screen, visible: visible, side: .left)
+        check(overflow.cards.prefix(5).allSatisfy { $0 != nil }, "five cards fit under the menu bar with the header")
+        check(overflow.cards.dropFirst(5).allSatisfy { $0 == nil }, "older cards hidden when full")
+        if let h = overflow.header { check(h.maxY <= visible.maxY, "header stays on screen") } else { check(false, "header shown") }
 
-        let three = QuickAccessLayout.layout(newestFirst: [card, card, card], in: vis, side: .left, scale: 1)
-        let top = three.cards[2]!
-        check(three.header == CGRect(x: 16, y: top.maxY + 12, width: 174, height: 30), "header above the topmost card")
-
-        let short = CGRect(x: 0, y: 0, width: 1000, height: 300)
-        let overflow = QuickAccessLayout.layout(newestFirst: Array(repeating: card, count: 5), in: short, side: .left, scale: 1)
-        check(overflow.cards[0] != nil, "newest always placed")
-        check(overflow.cards.dropFirst().allSatisfy { $0 == nil }, "older cards hidden when full")
-        if let h = overflow.header { check(h.maxY <= short.maxY - 16, "header stays on screen") } else { check(false, "header shown") }
-
-        let scaled = QuickAccessLayout.layout(newestFirst: [QuickAccessLayout.cardSize(for: CGSize(width: 16, height: 10), scale: 1.4)],
-                                              in: vis, side: .left, scale: 1.4)
-        check(scaled.cards[0] == CGRect(x: 22, y: 22, width: 244, height: 173), "margins scale with size")
-
-        let peek = QuickAccessLayout.slidDownFrame(for: two.cards[0]!, in: offset)
-        check(peek.maxY == offset.minY + QuickAccessLayout.slideDownPeek && peek.size == card && peek.minX == 16,
+        let first = left.cards[0]!
+        let peek = QuickAccessLayout.slidDownFrame(for: first, in: visible)
+        check(peek.maxY == visible.minY + QuickAccessLayout.slideDownPeek && peek.size == card && peek.minX == 40,
               "slid-down card only peeks above the bottom edge")
 
-        let start = QuickAccessLayout.offscreenFrame(for: two.cards[0]!, in: vis, side: .left)
-        check(start.maxX < vis.minX && start.minY == 16, "slide-in starts past the left edge")
-        let startR = QuickAccessLayout.offscreenFrame(for: right.cards[0]!, in: vis, side: .right)
-        check(startR.minX > vis.maxX, "slide-in starts past the right edge")
-        check(QuickAccessLayout.isAtEdge(CGPoint(x: 2, y: 400), of: vis, side: .left), "left edge hit")
-        check(!QuickAccessLayout.isAtEdge(CGPoint(x: 500, y: 400), of: vis, side: .left), "middle is not an edge")
-        check(QuickAccessLayout.isAtEdge(CGPoint(x: 999, y: 400), of: vis, side: .right), "right edge hit")
+        check(QuickAccessLayout.edgeFrame(for: first, side: .left) == first.offsetBy(dx: -69, dy: 0), "entrance starts 69 pt left")
+        let firstR = right.cards[0]!
+        check(QuickAccessLayout.edgeFrame(for: firstR, side: .right) == firstR.offsetBy(dx: 69, dy: 0), "…or 69 pt right")
+        check(QuickAccessLayout.isAtEdge(CGPoint(x: 2, y: 400), of: screen, side: .left), "left edge hit")
+        check(!QuickAccessLayout.isAtEdge(CGPoint(x: 500, y: 400), of: screen, side: .left), "middle is not an edge")
+        check(QuickAccessLayout.isAtEdge(CGPoint(x: 1511, y: 400), of: screen, side: .right), "right edge hit")
+    }))
+
+    SelfTest.cases.append(("OverlayKit.motionCurves", {
+        // Offset from the resting x of a card entering from 69 pt toward the edge (measured at 120 Hz).
+        func offset(_ t: Double) -> Double { -69 + 69 * QuickAccessMotion.spring(t) }
+        check(QuickAccessMotion.spring(0) == 0 && offset(0) == -69, "starts 69 pt toward the edge")
+        check(abs(offset(0.19) - 5) <= 2, "≈ +5 pt past rest at 0.19 s (got \(offset(0.19)))")
+        let samples = stride(from: 0.0, through: 0.6, by: 1.0 / 120).map { ($0, offset($0)) }
+        let peak = samples.max { $0.1 < $1.1 }!
+        check(abs(peak.0 - 0.19) <= 0.02 && abs(peak.1 - 5) <= 0.5, "overshoot peaks ≈ 5 pt at ≈ 0.19 s")
+        check(samples.filter { $0.0 >= 0.3 }.allSatisfy { abs($0.1) <= 1 }, "within 1 pt of rest from 0.3 s on")
+        check(QuickAccessMotion.spring(QuickAccessMotion.springDuration) == 1, "snaps to rest at the end")
+        check(QuickAccessMotion.easeOut(0) == 0 && QuickAccessMotion.easeOut(1) == 1 && QuickAccessMotion.easeOut(0.5) > 0.5,
+              "fade-in eases out")
+        check(QuickAccessMotion.easeIn(0) == 0 && QuickAccessMotion.easeIn(1) == 1 && QuickAccessMotion.easeIn(0.5) < 0.5,
+              "exit eases in")
+        check(QuickAccessMotion.easeOut(2) == 1 && QuickAccessMotion.easeIn(-1) == 0, "progress clamped")
     }))
 
     SelfTest.cases.append(("OverlayKit.pinGeometry", {

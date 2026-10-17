@@ -3,6 +3,21 @@
 All notable changes to Shotcraft are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.1.0] — 2026-10-17
+
+### Changed
+- Quick Access cards match CleanShot X: 210 × 150 pt at the default size, 40 pt from the screen edge and above the
+  Dock, 10 pt apart, with 17 pt corners on macOS 26.
+- Cards spring in from the screen edge and slide back out when closed; cards above settle into the gap.
+- Hover controls: centred Copy and Save pills and four frosted corner buttons that scale with the overlay size.
+- Settings → Quick Access → Overlay size is a five-step slider.
+- The capture overlay shows the real desktop wallpaper and fades in and out.
+- The menu bar menu lists the same items as CleanShot X, opens without a scroll arrow and uses slightly larger
+  text and rows; the menu bar glyph matches the app icon.
+
+### Removed
+- The capture fly-in animation (cards slide in instead).
+
 ## [1.0.1] — 2026-10-17
 
 ### Changed

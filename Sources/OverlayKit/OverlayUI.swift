@@ -42,16 +42,13 @@ final class OverlayPanel: NSPanel {
 
 /// Visual constants shared by cards and pins (ui-reference §0.1, §4, §6).
 enum OverlayStyle {
-    /// 12 pt before macOS 26; Tahoe's rounder overlays use ~16 pt.
+    /// Quick Access card corners (binary): 17 pt on macOS 26+, 15 pt before.
     static let cardCornerRadius: CGFloat =
-        ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 16 : 12
+        ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 17 : 15
     static let pinCornerRadius: CGFloat = 10
-    /// Spring-like ease-out with a slight overshoot for slide-ins.
-    static let springTiming = CAMediaTimingFunction(controlPoints: 0.22, 1.12, 0.36, 1)
-    /// Calm ease-out (capture hand-off, stack reflow).
-    static let easeOut = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+    /// Pin hover chrome fade (cards use `QuickAccessMotion.hoverFade`).
     static let hoverFade: TimeInterval = 0.12
-    /// System "Reduce motion": slides and flights become plain fades.
+    /// System "Reduce motion": slides become plain fades.
     static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 }
 
@@ -140,30 +137,47 @@ func installHoverTracking(on view: NSView, existing: inout NSTrackingArea?) {
 
 // MARK: - Buttons
 
-/// Overlay control: a light circular SF Symbol button (card / pin corners) or a light capsule pill
-/// (Copy / Save). Works on first click in an inactive app and highlights on hover.
+/// Overlay control: an SF Symbol circle (card / pin corners) or a capsule pill (Copy / Save / Trash). Works on
+/// first click in an inactive app and highlights on hover.
+///
+/// Backdrops: `.light` (pins) is a white layer fill with a soft shadow. `.vibrant` (Quick Access cards; CleanShot
+/// `PopupBasic`, binary) is an `NSVisualEffectView` — `.sidebar` material, `.withinWindow`, `.active`, `.aqua` —
+/// pinned to the button's edges and fully rounded, with `labelColor` content under the `.aqua` appearance.
 ///
 /// The glyph and title are drawn by our own centred subviews, never by the button cell: a cell with an image
 /// reports non-zero `alignmentRectInsets` (≈2 pt top, 1.5 pt bottom on macOS 26), so Auto Layout sized the
 /// alignment rect to the constraints and grew the *frame* — and the layer-drawn circle — into a tall oval.
 final class OverlayButton: NSButton {
     enum Style { case icon(String), pill(String), symbolPill(String) }
-    static let diameter: CGFloat = 22
-    static let pillHeight: CGFloat = 26
-    static let pillMinWidth: CGFloat = 56
-    static let pillPadding: CGFloat = 13
-    static let glyphColor = NSColor(white: 0.13, alpha: 1)
+    enum Backdrop { case light, vibrant }
+    /// Pills (binary): 27 pt tall, 12 pt medium title, 9 pt title padding on each side.
+    static let pillHeight: CGFloat = 27
+    static let pillPadding: CGFloat = 9
+    static let pillFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    /// Content colour on the `.light` backdrop.
+    static let lightGlyphColor = NSColor(white: 0.13, alpha: 1)
 
     private var style: Style
+    private let backdrop: Backdrop
+    private let vibrancy = PassthroughEffectView()
+    private let highlight = PassthroughView()
     private let glyph = PassthroughImageView()
     private let label = PassthroughLabel(labelWithString: "")
+    private var heightConstraint: NSLayoutConstraint!
+    /// Required lower bound and low-priority preferred width (a sibling's equal-width constraint may widen a pill).
+    private var minWidthConstraint: NSLayoutConstraint!
+    private var widthConstraint: NSLayoutConstraint!
     private var hoverArea: NSTrackingArea?
     private var hovering = false { didSet { updateFill(animated: true) } }
     private var pressed = false { didSet { updateFill(animated: false) } }
     var onClick: (() -> Void)?
+    /// Diameter of an `.icon` circle.
+    var side: CGFloat { didSet { if side != oldValue { apply(style, tooltip: toolTip) } } }
 
-    init(_ style: Style, tooltip: String? = nil, action: (() -> Void)? = nil) {
+    init(_ style: Style, backdrop: Backdrop = .light, side: CGFloat = 22, tooltip: String? = nil, action: (() -> Void)? = nil) {
         self.style = style
+        self.backdrop = backdrop
+        self.side = side
         self.onClick = action
         super.init(frame: .zero)
         isBordered = false
@@ -179,42 +193,50 @@ final class OverlayButton: NSButton {
         setContentHuggingPriority(.required, for: .vertical)
         setContentCompressionResistancePriority(.required, for: .vertical)
 
-        let isIcon: Bool
-        if case .icon = style { isIcon = true } else { isIcon = false }
-        let height = isIcon ? Self.diameter : Self.pillHeight
-        layer?.cornerRadius = height / 2
-        layer?.cornerCurve = .continuous
-        layer?.masksToBounds = false
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.22
-        layer?.shadowRadius = 2
-        layer?.shadowOffset = CGSize(width: 0, height: -0.5)
-
+        var layered: [NSView] = []
+        switch backdrop {
+        case .light:
+            layer?.cornerCurve = .continuous
+            layer?.masksToBounds = false
+            layer?.shadowColor = NSColor.black.cgColor
+            layer?.shadowOpacity = 0.22
+            layer?.shadowRadius = 2
+            layer?.shadowOffset = CGSize(width: 0, height: -0.5)
+        case .vibrant:
+            appearance = NSAppearance(named: .aqua)
+            layer?.cornerCurve = .circular
+            layer?.masksToBounds = true          // rounds the vibrancy view
+            vibrancy.material = .sidebar
+            vibrancy.blendingMode = .withinWindow
+            vibrancy.state = .active
+            vibrancy.appearance = NSAppearance(named: .aqua)
+            highlight.wantsLayer = true
+            layered = [vibrancy, highlight]
+        }
         glyph.imageScaling = .scaleNone
-        glyph.contentTintColor = Self.glyphColor
-        label.font = .systemFont(ofSize: 12.5, weight: .medium)
-        label.textColor = Self.glyphColor
+        glyph.contentTintColor = backdrop == .vibrant ? .labelColor : Self.lightGlyphColor
+        label.font = Self.pillFont
+        label.textColor = backdrop == .vibrant ? .labelColor : Self.lightGlyphColor
         label.alignment = .center
-        for v in [glyph, label] as [NSView] {
+        for v in layered + [glyph, label] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
-        var constraints = [
-            heightAnchor.constraint(equalToConstant: height),
+        heightConstraint = heightAnchor.constraint(equalToConstant: 0)
+        minWidthConstraint = widthAnchor.constraint(greaterThanOrEqualToConstant: 0)
+        widthConstraint = widthAnchor.constraint(equalToConstant: 0)
+        widthConstraint.priority = .defaultLow
+        var constraints: [NSLayoutConstraint] = [
+            heightConstraint, minWidthConstraint, widthConstraint,
             glyph.centerXAnchor.constraint(equalTo: centerXAnchor),
             glyph.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.centerXAnchor.constraint(equalTo: centerXAnchor),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ]
-        if isIcon {
-            constraints.append(widthAnchor.constraint(equalToConstant: Self.diameter))
-        } else {
-            let snug = widthAnchor.constraint(equalToConstant: Self.pillMinWidth)
-            snug.priority = .defaultLow   // as narrow as the title (and a sibling's equal-width constraint) allow
+        for v in layered {
             constraints += [
-                widthAnchor.constraint(greaterThanOrEqualToConstant: Self.pillMinWidth),
-                widthAnchor.constraint(greaterThanOrEqualTo: label.widthAnchor, constant: Self.pillPadding * 2),
-                snug,
+                v.leadingAnchor.constraint(equalTo: leadingAnchor), v.trailingAnchor.constraint(equalTo: trailingAnchor),
+                v.topAnchor.constraint(equalTo: topAnchor), v.bottomAnchor.constraint(equalTo: bottomAnchor),
             ]
         }
         NSLayoutConstraint.activate(constraints)
@@ -227,23 +249,40 @@ final class OverlayButton: NSButton {
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric) }
 
-    /// Swaps glyph/title in place (lock ↔ unlock, Save ↔ Trash) keeping the button's geometry.
+    /// Swaps glyph/title in place (lock ↔ unlock, Save ↔ Trash) and sizes the button for it.
     func apply(_ style: Style, tooltip: String?) {
         self.style = style
         toolTip = tooltip
+        let size: CGSize
         switch style {
-        case .icon(let symbol), .symbolPill(let symbol):
-            let size: CGFloat = if case .icon = style { 11 } else { 12 }
-            glyph.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
-                .withSymbolConfiguration(.init(pointSize: size, weight: .semibold))
+        case .icon(let symbol):
+            // Vibrant (card) glyphs scale with the circle (binary: ≈ 0.45 × side); pin glyphs stay 11 pt.
+            glyph.image = Self.symbol(symbol, pointSize: backdrop == .vibrant ? (side * 0.45).rounded() : 11, tooltip)
             label.stringValue = ""
             setAccessibilityLabel(tooltip)
+            size = CGSize(width: side, height: side)
+        case .symbolPill(let symbol):
+            glyph.image = Self.symbol(symbol, pointSize: 12, tooltip)
+            label.stringValue = ""
+            setAccessibilityLabel(tooltip)
+            size = CGSize(width: (glyph.image?.size.width ?? 0).rounded(.up) + 2 * Self.pillPadding, height: Self.pillHeight)
         case .pill(let title):
             glyph.image = nil
             label.stringValue = title
             setAccessibilityLabel(title)
+            let titleWidth = (title as NSString).size(withAttributes: [.font: Self.pillFont]).width.rounded(.up)
+            size = CGSize(width: titleWidth + 2 * Self.pillPadding, height: Self.pillHeight)
         }
+        heightConstraint.constant = size.height
+        minWidthConstraint.constant = size.width
+        widthConstraint.constant = size.width
+        layer?.cornerRadius = size.height / 2
         updateFill(animated: false)
+    }
+
+    private static func symbol(_ name: String, pointSize: CGFloat, _ description: String?) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: description)?
+            .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -262,17 +301,24 @@ final class OverlayButton: NSButton {
 
     override func layout() {
         super.layout()
+        guard backdrop == .light else { return }
         layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: bounds.height / 2, cornerHeight: bounds.height / 2, transform: nil)
     }
 
     @objc private func clicked() { onClick?() }
 
     private func updateFill(animated: Bool) {
-        let alpha: CGFloat = pressed ? 0.7 : hovering ? 0.98 : 0.85
         CATransaction.begin()
         CATransaction.setAnimationDuration(animated ? 0.12 : 0)
         CATransaction.setDisableActions(!animated)
-        layer?.backgroundColor = NSColor.white.withAlphaComponent(alpha).cgColor
+        switch backdrop {
+        case .light:
+            let alpha: CGFloat = pressed ? 0.7 : hovering ? 0.98 : 0.85
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(alpha).cgColor
+        case .vibrant:
+            let tint: NSColor = pressed ? .black.withAlphaComponent(0.12) : hovering ? .white.withAlphaComponent(0.3) : .clear
+            highlight.layer?.backgroundColor = tint.cgColor
+        }
         CATransaction.commit()
     }
 }
@@ -416,8 +462,9 @@ final class PassthroughEffectView: NSVisualEffectView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// Aspect-fill thumbnail (ui-reference §4: "the thumbnail fills the card"). Static images are drawn as layer
-/// contents; animated GIFs use an `NSImageView` so they keep playing; videos can attach a looping player layer.
+/// Aspect-fill thumbnail (binary: the card has a fixed 1.4 aspect and the thumbnail fills it, cropped — never
+/// letterboxed). Static images are drawn as layer contents; animated GIFs use an `NSImageView` (so they keep
+/// playing) sized to the fill rect and clipped; videos can attach a looping player layer.
 final class ThumbnailView: NSView {
     private var staticImage: NSImage?
     private let animatedView = NSImageView()
@@ -427,10 +474,9 @@ final class ThumbnailView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
-        animatedView.imageScaling = .scaleProportionallyUpOrDown
+        animatedView.imageScaling = .scaleAxesIndependently   // its frame already has the image's aspect
         animatedView.animates = true
         animatedView.isHidden = true
-        animatedView.autoresizingMask = [.width, .height]
         addSubview(animatedView)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -444,8 +490,8 @@ final class ThumbnailView: NSView {
         if animated {
             staticImage = nil
             animatedView.image = image
-            animatedView.frame = bounds
             animatedView.isHidden = false
+            needsLayout = true
         } else {
             staticImage = image
             animatedView.image = nil
@@ -480,6 +526,12 @@ final class ThumbnailView: NSView {
     override func layout() {
         super.layout()
         playerLayer?.frame = bounds
+        // Aspect-fill: the GIF view covers the bounds at the image's aspect; the overflow is clipped.
+        let size = animatedView.image?.size ?? .zero
+        guard size.width > 0, size.height > 0 else { animatedView.frame = bounds; return }
+        let fill = max(bounds.width / size.width, bounds.height / size.height)
+        let w = size.width * fill, h = size.height * fill
+        animatedView.frame = CGRect(x: bounds.midX - w / 2, y: bounds.midY - h / 2, width: w, height: h)
     }
 }
 

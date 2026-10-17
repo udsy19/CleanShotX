@@ -279,7 +279,7 @@ public enum PreferencesReset {
         .showCursorOnScreenshots, .freezeScreenWhenCapturing, .crosshairMode, .showMagnifier, .rememberLastSelection,
         .selfTimerSeconds, .captureWindowShadow, .windowBackgroundStyle, .windowBackgroundColor, .windowBackgroundPadding,
         .fileNameTemplate, .askForNameAfterCapture,
-        .quickAccessSide, .quickAccessScreen, .quickAccessSize, .quickAccessAutoClose, .quickAccessAutoCloseSeconds,
+        .quickAccessSide, .quickAccessScreen, .quickAccessSizeIndex, .quickAccessAutoClose, .quickAccessAutoCloseSeconds,
         .quickAccessAutoCloseAction, .quickAccessCloseAfterDragging, .quickAccessCloseAfterUploading,
         .quickAccessSaveBehavior, .quickAccessShowUploadButton,
         .videoFormat, .videoFPS, .videoQuality, .scaleRetinaVideosTo1x, .gifFPS, .gifMaxWidth, .recordShowCursor,

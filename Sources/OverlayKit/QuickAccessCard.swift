@@ -38,6 +38,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
     private let durationLabel = NSTextField(labelWithString: "")
     private var secondaryPill: OverlayButton!
     private var uploadButton: OverlayButton!
+    private var cornerButtons: [OverlayButton] = []
     private let progressOverlay = PassthroughEffectView()
     private let progressRing = CircularProgressView()
     private let progressTick = PassthroughImageView()
@@ -63,14 +64,15 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
 
     /// Frame assigned by the last layout pass (nil = hidden because the stack is full or slid down).
     var targetFrame: CGRect?
-    /// True while the capture hand-off flight stands in for this (still transparent) card.
-    var isHandingOff = false
+    /// Set by the controller once the entrance has started (it waits for the first thumbnail).
+    var hasEntered = false
     private(set) var hasThumbnail = false
     private var thumbnailWaiters: [() -> Void] = []
 
     init(media: CapturedMedia) {
         self.media = media
-        panel = OverlayWindow.makePanel(NSRect(x: 0, y: 0, width: 174, height: 124), level: OverlayWindow.quickAccessLevel)
+        panel = OverlayWindow.makePanel(NSRect(origin: .zero, size: QuickAccessLayout.cardSize(sizeIndex: Defaults[.quickAccessSizeIndex])),
+                                        level: OverlayWindow.quickAccessLevel)
         super.init()
         root.card = self
         buildUI()
@@ -88,7 +90,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         root.layer?.cornerCurve = .continuous
         root.layer?.masksToBounds = true
 
-        // Glass behind the thumbnail (visible through transparent captures and letterboxed GIFs).
+        // Glass behind the thumbnail (visible through transparent captures).
         chrome.material = .hudWindow
         chrome.blendingMode = .behindWindow
         chrome.state = .active
@@ -126,29 +128,33 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         frost.autoresizingMask = [.width, .height]
         hoverOverlay.addSubview(frost)
 
-        let copy = OverlayButton(.pill("Copy"), tooltip: "Copy to clipboard (⌘C)") { [weak self] in self?.copy() }
-        let secondary = OverlayButton(.pill("Save"), tooltip: "Save (⌘S)") { [weak self] in self?.saveOrTrash() }
+        // Hover buttons (CleanShot `PopupBasic`, binary): light vibrant pills and circles with `labelColor` content.
+        let copy = OverlayButton(.pill("Copy"), backdrop: .vibrant, tooltip: "Copy to clipboard (⌘C)") { [weak self] in self?.copy() }
+        let secondary = OverlayButton(.pill("Save"), backdrop: .vibrant, tooltip: "Save (⌘S)") { [weak self] in self?.saveOrTrash() }
         secondaryPill = secondary
         let center = NSStackView(views: [copy, secondary])
         center.orientation = .vertical
         center.alignment = .centerX
         center.distribution = .fill
-        center.spacing = 6
+        center.spacing = 10
         center.setHuggingPriority(.required, for: .vertical)
         center.setHuggingPriority(.required, for: .horizontal)
         center.translatesAutoresizingMaskIntoConstraints = false
         hoverOverlay.addSubview(center)
 
-        let close = OverlayButton(.icon("xmark"), tooltip: "Close (⌘W)") { [weak self] in self?.close(recordForRestore: true) }
+        let close = OverlayButton(.icon("xmark"), backdrop: .vibrant, tooltip: "Close (⌘W)") { [weak self] in self?.close(recordForRestore: true) }
         let topRight = media.isImage
-            ? OverlayButton(.icon("pin.fill"), tooltip: "Pin to the screen (⌘P)") { [weak self] in self?.pin() }
-            : OverlayButton(.icon("eye"), tooltip: "Open Quick Look (Space)") { [weak self] in self?.quickLook() }
-        let edit = OverlayButton(.icon(media.isImage ? "pencil" : "scissors"), tooltip: MediaActions.editTitle(for: media)) { [weak self] in
-            self?.edit()
+            ? OverlayButton(.icon("pin.fill"), backdrop: .vibrant, tooltip: "Pin to the screen (⌘P)") { [weak self] in self?.pin() }
+            : OverlayButton(.icon("eye"), backdrop: .vibrant, tooltip: "Open Quick Look (Space)") { [weak self] in self?.quickLook() }
+        let edit = OverlayButton(.icon(media.isImage ? "pencil" : "scissors"), backdrop: .vibrant,
+                                 tooltip: MediaActions.editTitle(for: media)) { [weak self] in self?.edit() }
+        let upload = OverlayButton(.icon("icloud.and.arrow.up.fill"), backdrop: .vibrant, tooltip: "Upload (⌘U)") { [weak self] in
+            self?.upload()
         }
-        let upload = OverlayButton(.icon("icloud.and.arrow.up.fill"), tooltip: "Upload (⌘U)") { [weak self] in self?.upload() }
         uploadButton = upload
-        [close, topRight, edit, upload].forEach(hoverOverlay.addSubview)
+        cornerButtons = [close, topRight, edit, upload]
+        cornerButtons.forEach(hoverOverlay.addSubview)
+        updateCornerButtonSize()
         updateUploadButtonVisibility()
 
         durationLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
@@ -208,6 +214,12 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         ])
     }
 
+    /// Corner circles grow with the "Overlay size" setting.
+    func updateCornerButtonSize() {
+        let side = QuickAccessLayout.cornerButtonSide(sizeIndex: Defaults[.quickAccessSizeIndex])
+        cornerButtons.forEach { $0.side = side }
+    }
+
     func updateUploadButtonVisibility() {
         uploadButton.isHidden = !Defaults[.quickAccessShowUploadButton] || isUploading
     }
@@ -234,7 +246,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
             thumb.setImage(NSImage(contentsOf: url), animated: true)
             thumbnailDidLoad()
         } else {
-            let size = QuickAccessLayout.cardSize(for: media.pixelSize, scale: Defaults[.quickAccessSize])
+            let size = QuickAccessLayout.cardSize(sizeIndex: Defaults[.quickAccessSizeIndex])
             let px = QuickAccessLayout.thumbnailMaxPixel(card: size, media: media.pixelSize,
                                                          backingScale: (panel.screen ?? NSScreen.active).backingScaleFactor)
             Thumbnailer.thumbnail(for: url, kind: media.kind, maxPixel: px) { [weak self] img in
@@ -270,7 +282,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         guard hovered != isHovered, !isClosing else { return }
         isHovered = hovered
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = OverlayStyle.hoverFade
+            ctx.duration = QuickAccessMotion.hoverFade
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             hoverOverlay.animator().alphaValue = hovered && !isUploading ? 1 : 0
         }
@@ -494,7 +506,8 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         let session = root.beginDraggingSession(with: [item], event: event, source: self)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
-        NSAnimationContext.runAnimationGroup { $0.duration = 0.15; panel.animator().alphaValue = 0.35 }
+        PanelMotion.shared.finish(panel)   // an entrance or reflow still running lands first
+        PanelMotion.shared.fade(panel, to: 0.35, curve: .easeOut(0.15))
     }
 
     nonisolated func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
@@ -508,6 +521,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
     private func dragEnded(at point: NSPoint, operation: NSDragOperation) {
         isDragging = false
         guard !isClosing else { return }      // closed meanwhile (Close All, trash, …): let its fade-out run
+        PanelMotion.shared.finish(panel)
         panel.alphaValue = 1
         let keep = NSEvent.modifierFlags.contains(.option)   // "hold ⌥ to keep it"
         let screen = panel.screen ?? NSScreen.active
@@ -533,6 +547,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         let inverted = event.isDirectionInvertedFromDevice
         let fingerDX = inverted ? event.scrollingDeltaX : -event.scrollingDeltaX
         let fingerDY = inverted ? event.scrollingDeltaY : -event.scrollingDeltaY   // > 0 = fingers move down
+        if event.phase == .began { PanelMotion.shared.finish(panel) }   // the swipe takes over from any running motion
         switch event.phase {
         case .began, .changed:
             if swipeOffset == .zero && abs(fingerDY) > abs(fingerDX) {
@@ -551,7 +566,7 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
             guard offset.width != 0 else { return }
             let dismiss = abs(offset.width) > target.width * 0.35 && (side == .left ? offset.width < 0 : offset.width > 0)
             if dismiss { close(recordForRestore: true) } else {
-                NSAnimationContext.runAnimationGroup { $0.duration = 0.2; panel.animator().setFrame(target, display: true) }
+                PanelMotion.shared.move(panel, to: target, curve: .easeOut(0.2))
             }
         default:
             break

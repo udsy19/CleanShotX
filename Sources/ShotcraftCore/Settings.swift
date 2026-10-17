@@ -56,6 +56,18 @@ public enum OverlayScreenChoice: String, Codable, CaseIterable, Sendable {
     case mainScreen
 }
 
+/// Quick Access "Overlay size" (CleanShot `popupSize`, values from the binary): an index 0…4 into the card widths.
+public enum QuickAccessSize {
+    /// Card width in points for each slider tick.
+    public static let widths: [CGFloat] = [140, 168, 210, 250, 350]
+    public static var maxIndex: Int { widths.count - 1 }
+
+    /// 2 (210 pt) when the main screen is wider than 900 pt, else 1 (168 pt).
+    public static func defaultIndex(mainScreenWidth: CGFloat) -> Int { mainScreenWidth > 900 ? 2 : 1 }
+
+    public static func clamped(_ index: Int) -> Int { min(max(index, 0), maxIndex) }
+}
+
 public enum SaveButtonBehavior: String, Codable, CaseIterable, Sendable {
     case saveToExportLocation, askForDestination
     public var displayName: String { self == .askForDestination ? "Ask for destination" : "Save to export location" }
@@ -179,7 +191,9 @@ public extension Defaults.Keys {
     // Quick Access Overlay
     static let quickAccessSide = Key<ScreenSide>("quickAccessSide", default: .left)
     static let quickAccessScreen = Key<OverlayScreenChoice>("quickAccessScreen", default: .activeScreen)
-    static let quickAccessSize = Key<Double>("quickAccessSize", default: 1.0) // scale factor 0.6…1.4
+    /// "Overlay size" slider: an index into `QuickAccessSize.widths`.
+    static let quickAccessSizeIndex = Key<Int>("quickAccessSizeIndex",
+                                               default: QuickAccessSize.defaultIndex(mainScreenWidth: CGDisplayBounds(CGMainDisplayID()).width))
     static let quickAccessAutoClose = Key<Bool>("quickAccessAutoClose", default: false)
     static let quickAccessAutoCloseSeconds = Key<Int>("quickAccessAutoCloseSeconds", default: 10)
     static let quickAccessAutoCloseAction = Key<AfterCaptureAction?>("quickAccessAutoCloseAction", default: nil)

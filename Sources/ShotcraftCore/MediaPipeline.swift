@@ -12,7 +12,7 @@ public enum MediaPipeline {
     @discardableResult
     public static func didCaptureImage(_ raw: CGImage, scale: CGFloat, mode: CaptureMode,
                                        actions override: Set<AfterCaptureAction>? = nil,
-                                       playSound: Bool = true, from rect: CGRect? = nil) -> CapturedMedia? {
+                                       playSound: Bool = true) -> CapturedMedia? {
         let (image, effectiveScale) = ImageTools.applyScreenshotPreferences(raw, scale: scale)
         let actions = override ?? Defaults[.afterScreenshotActions]
         let format = Defaults[.screenshotFormat]
@@ -27,7 +27,6 @@ public enum MediaPipeline {
         let media = CapturedMedia(url: url, kind: .image, mode: mode,
                                   pixelSize: CGSize(width: image.width, height: image.height),
                                   scale: effectiveScale, isSaved: saveNow)
-        media.captureRect = rect
         if playSound { Sound.play(.capture) }
         ingest(media, actions: actions)
         return media

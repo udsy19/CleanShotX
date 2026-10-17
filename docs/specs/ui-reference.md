@@ -11,6 +11,8 @@ machine's screen and the app was never launched.
 - **[S]** taken from the app bundle (string tables in the app's strings and its UI strings, class ivars in
   the class metadata, nibs in its nib files, asset names from `Assets.car`).
 - **[U]** unverified: inferred, estimated, or remembered. Treat these as defaults to tune.
+- **[binary]** read directly out of CleanShot X's binary (disassembly). Supersedes [V]/[S]/[U] values.
+- **[measured]** measured from a 120 Hz recording of CleanShot X's window geometry. Supersedes [V]/[S]/[U] values.
 
 **Sizes.** Settings-window sizes come from 2x PNGs on cleanshot.com (1620×1320 px means 810×660 pt), so they are
 accurate to about ±2 pt. Overlay and recorder sizes come from a 1440p video of a 1728-pt-wide display (≈1.48 px/pt),
@@ -43,7 +45,7 @@ overlays and cards. Where the two differ, both are described and 5.0 is the targ
 | Light HUD pill (instruction hint) | white about 80% plus blur, text `labelColor` dark | [V] |
 | Recording red | `#FF453A`-ish (systemRed) for the stop glyph and timer | [V] |
 | Font | SF Pro (system). SF Pro Rounded style for keystroke HUD digits [U]. Monospaced digits for W×H fields and timers | [V] |
-| Corner radii | settings grouped boxes 10–12 pt; overlay panels 16–18 pt; QA card 12 pt (4.x) / ~16 pt (Tahoe); pills fully rounded | [V] |
+| Corner radii | settings grouped boxes 10–12 pt; overlay panels 16–18 pt; QA card 15 pt / 17 pt on macOS 26+ [binary]; pills fully rounded | [V] |
 | Sounds | `grab-*.aif/caf` (shutter variants: 8bit, bigsur, classic, pop, subtle), `countdown.aif`, `startRecording.aif`, `stopRecording.aif`, `pauseRecording.aif`, `ocr.aif`, `uploadDone.aif`, `uploadError.aif`, `tink.aif` | [S] bundle Resources |
 
 ---
@@ -229,35 +231,52 @@ on the rect. Recording switches to the recorder panel (§7.1). Esc closes. The o
   Right [V settings4]. Strings also include "Place on the left/right/top/bottom" [S].
 - The stack follows the active screen ("Move to active screen": "Active screen is the screen where your cursor is
   pointing.") [V].
-- Margin about 16 pt from the side and bottom. Newest card at the bottom. Vertical gap 12 pt [U, matches
-  OverlayKit spec].
-- Card width is set by the "Overlay size" slider (5 ticks, default the 3rd) [V]. At the default size the card is
-  about **174×124 pt** for a 16:10 capture. Height follows the capture aspect ratio, clamped [V drag_and_drop @2x;
-  clamp U].
+- CleanShot holds the cards in one full-screen transparent window per screen [binary]; Shotcraft uses one panel per
+  card with the same on-screen geometry.
+- **Side margin 40 pt** from the screen edge (right: `screen.maxX − width − 40`) [binary].
+- **Card i** (0 = newest, at the bottom) has its bottom edge at **`screen.frame.minY + 100 + i × (height + 10)`**:
+  the first card sits 100 pt above the bottom of the screen *frame* (not the visible frame), clearing the Dock;
+  10 pt between cards [binary].
+- When a card is removed, the cards above slide down into place with the entrance spring [measured].
+
+**Size.**
+- "Overlay size" slider (5 ticks) is the `popupSize` index 0…4 into card widths **`[140, 168, 210, 250, 350]` pt**
+  [binary][V settings4]. Default: index 2 (**210 pt**) when the main screen is wider than 900 pt, else 1 (168 pt)
+  [binary].
+- **Height = width / 1.4 for every capture** (210×150 at the default) [binary]. The thumbnail aspect-fills the card
+  (cropped, never letterboxed).
 
 **Card look (idle).**
-- The thumbnail fills the card (aspect-fill).
-- Corner radius **12 pt** (4.x) / ~16 pt (Tahoe) [V].
+- Corner radius **17 pt** on macOS 26+, **15 pt** before [binary].
 - 1 px light inner stroke `rgba(255,255,255,0.2)`, shadow y 4–6, blur 16–20, 30% black [V].
-- On first appearance the card slides in from the screen edge with a spring of about 0.35 s ("subtle animation")
-  [V changelog][U timing].
 - A subtle indicator marks the newest card [V changelog, look U].
 
-**Card look (hover)** [V quick_actions, drag_and_drop, 4.4 + 5.0 frames]:
-- The thumbnail is dimmed and blurred: dark overlay ~35% plus blur (Tahoe: frosted glass).
-- **Two centred stacked pills**: **"Copy"** on top and **"Save"** below. Each is about 44×22 pt, fully rounded,
-  fill white ~75–85%, label dark grey 13 pt medium, with a 6–8 pt vertical gap.
-- **Four corner buttons**: 18–20 pt circles, fill white ~80% (light) with a dark 9 pt glyph, inset about 6 pt from
-  each corner:
+**Motion** [measured, 120 Hz]:
+- **Appear:** the card starts **69 pt toward the screen edge** (x −69 on the left, +69 on the right) at alpha ≈ 0 and
+  springs to rest: **+5 pt overshoot at ≈ 0.19 s**, settled by ≈ 0.28 s (an underdamped spring, damping ratio ≈ 0.64,
+  response ≈ 0.29 s); alpha ramps 0 → 1 over ≈ 0.25 s, ease-out.
+- **Disappear** (close, after drag / save): the reverse — slides 69 pt toward the edge while fading out over ≈ 0.2 s,
+  ease-in.
+- The capture does **not** fly into the card: the card slides in.
+
+**Card look (hover)** [binary, class `PopupBasic`]:
+- The thumbnail is dimmed and blurred: dark overlay ~35% plus a light blur, fading in/out over ≈ 0.15 s [V][U timing].
+- **Two centred stacked pills**: **"Copy"** on top and **"Save"** below, 10 pt apart. Each is **27 pt tall**, title
+  `systemFont(12, .medium)` in `labelColor` under `NSAppearance(.aqua)` (dark text), button-cell title padding 9 pt
+  each side (width = title width + 18); both forced to the wider width. Background: an `NSVisualEffectView`
+  (`.sidebar`, `.withinWindow`, `.active`, `.aqua`) pinned to the button's edges, fully rounded (radius = height / 2).
+- **Four corner buttons**: squares of side **18 + 2 × size index** (22 pt at the default), circular, inset **6 pt**
+  from the card corners, with the same light visual-effect background; image-only SF Symbol glyph at ≈ 0.45 × side,
+  `labelColor`. Buttons fade in on hover-enter and out on exit (≈ 0.15 s).
 
 | Corner | Screenshot card | Video / GIF card |
 |---|---|---|
 | top-left | **Close** ✕ (`popupClose` → `xmark`) | Close ✕ |
-| top-right | **Pin** (`popupPin` → `pin.fill`) | eye glyph (`popupQuickLook` → `eye`) [V 5.0; meaning U, probably preview] |
+| top-right | **Pin** (`popupPin` → `pin.fill`) | Quick Look eye (`popupQuickLook` → `eye`) |
 | bottom-left | **Annotate** pencil (`popupAnnotate` → `pencil`) | **Trim** scissors (`popupTrim` → `scissors`) |
 | bottom-right | **Upload** cloud-up (`popupUpload` → `icloud.and.arrow.up.fill`) | Upload |
 
-  Older 4.x builds had close at top-right ("Changed close button location", 4.x changelog). The current layout puts
+- Older 4.x builds had close at top-right ("Changed close button location", 4.x changelog). The current layout puts
   close at top-left [V].
 - When an auto-save After-Capture action is on, a **trash** button (`popupTrash` → `trash`) replaces Save [V
   changelog][placement U].

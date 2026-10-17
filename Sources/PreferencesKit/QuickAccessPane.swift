@@ -4,7 +4,7 @@ import ShotcraftCore
 struct QuickAccessPane: View {
     @Default(.quickAccessSide) private var side
     @Default(.quickAccessScreen) private var screen
-    @Default(.quickAccessSize) private var size
+    @Default(.quickAccessSizeIndex) private var sizeIndex
     @Default(.quickAccessAutoClose) private var autoClose
     @Default(.quickAccessAutoCloseSeconds) private var autoCloseSeconds
     @Default(.quickAccessAutoCloseAction) private var autoCloseAction
@@ -29,8 +29,8 @@ struct QuickAccessPane: View {
                 }
                 .accessibilityLabel("Move to active screen")
                 LabeledContent("Overlay size") {
-                    // Five ticks: 60 %, 80 %, 100 %, 120 %, 140 %.
-                    Slider(value: $size, in: 0.6...1.4, step: 0.2) {
+                    // Five ticks: one per card width in `QuickAccessSize.widths`.
+                    Slider(value: sizeTick, in: 0...Double(QuickAccessSize.maxIndex), step: 1) {
                         Text("Overlay size")
                     } minimumValueLabel: {
                         Image(systemName: "rectangle.portrait").imageScale(.small)
@@ -39,7 +39,7 @@ struct QuickAccessPane: View {
                     }
                     .labelsHidden()
                     .frame(maxWidth: 220)
-                    .help("\(Int((size * 100).rounded()))%")
+                    .help("\(Int(QuickAccessSize.widths[QuickAccessSize.clamped(sizeIndex)])) pt")
                 }
             }
 
@@ -68,6 +68,11 @@ struct QuickAccessPane: View {
                 }
             }
         }
+    }
+
+    /// The stored index as the slider's value.
+    private var sizeTick: Binding<Double> {
+        Binding(get: { Double(QuickAccessSize.clamped(sizeIndex)) }, set: { sizeIndex = QuickAccessSize.clamped(Int($0.rounded())) })
     }
 
     private var moveToActiveScreen: Binding<Bool> {

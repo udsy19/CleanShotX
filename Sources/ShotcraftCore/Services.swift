@@ -42,9 +42,6 @@ public final class CapturedMedia: Identifiable, Hashable, Codable, @unchecked Se
     public var uploadedURL: URL?
     /// Editable Annotate document, if the image has been annotated.
     public var projectURL: URL?
-    /// Where on screen the capture came from (global Cocoa coordinates), so overlays can animate from it.
-    /// Not persisted — only meaningful right after the capture.
-    public var captureRect: CGRect?
 
     private enum CodingKeys: String, CodingKey {
         case id, url, kind, mode, createdAt, pixelSize, scale, isSaved, uploadedURL, projectURL

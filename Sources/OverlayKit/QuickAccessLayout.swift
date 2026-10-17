@@ -1,36 +1,34 @@
 import CoreGraphics
+import Foundation
 import ShotcraftCore
 
 /// Pure geometry for the Quick Access stack (no AppKit state), so it can be self-tested.
-/// All rects are global Cocoa coordinates (origin bottom-left).
+/// All rects are global Cocoa coordinates (origin bottom-left). Values are read from CleanShot X's binary unless noted.
 public enum QuickAccessLayout {
-    /// ~174×124 pt at the default (3rd) "Overlay size" tick for a 16:10 capture (ui-reference §4).
-    public static let baseCardWidth: CGFloat = 174
-    /// Height / width clamp. The thumbnail is aspect-filled, so wider captures are cropped rather than letterboxed.
-    public static let minAspect: CGFloat = 0.71
-    public static let maxAspect: CGFloat = 1.25
-    public static let margin: CGFloat = 16
-    public static let spacing: CGFloat = 12
+    /// Card width / height — the same for every capture; the thumbnail aspect-fills (crops) the card.
+    public static let aspect: CGFloat = 1.4
+    /// Distance between the card and the screen frame's side edge.
+    public static let sideMargin: CGFloat = 40
+    /// The newest card's bottom edge sits this far above the bottom of the screen *frame* (it clears the Dock).
+    public static let bottomMargin: CGFloat = 100
+    /// Vertical gap between stacked cards.
+    public static let spacing: CGFloat = 10
+    /// Close All / Save All header (Shotcraft's own; as wide as a card).
     public static let headerHeight: CGFloat = 30
-    public static let headerWidth: CGFloat = 174
     /// How much of the newest card stays visible while the stack is temporarily slid down.
     public static let slideDownPeek: CGFloat = 14
     /// The header with Close All / Save All appears from this many cards on.
     public static let headerThreshold = 3
 
-    /// Clamps the user's size preference to the supported 0.6…1.4 range.
-    public static func clampedScale(_ scale: Double) -> CGFloat {
-        CGFloat(min(max(scale.isFinite ? scale : 1, 0.6), 1.4))
+    /// Card size for an "Overlay size" index: `QuickAccessSize.widths[index]` × (width / 1.4), e.g. 210×150 pt.
+    public static func cardSize(sizeIndex: Int) -> CGSize {
+        let width = QuickAccessSize.widths[QuickAccessSize.clamped(sizeIndex)]
+        return CGSize(width: width, height: (width / aspect).rounded())
     }
 
-    /// Card size for media of the given pixel/point size (aspect ratio is what matters).
-    public static func cardSize(for mediaSize: CGSize, scale: Double) -> CGSize {
-        let s = clampedScale(scale)
-        let width = (baseCardWidth * s).rounded()
-        var aspect: CGFloat = 0.625
-        if mediaSize.width > 0, mediaSize.height > 0 { aspect = mediaSize.height / mediaSize.width }
-        aspect = min(max(aspect, minAspect), maxAspect)
-        return CGSize(width: width, height: (width * aspect).rounded())
+    /// Side of the four circular corner buttons: 18 + 2 × size index (22 pt at the default index 2).
+    public static func cornerButtonSide(sizeIndex: Int) -> CGFloat {
+        18 + 2 * CGFloat(QuickAccessSize.clamped(sizeIndex))
     }
 
     /// Longest-side pixel size of a thumbnail that aspect-fills `card` without upscaling, so it stays sharp on a
@@ -42,51 +40,44 @@ public enum QuickAccessLayout {
     }
 
     public struct Result: Equatable {
-        /// One entry per input card (same order); nil when the card doesn't fit on screen.
+        /// One entry per card (newest first); nil when the card doesn't fit on screen.
         public var cards: [CGRect?]
         /// Frame of the Close All / Save All header, when shown.
         public var header: CGRect?
     }
 
-    /// Lays out cards bottom-up from the screen's bottom edge.
-    /// - Parameter newestFirst: card sizes, index 0 = newest (placed at the bottom).
-    public static func layout(newestFirst sizes: [CGSize], in visible: CGRect, side: ScreenSide, scale: Double) -> Result {
-        let s = clampedScale(scale)
-        let m = (margin * s).rounded(), gap = (spacing * s).rounded()
-        let wantsHeader = sizes.count >= headerThreshold
-        let headerH = (headerHeight * s).rounded()
+    /// Lays out `count` cards of `size` bottom-up: card i (0 = newest) has its bottom edge at
+    /// `screen.minY + 100 + i × (height + 10)`, 40 pt from the chosen side of `screen` (the screen's full frame).
+    /// Cards that would reach into the menu bar (`visible.maxY`, less one gap) wait until space frees up.
+    public static func layout(count: Int, cardSize size: CGSize, screen: CGRect, visible: CGRect, side: ScreenSide) -> Result {
+        let x = side == .left ? screen.minX + sideMargin : screen.maxX - sideMargin - size.width
+        let wantsHeader = count >= headerThreshold
         // Reserve room for the header so it never overlaps the topmost visible card.
-        let top = visible.maxY - m - (wantsHeader ? headerH + gap : 0)
-        var y = visible.minY + m
+        let top = visible.maxY - spacing - (wantsHeader ? headerHeight + spacing : 0)
         var frames: [CGRect?] = []
         var topmost: CGRect?
-        var full = false
-        for size in sizes {
-            let x = side == .left ? visible.minX + m : visible.maxX - m - size.width
-            let frame = CGRect(x: x, y: y, width: size.width, height: size.height)
-            if full || frame.maxY > top {
-                full = true          // keep newer cards visible; older ones wait until space frees up
+        for i in 0..<max(count, 0) {
+            let frame = CGRect(x: x, y: screen.minY + bottomMargin + CGFloat(i) * (size.height + spacing),
+                               width: size.width, height: size.height)
+            // Slots only climb, so once one doesn't fit no older card does: newer cards stay visible.
+            guard frame.maxY <= top else {
                 frames.append(nil)
                 continue
             }
             frames.append(frame)
             topmost = frame
-            y = frame.maxY + gap
         }
         var header: CGRect?
         if wantsHeader, let t = topmost {
-            let w = (headerWidth * s).rounded()
-            let x = side == .left ? visible.minX + m : visible.maxX - m - w
-            header = CGRect(x: x, y: t.maxY + gap, width: w, height: headerH)
+            header = CGRect(x: x, y: t.maxY + spacing, width: size.width, height: headerHeight)
         }
         return Result(cards: frames, header: header)
     }
 
-    /// Where a card starts its slide-in (and ends its slide-out): just past the configured screen edge.
-    public static func offscreenFrame(for frame: CGRect, in visible: CGRect, side: ScreenSide) -> CGRect {
-        var f = frame
-        f.origin.x = side == .left ? visible.minX - frame.width - 8 : visible.maxX + 8
-        return f
+    /// `frame` moved `QuickAccessMotion.slideDistance` toward the stack's screen edge: where a card's entrance
+    /// starts and its exit ends (measured).
+    public static func edgeFrame(for frame: CGRect, side: ScreenSide) -> CGRect {
+        frame.offsetBy(dx: side == .left ? -QuickAccessMotion.slideDistance : QuickAccessMotion.slideDistance, dy: 0)
     }
 
     /// Where a card sits while the stack is temporarily hidden by sliding it down: only its top edge peeks out.
@@ -99,6 +90,50 @@ public enum QuickAccessLayout {
     /// True when a point (e.g. a drag end or swipe) is within `tolerance` of the edge the cards live on.
     public static func isAtEdge(_ point: CGPoint, of screenFrame: CGRect, side: ScreenSide, tolerance: CGFloat = 6) -> Bool {
         side == .left ? point.x <= screenFrame.minX + tolerance : point.x >= screenFrame.maxX - tolerance
+    }
+}
+
+/// Quick Access motion as pure curves, fitted to a 120 Hz recording of CleanShot X's window geometry (measured).
+public enum QuickAccessMotion {
+    /// Entrances start, and exits end, this far toward the screen edge.
+    public static let slideDistance: CGFloat = 69
+    /// Entrance fade 0 → 1 (ease-out).
+    public static let appearFadeDuration: TimeInterval = 0.25
+    /// Exit: slide toward the edge and fade out together (ease-in).
+    public static let disappearDuration: TimeInterval = 0.2
+    /// Hover chrome (dim curtain + buttons) fades in/out.
+    public static let hoverFade: TimeInterval = 0.15
+    /// The spring is snapped to rest after this (residual < 0.1 pt per 69 pt of travel).
+    public static let springDuration: TimeInterval = 0.5
+
+    // The measured entrance overshoots a 69 pt slide by 5 pt, peaking at 0.19 s. An underdamped spring released
+    // from rest peaks after half a damped period, overshooting by e^(−πζ/√(1−ζ²)): solve both for ζ (≈ 0.64) and
+    // the damped frequency; the undamped period ("response") comes out ≈ 0.29 s.
+    private static let overshoot = 5.0 / 69.0
+    private static let peakTime = 0.19
+    private static let dampingRatio: Double = {
+        let l = log(overshoot)
+        return -l / (Double.pi * Double.pi + l * l).squareRoot()
+    }()
+    private static let dampedFrequency = Double.pi / peakTime
+    private static let decayRate = dampedFrequency * dampingRatio / (1 - dampingRatio * dampingRatio).squareRoot()
+
+    /// Spring progress from 0 (start) to 1 (rest) at `t` seconds; it passes 1 (≈ 1.072 at 0.19 s) before settling.
+    public static func spring(_ t: Double) -> Double {
+        guard t > 0 else { return 0 }
+        guard t < springDuration else { return 1 }
+        let w = dampedFrequency * t
+        return 1 - exp(-decayRate * t) * (cos(w) + decayRate / dampedFrequency * sin(w))
+    }
+
+    public static func easeOut(_ p: Double) -> Double {
+        let c = min(max(p, 0), 1)
+        return 1 - (1 - c) * (1 - c)
+    }
+
+    public static func easeIn(_ p: Double) -> Double {
+        let c = min(max(p, 0), 1)
+        return c * c
     }
 }
 

@@ -35,13 +35,14 @@ final class QuickAccessController: QuickAccessServicing {
                                                                 object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.screen = nil; self?.layout(animated: false) }
         })
-        let relayoutKeys: Set<String> = [Defaults.Keys.quickAccessSide.name, Defaults.Keys.quickAccessSize.name,
+        let relayoutKeys: Set<String> = [Defaults.Keys.quickAccessSide.name, Defaults.Keys.quickAccessSizeIndex.name,
                                          Defaults.Keys.quickAccessScreen.name]
         let cardKeys: Set<String> = [Defaults.Keys.quickAccessShowUploadButton.name, Defaults.Keys.quickAccessAutoClose.name,
                                      Defaults.Keys.quickAccessAutoCloseSeconds.name]
         defaultsSub = Defaults.changes.receive(on: DispatchQueue.main).sink { [weak self] name in
             MainActor.assumeIsolated {
                 guard let self, !self.cards.isEmpty else { return }
+                if name == Defaults.Keys.quickAccessSizeIndex.name { self.cards.forEach { $0.updateCornerButtonSize() } }
                 if relayoutKeys.contains(name) { self.screen = nil; self.layout(animated: true) }
                 if cardKeys.contains(name) {
                     self.cards.forEach { $0.updateUploadButtonVisibility(); $0.scheduleAutoClose() }
@@ -67,7 +68,13 @@ final class QuickAccessController: QuickAccessServicing {
         let card = QuickAccessCard(media: media)
         cards.insert(card, at: 0)
         startDisplayTracking()
-        layout(animated: true, appearing: card)
+        layout(animated: true)
+        // Like CleanShot, the card slides in from the screen edge (the capture doesn't fly into it); it waits for its
+        // thumbnail so it never enters blank.
+        card.whenThumbnailReady { [weak self, weak card] in
+            guard let self, let card else { return }
+            self.enter(card)
+        }
     }
 
     func remove(_ media: CapturedMedia) {
@@ -132,18 +139,15 @@ final class QuickAccessController: QuickAccessServicing {
         }
         let panel = card.panel
         if panel.isVisible {
-            let out = QuickAccessLayout.offscreenFrame(for: panel.frame, in: (panel.screen ?? NSScreen.active).visibleFrame,
-                                                       side: Defaults[.quickAccessSide])
-            let reduceMotion = OverlayStyle.reduceMotion
-            NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = reduceMotion ? 0.18 : 0.24
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.8, 0.6)
-                if !reduceMotion { panel.animator().setFrame(out, display: true) }
-                panel.animator().alphaValue = 0
-            }, completionHandler: {
-                // `card` is captured so the panel stays alive until the animation finishes.
-                MainActor.assumeIsolated { card.panel.orderOut(nil) }
-            })
+            // Exit (measured): slide 69 pt toward the edge while fading out, ease-in. `card` is captured so its panel
+            // stays alive until the fade ends.
+            let curve = PanelMotion.Curve.easeIn(QuickAccessMotion.disappearDuration)
+            PanelMotion.shared.fade(panel, to: 0, curve: curve) { _ in card.panel.orderOut(nil) }
+            if !OverlayStyle.reduceMotion {
+                // From wherever it is (a swipe may already have pulled it toward the edge).
+                PanelMotion.shared.move(panel, to: QuickAccessLayout.edgeFrame(for: panel.frame, side: Defaults[.quickAccessSide]),
+                                        curve: curve)
+            }
         } else {
             panel.orderOut(nil)
         }
@@ -161,48 +165,39 @@ final class QuickAccessController: QuickAccessServicing {
         return s
     }
 
-    private func layout(animated: Bool, appearing: QuickAccessCard? = nil) {
+    private func layout(animated: Bool) {
         guard !cards.isEmpty else { hideHeader(); return }
-        let visible = targetScreen().visibleFrame
-        let side = Defaults[.quickAccessSide]
-        let scale = Defaults[.quickAccessSize]
-        let sizes = cards.map { QuickAccessLayout.cardSize(for: $0.media.pixelSize, scale: scale) }
-        let result = QuickAccessLayout.layout(newestFirst: sizes, in: visible, side: side, scale: scale)
+        let screen = targetScreen()
+        let visible = screen.visibleFrame
+        let size = QuickAccessLayout.cardSize(sizeIndex: Defaults[.quickAccessSizeIndex])
+        let result = QuickAccessLayout.layout(count: cards.count, cardSize: size, screen: screen.frame, visible: visible,
+                                              side: Defaults[.quickAccessSide])
+        let motion = PanelMotion.shared
+        let spring = animated && !OverlayStyle.reduceMotion
 
         for (index, (card, slot)) in zip(cards, result.cards).enumerated() {
             let panel = card.panel
             var frame = slot
             if isSlidDown, let f = slot { frame = index == 0 ? QuickAccessLayout.slidDownFrame(for: f, in: visible) : nil }
             card.targetFrame = frame
+            guard card.hasEntered else { continue }   // its entrance starts once the thumbnail is ready
             guard let frame else {
                 // Older cards: no room, or the stack is slid down.
-                if panel.isVisible { fadeOut(panel) }
+                if panel.isVisible && motion.alphaTarget(of: panel) != 0 { fadeOut(panel) }
                 continue
             }
-            if card === appearing {
-                let source = card.media.captureRect
-                card.media.captureRect = nil   // only meaningful right after the capture (not on restore)
-                if let source, !OverlayStyle.reduceMotion {
-                    handOff(card, from: source, to: frame, in: visible, side: side)
-                } else {
-                    slideIn(card, to: frame, in: visible, side: side)
-                }
-            } else if card.isHandingOff {
-                panel.setFrame(frame, display: false)   // still transparent: the flight reveals it
-            } else if !panel.isVisible || (panel.alphaValue < 1 && !card.isDragging) {
-                panel.setFrame(frame, display: false)
+            if !panel.isVisible || ((motion.alphaTarget(of: panel) ?? panel.alphaValue) < 1 && !card.isDragging) {
+                // (Re)gained a slot: fade in place.
+                motion.place(panel, at: frame)
                 if !panel.isVisible { panel.alphaValue = 0 }
                 panel.orderFrontRegardless()
-                NSAnimationContext.runAnimationGroup { $0.duration = 0.2; panel.animator().alphaValue = 1 }
-            } else if panel.frame != frame {
-                if animated && !OverlayStyle.reduceMotion {
-                    NSAnimationContext.runAnimationGroup({ ctx in
-                        ctx.duration = 0.3
-                        ctx.timingFunction = OverlayStyle.easeOut
-                        panel.animator().setFrame(frame, display: true)
-                    }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
+                motion.fade(panel, to: 1, curve: .easeOut(0.2))
+            } else if (motion.destination(of: panel) ?? panel.frame) != frame {
+                // Reflow (a card closed, the stack slid down, settings changed): the entrance spring.
+                if spring {
+                    motion.move(panel, to: frame, curve: .spring) { [weak self] done in if done { self?.layoutDidSettle() } }
                 } else {
-                    panel.setFrame(frame, display: true)
+                    motion.place(panel, at: frame)
                 }
             }
         }
@@ -210,54 +205,32 @@ final class QuickAccessController: QuickAccessServicing {
         if !animated { layoutDidSettle() }
     }
 
-    /// First appearance: slides in from the screen edge with a slight overshoot (a fade with Reduce Motion).
-    private func slideIn(_ card: QuickAccessCard, to frame: CGRect, in visible: CGRect, side: ScreenSide) {
+    /// First appearance (measured): from 69 pt toward the screen edge and transparent, the card springs to its slot
+    /// (≈ 5 pt overshoot at 0.19 s, settled by ≈ 0.3 s) while fading in over 0.25 s. A plain fade with Reduce Motion.
+    private func enter(_ card: QuickAccessCard) {
+        guard !card.hasEntered, !card.isClosing, cards.contains(where: { $0 === card }) else { return }
+        card.hasEntered = true
+        guard let frame = card.targetFrame else { return }   // no slot right now: a later layout fades it in
         let panel = card.panel
         let reduceMotion = OverlayStyle.reduceMotion
-        panel.setFrame(reduceMotion ? frame : QuickAccessLayout.offscreenFrame(for: frame, in: visible, side: side), display: false)
-        panel.alphaValue = reduceMotion ? 0 : 1
-        panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup({ ctx in
-            if reduceMotion {
-                ctx.duration = 0.2
-                panel.animator().alphaValue = 1
-            } else {
-                ctx.duration = 0.35
-                ctx.timingFunction = OverlayStyle.springTiming
-                panel.animator().setFrame(frame, display: true)
-            }
-        }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
-    }
-
-    /// CleanShot-style hand-off: the captured image appears exactly where it was captured and flies into the
-    /// card's slot; the (transparent, already placed) card then takes over in the same frame.
-    private func handOff(_ card: QuickAccessCard, from source: CGRect, to frame: CGRect, in visible: CGRect, side: ScreenSide) {
-        let panel = card.panel
-        panel.setFrame(frame, display: false)
+        panel.setFrame(reduceMotion ? frame : QuickAccessLayout.edgeFrame(for: frame, side: Defaults[.quickAccessSide]), display: true)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
-        card.isHandingOff = true
-        let finish = { [weak self] (flown: Bool) in
-            card.isHandingOff = false
-            guard let self, !card.isClosing, self.cards.contains(where: { $0 === card }) else { return }
-            if flown { panel.alphaValue = 1 } else { self.slideIn(card, to: card.targetFrame ?? frame, in: visible, side: side) }
-            self.layoutDidSettle()
+        let motion = PanelMotion.shared
+        if reduceMotion {
+            motion.fade(panel, to: 1, curve: .easeOut(0.2)) { [weak self] _ in self?.layoutDidSettle() }
+        } else {
+            motion.move(panel, to: frame, curve: .spring) { [weak self] done in if done { self?.layoutDidSettle() } }
+            motion.fade(panel, to: 1, curve: .easeOut(QuickAccessMotion.appearFadeDuration))
         }
-        CaptureFlight.fly(media: card.media, from: source, to: frame, radius: OverlayStyle.cardCornerRadius,
-                          // The flight may only end once the card can show the same picture (no blank flash).
-                          land: { reveal in card.whenThumbnailReady { reveal() } },
-                          isCancelled: { card.isClosing },
-                          completion: finish)
     }
 
     /// Fades a card that lost its slot; the order-out is skipped if a later layout gave it a slot again.
     private func fadeOut(_ panel: OverlayPanel) {
-        NSAnimationContext.runAnimationGroup({ $0.duration = 0.18; panel.animator().alphaValue = 0 }, completionHandler: {
-            MainActor.assumeIsolated {
-                guard let card = self.cards.first(where: { $0.panel === panel }), card.targetFrame == nil else { return }
-                panel.orderOut(nil)
-            }
-        })
+        PanelMotion.shared.fade(panel, to: 0, curve: .easeIn(0.18)) { [weak self] done in
+            guard done, let self, let card = self.cards.first(where: { $0.panel === panel }), card.targetFrame == nil else { return }
+            panel.orderOut(nil)
+        }
     }
 
     /// Cards that moved under a still pointer (or away from it) get no tracking events: re-derive hover state.
@@ -348,7 +321,6 @@ final class QuickAccessController: QuickAccessServicing {
     private func mediaDidChange(_ media: CapturedMedia) {
         guard let card = cards.first(where: { $0.media.id == media.id }) else { return }
         card.mediaDidChange()
-        layout(animated: true)   // aspect may have changed (e.g. cropped in Annotate)
     }
 }
 

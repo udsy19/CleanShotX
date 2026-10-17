@@ -3,8 +3,9 @@
 Scope: Quick Access Overlay (CleanShot "Popup"), pinned screenshots (CleanShot "FloatingOverlay") and
 Capture History (CleanShot "MediaHistory"). Evidence is from the app's class metadata (ObjC
 runtime metadata of the arm64 slice), app strings, UI strings and `defaults-sample.txt`.
-No code was decompiled; behaviour below is inferred from class/ivar/selector names, UI strings and
-defaults keys, and implemented from scratch.
+Behaviour is inferred from class/ivar/selector names, UI strings and defaults keys, and implemented from
+scratch; the Quick Access card's size, placement, hover-chrome metrics and motion were later read from the
+binary's disassembly and a 120 Hz window-geometry recording (§1, tagged **binary** / **measured**).
 
 ## 1. Quick Access Overlay
 
@@ -24,7 +25,7 @@ defaults keys, and implemented from scratch.
 | `ScreenRecordingPopup` / `VideoPopup` / `GIFPopup` | `quickLookButton`, `videoInfoView`, `durationLabel`, `sizeLabel`, `trimVideoWithSender:` | Video cards show duration; edit button opens the video editor. |
 | `QuickLook` | `hotkeys`, `spaceHandler`, `escHandler`, `saveHandler`, `copyHandler`, `uploadHandler`, `editHandler`, `closeHandler` | Keyboard shortcuts are **temporary global hotkeys registered while a card is hovered** (the app is never activated). |
 | `QLViewController`, `QLItem(previewItemURL)`, `QLMediaHistory` | `previewURL`, `isImage`, `openFloatingOverlay` | Quick Look is an in-app QL preview of the file URL. |
-| `QuickAccessSettings` | `_positionOnLeft`, `_moveToActiveDisplay`, `_overlaySize`, `_autoClose`, `_autoCloseMode`, `_autoCloseInterval`, `_closeAfterDragging`, `_closeAfterUploading`, `_askForDestinationWhenSaving` | Maps 1:1 onto Core keys `.quickAccessSide`, `.quickAccessScreen`, `.quickAccessSize`, `.quickAccessAutoClose*`, `.quickAccessCloseAfter*`, `.quickAccessSaveBehavior`. |
+| `QuickAccessSettings` | `_positionOnLeft`, `_moveToActiveDisplay`, `_overlaySize`, `_autoClose`, `_autoCloseMode`, `_autoCloseInterval`, `_closeAfterDragging`, `_closeAfterUploading`, `_askForDestinationWhenSaving` | Maps 1:1 onto Core keys `.quickAccessSide`, `.quickAccessScreen`, `.quickAccessSizeIndex` (`popupSize`), `.quickAccessAutoClose*`, `.quickAccessCloseAfter*`, `.quickAccessSaveBehavior`. |
 | `DragMonitor` | `timer`, `drag`, `checkIfUserEndedDragging` | Drag end is also polled (drops into apps that don't report an operation). |
 
 Strings: "Quick Access Overlay", "Close after dragging", "Close after uploading", "Close All Overlays",
@@ -36,34 +37,54 @@ Strings: "Quick Access Overlay", "Close after dragging", "Close after uploading"
 
 ### Behaviour (implemented)
 UI parity follows `docs/specs/ui-reference.md` §4.
+Geometry, hover chrome and motion below come from CleanShot X's binary (disassembly of `PopupController` /
+`Popup` / `PopupBasic`, tagged **binary**) and a 120 Hz recording of its window geometry (**measured**); they
+supersede earlier estimates.
 - One borderless `NSPanel` (`.nonactivatingPanel`, never key) per card; level above pins;
   `.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle`. Panels are retained by the controller.
-- Layout (`QuickAccessLayout`, pure): card width `174 × size` (≈174×124 pt for 16:10 at the default size),
-  height from the media aspect clamped to `[0.71, 1.25] × width`; the thumbnail is aspect-filled. 16 pt
-  side/bottom margin, 12 pt spacing, newest at the bottom; cards that don't fit are hidden until space frees up.
-  A Close All / Save All header sits above the stack when ≥ 3 cards are shown.
-- Look: corner radius 12 pt (16 pt on macOS 26), continuous corners; a crisp edge (`CardStrokeView`: 0.5 pt
-  black 18 % hairline outside a 1 pt white 22 % inner stroke, readable on light and dark wallpapers); window
-  shadow; glass behind transparent captures. The thumbnail is aspect-filled and sharp: it is decoded at the
-  pixel size the fill actually needs (`QuickAccessLayout.thumbnailMaxPixel`, so wide/tall captures cropped by
-  the fill are never upscaled) and drawn with trilinear minification; it is blurred only under the hover frost.
-- Motion: the first appearance slides in from the configured edge (slight-overshoot 0.35 s); dismissals slide
-  out to it with a fade (0.24 s); stack reflows glide (0.3 s ease-out); hover controls fade in/out in 0.12 s.
-  With Reduce Motion, entrances/exits are plain fades and reflows are instant.
-- Capture hand-off: when `CapturedMedia.captureRect` is set (right after a capture; consumed on first show, so
-  restores slide in normally) and Reduce Motion is off, `CaptureFlight` shows the captured image in a
-  click-through borderless window exactly over the captured area and flies it (scale + move, 0.35 s ease-out,
-  corners rounding to the card radius, soft shadow) into the card's slot. The card is placed there transparent
-  meanwhile; it is revealed only once its own thumbnail is loaded, and the stand-in is removed right after, so
-  the image never blanks or doubles. If the image can't be loaded the card slides in instead.
-- Hover: thumbnail dimmed + frosted; centred **Copy / Save** pills stacked vertically (26 pt tall, 12.5 pt
-  medium title, 13 pt side padding, ≥ 56 pt wide, equal widths, 6 pt gap); 22 pt circular corner buttons
-  (11 pt semibold SF Symbols, white 85 % with a soft shadow) inset 6 pt — close (TL), pin (TR, images) or Quick
-  Look eye (TR, videos), Annotate pencil / Trim scissors (BL), Upload (BR, per `.quickAccessShowUploadButton`).
-  `OverlayButton` draws its glyph/title with its own centred subviews and reports zero `alignmentRectInsets`:
-  an `NSButton` cell with an image reports ≈2 pt/1.5 pt top/bottom insets, which made Auto Layout grow the frame
-  (and the layer-drawn circle) into a tall oval. When the file is already saved (auto-save
-  after-capture action) a Trash pill replaces Save. Video cards show the duration on hover and play muted.
+  (CleanShot uses one full-screen transparent window per screen holding all cards; per-card panels give the same
+  on-screen geometry without a screen-sized window that could swallow clicks.)
+- Size (binary): `.quickAccessSizeIndex` is CleanShot's `popupSize`, an index 0…4 into card widths
+  `[140, 168, 210, 250, 350]` pt (`QuickAccessSize.widths`); the default is 2 (210 pt) when the main screen is
+  wider than 900 pt, else 1 (168 pt). Settings shows it as a 5-tick slider. Every card is `width × width / 1.4`
+  (210×150 at the default), whatever the capture's aspect: the thumbnail aspect-fills (crops) it — never
+  letterboxed, animated GIFs included.
+- Placement (binary; `QuickAccessLayout`, pure): 40 pt from the screen frame's side edge (left by default; right:
+  `maxX − width − 40`). Card i (0 = newest, at the bottom) has its bottom edge at
+  `screen.frame.minY + 100 + i × (height + 10)` — measured from the screen *frame*, not the visible frame, so the
+  first card clears the Dock; 10 pt between cards. Cards that would reach the menu bar (`visibleFrame.maxY` less
+  one gap) wait until space frees up. A Close All / Save All header (Shotcraft's own, card-wide, 30 pt) sits
+  10 pt above the stack when ≥ 3 cards are shown.
+- Look: corner radius 17 pt on macOS 26+, 15 pt before (binary); a crisp edge (`CardStrokeView`: 0.5 pt black
+  18 % hairline outside a 1 pt white 22 % inner stroke); window shadow; glass behind transparent captures. The
+  thumbnail is decoded at the pixel size the fill needs (`QuickAccessLayout.thumbnailMaxPixel`, so crops are
+  never upscaled) and drawn with trilinear minification; it is blurred only under the hover frost.
+- Motion (measured; `QuickAccessMotion` curves driven per display frame by `PanelMotion`, a `CADisplayLink`
+  at up to 120 Hz that moves/fades the panel — position and alpha are separate tracks):
+  - Entrance: the card starts 69 pt toward the screen edge (x −69 on the left, +69 on the right) at alpha 0 and
+    springs to its slot — an underdamped spring fitted to the recording (damping ratio ≈ 0.64, response ≈ 0.29 s):
+    +5 pt overshoot at 0.19 s, within 1 pt of rest by 0.3 s — while alpha eases out 0 → 1 over 0.25 s. The
+    entrance starts once the card's thumbnail is loaded, so it never slides in blank.
+  - No capture fly-in: CleanShot does not fly the captured image into the card; it slides the card in.
+  - Exit (close, after drag/save/copy): the reverse — 69 pt toward the edge while fading out, 0.2 s ease-in.
+  - Reflow: when a card is removed (or the stack slides down / settings change) the other cards spring to their
+    new slots with the entrance spring.
+  - Hover chrome fades in/out over 0.15 s.
+  - With Reduce Motion, entrances/exits are plain fades and reflows are instant.
+- Hover (binary, `PopupBasic`): the thumbnail dims + frosts (dark tint plus a light within-window blur). Two
+  stacked, centred pills — **Copy** (top) and **Save** (bottom), 10 pt apart — each 27 pt tall with a 12 pt
+  `.medium` `labelColor` title under the `.aqua` appearance (dark text), 9 pt title padding each side
+  (width = title width + 18), both as wide as the wider one. Four circular corner buttons inset 6 pt, side
+  `18 + 2 × size index` (22 pt at the default), image-only SF Symbols at ≈ 0.45 × side in `labelColor`: Close
+  `xmark` (TL), Pin `pin.fill` (TR; videos/GIFs: Quick Look `eye`), Annotate `pencil` (BL; videos/GIFs: Trim
+  `scissors`), Upload `icloud.and.arrow.up.fill` (BR, per `.quickAccessShowUploadButton`). Pills and circles sit
+  on an `NSVisualEffectView` (`.sidebar`, `.withinWindow`, `.active`, `.aqua`) pinned to the button's edges and
+  fully rounded (radius = height / 2) — `OverlayButton` with the `.vibrant` backdrop; pins keep its `.light`
+  backdrop. Shotcraft adds a subtle hover/press tint on top of the vibrancy. `OverlayButton` draws its
+  glyph/title with its own centred subviews and reports zero `alignmentRectInsets`: an `NSButton` cell with an
+  image reports ≈2 pt/1.5 pt top/bottom insets, which made Auto Layout grow the frame into a tall oval. When the
+  file is already saved (auto-save after-capture action) a Trash pill replaces Save. Video cards show the
+  duration on hover and play muted.
 - Hovered hotkeys (temporary global hotkeys): ⌘C, ⌘S, ⌘E (Annotate / Video Editor), ⌘P, ⌘U, ⌘W, Esc, Space.
 - Hover state is re-derived from the pointer after every layout and once a second, so a card that moves under
   a still pointer never keeps hotkeys registered or its auto-close suspended.
