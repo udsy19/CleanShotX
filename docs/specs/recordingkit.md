@@ -3,8 +3,8 @@
 Scope: video/GIF screen recording, the recording overlays (setup bar, countdown, controls, dim,
 click highlight, keystrokes, camera), and the video/GIF editor. Studio Mode is a separate module.
 
-Evidence sources: `docs/re/raw/classes-digest.md` (ObjC/Swift class metadata from the arm64 slice),
-`docs/re/raw/ui-sentences.txt` and `strings-app.txt` (UI strings). Cited as *digest* / *ui* / *strings*.
+Evidence sources: the app's class metadata (ObjC/Swift class metadata from the arm64 slice),
+its UI strings and app strings (UI strings). Cited as *digest* / *ui* / *strings*.
 
 ## 1. Object model in CleanShot X (digest)
 

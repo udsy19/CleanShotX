@@ -1,6 +1,6 @@
 # PreferencesKit — reconstructed spec (Settings window + onboarding)
 
-Evidence: `docs/re/raw/classes-digest.md` (class/ivar/selector names), `ui-sentences.txt` / `strings-app.txt`
+Evidence: the app's class metadata (class/ivar/selector names), UI strings / app strings
 (UI labels), `nibs.txt` (`NameTemplateWindow.nib`), `defaults-sample.txt` (stored keys on a real install).
 Labels quoted below are short UI strings needed for parity; long prose is rewritten.
 
@@ -15,7 +15,7 @@ Labels quoted below are short UI strings needed for parity; long prose is rewrit
 | `PRSidebarAccountModel` (`_user`) | Cloud account header in sidebar — **not reimplemented** (no CleanShot Cloud). |
 | `*Settings : _TtCs12_SwiftObject` classes with `_`-prefixed ivars | SwiftUI `ObservableObject` models per pane (property wrappers ⇒ `_x` ivars). Panes are SwiftUI. |
 
-Shotcraft (5.0 layout, `docs/re/ui-reference.md` §13): `PreferencesController` owns one `NSWindow` (titled, closable,
+Shotcraft (5.0 layout, `docs/specs/ui-reference.md` §13): `PreferencesController` owns one `NSWindow` (titled, closable,
 miniaturizable, resizable, `fullSizeContentView`, frame autosave) hosting a SwiftUI `NavigationSplitView`. The window is
 810×660 pt, fixed width, resizable vertically (min height 480); a restored frame of another width or off-screen is
 normalised. `hosting.sizingOptions = [.minSize]` so switching panes never resizes or collapses the window.

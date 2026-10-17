@@ -1,7 +1,7 @@
 # AnnotateKit — reconstructed feature spec
 
-Source of evidence: the CleanShot X 5.0.1 app bundle. Citations: `cd` = `classes-digest.md`, `sa` = `strings-app.txt`,
-`ui` = `ui-sentences.txt`, `nib` = `nibs.txt`, `plist` = `Info.plist.txt`. Line numbers refer to those files.
+Source of evidence: the CleanShot X 5.0.1 app bundle. Citations: `cd` = class metadata, `sa` = app strings,
+`ui` = UI strings, `nib` = nib files, `plist` = Info.plist.
 
 Shotcraft re-implements the behaviour, not the code. Labels are short UI words only.
 
@@ -59,7 +59,7 @@ Tool identifiers recovered from `sa` 4199–4306 (`annotateArrowTool`, `annotate
 | Counter | C | style numbers / letters / roman (sa 14092, 16651), "Starting number:" (sa 19528), size (ANCounterSettingsButton `sizeChangedWithSender:`) |
 | Background | B | sidebar (§5) |
 
-Keys follow CleanShot X 5.0 (`docs/re/ui-reference.md` §5). Toolbar, left → right: Crop, Add image (⇧⌘I new
+Keys follow CleanShot X 5.0 (`docs/specs/ui-reference.md` §5). Toolbar, left → right: Crop, Add image (⇧⌘I new
 screenshot, ⌘I from file, paste), Background chips · segmented tools Move, Rectangle, Filled Rectangle, Ellipse, Line,
 Arrow, Text, Pixelate, Spotlight, Counter, Draw, Highlighter · colour well (palette popover), tool-style popover
 (per-tool options), draw lock (off = back to Move after each object) · Save / Save as… (per "Save button behavior"),

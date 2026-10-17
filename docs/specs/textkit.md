@@ -1,8 +1,8 @@
 # TextKit — Capture Text (OCR) + Scrolling Capture
 
 Reconstructed behaviour of CleanShot X 5.0.1's text-recognition and scrolling-capture features and how
-Shotcraft's `TextKit` reimplements them. Evidence references: `docs/re/raw/classes-digest.md` (CD),
-`docs/re/raw/strings-app.txt` (SA), `docs/re/raw/ui-sentences.txt` (UI), and `nm -u` of the arm64 slice (NM).
+Shotcraft's `TextKit` reimplements them. Evidence references: the app's class metadata (CD),
+the app's strings (SA), its UI strings (UI), and `nm -u` of the arm64 slice (NM).
 
 ## 1. Evidence summary
 

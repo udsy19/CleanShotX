@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import ShotcraftCore
 
-/// Menu bar icon + menu (item order and wording follow CleanShot X 5.0, see docs/re/ui-reference.md §1).
+/// Menu bar icon + menu (item order and wording follow CleanShot X 5.0, see docs/specs/ui-reference.md §1).
 /// Turns into a stop button with elapsed time while recording; accepts images dropped onto the icon.
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NSDraggingDestination {

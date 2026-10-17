@@ -1,8 +1,8 @@
 # OverlayKit — reconstructed spec
 
 Scope: Quick Access Overlay (CleanShot "Popup"), pinned screenshots (CleanShot "FloatingOverlay") and
-Capture History (CleanShot "MediaHistory"). Evidence is from `docs/re/raw/classes-digest.md` (ObjC
-runtime metadata of the arm64 slice), `strings-app.txt`, `ui-sentences.txt` and `defaults-sample.txt`.
+Capture History (CleanShot "MediaHistory"). Evidence is from the app's class metadata (ObjC
+runtime metadata of the arm64 slice), app strings, UI strings and `defaults-sample.txt`.
 No code was decompiled; behaviour below is inferred from class/ivar/selector names, UI strings and
 defaults keys, and implemented from scratch.
 
@@ -35,7 +35,7 @@ Strings: "Quick Access Overlay", "Close after dragging", "Close after uploading"
 `popupSlideDown`, `popupRightClick`, `popupSpaceQuickLook`, `popupDoubleClickAnnotate`, `popupPin`.
 
 ### Behaviour (implemented)
-UI parity follows `docs/re/ui-reference.md` §4.
+UI parity follows `docs/specs/ui-reference.md` §4.
 - One borderless `NSPanel` (`.nonactivatingPanel`, never key) per card; level above pins;
   `.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle`. Panels are retained by the controller.
 - Layout (`QuickAccessLayout`, pure): card width `174 × size` (≈174×124 pt for 16:10 at the default size),
@@ -87,7 +87,7 @@ Strings: "Pinned Screenshots", "Lock and hide screenshot on mouse over", "Toggle
 "Pin to the Screen", "Choose and Pin an Image", "Pin Last Screenshot".
 
 ### Behaviour (implemented)
-UI parity follows `docs/re/ui-reference.md` §6.
+UI parity follows `docs/specs/ui-reference.md` §6.
 - Borderless non-activating `NSPanel` at `.floating`, all Spaces + full-screen auxiliary; shows the image at
   its point size (scaled down to fit 85 % of the visible frame), centred on the active screen, cascaded.
   Rounded corners 10 pt (on), shadow per `.pinShowShadow`, border off — each toggleable per pin.

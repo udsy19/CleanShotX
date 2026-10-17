@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 // Every user-facing preference, grouped by the Preferences pane that exposes it.
-// Recovered from the CleanShot X 5.0.1 binary UI strings (docs/re/raw/ui-sentences.txt) and
+// Recovered from the CleanShot X 5.0.1 UI strings (see docs/specs/) and
 // mapped to original key names. Module-private state (last tool, window frames, …) may be declared
 // as additional `Defaults.Keys` inside the owning module.
 

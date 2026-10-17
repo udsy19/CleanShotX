@@ -2,8 +2,8 @@
 
 Scope: area / previous area / fullscreen / window / self-timer / All-In-One captures, the shared selection
 overlay, freeze screen, crosshair + magnifier, edge snapping, window backgrounds, desktop-icon hiding and the
-global color picker. Evidence comes from `docs/re/raw/classes-digest.md` (class / ivar / selector names),
-`strings-app.txt` and `ui-sentences.txt` of CleanShot X 5.0.1.
+global color picker. Evidence comes from the app's class metadata (class / ivar / selector names),
+app strings and UI strings of CleanShot X 5.0.1.
 
 ## 1. Architecture in the original
 

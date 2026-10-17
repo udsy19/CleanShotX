@@ -1,7 +1,7 @@
 # UploadKit — upload pipeline
 
 How CleanShot X 5.0.1 uploads media, and how Shotcraft maps it to destinations the user owns.
-Evidence: `docs/re/raw/classes-digest.md` (class/ivar names), `docs/re/raw/ui-sentences.txt` (UI strings),
+Evidence: the app's class metadata (class/ivar names), its UI strings (UI strings),
 `strings` of the arm64 slice (log tags, analytics keys, API paths).
 
 ## 1. What CleanShot does

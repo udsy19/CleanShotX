@@ -47,7 +47,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 // MARK: - Steps
 
 enum OnboardingStep: Int, CaseIterable {
-    case welcome, screenRecording, shortcuts, desktopIcons, launchAtLogin, workflow, finish
+    case welcome, privacy, screenRecording, shortcuts, desktopIcons, launchAtLogin, workflow, finish
 }
 
 enum ShortcutChoice: CaseIterable, Identifiable {
@@ -140,6 +140,13 @@ struct OnboardingView: View {
                 AppIconImage(size: 96)
             } accessory: {
                 FeatureSummary()
+            }
+        case .privacy:
+            StepLayout(title: "Private by design",
+                       message: "Shotcraft is a local app. Screenshots, recordings, annotations and text recognition all happen on your Mac — nothing leaves it unless you set up an upload destination yourself.") {
+                IconTile(symbol: "lock.shield.fill", tint: PreferencesPane.quickAccess.tint, size: 72)
+            } accessory: {
+                PrivacyPoints()
             }
         case .screenRecording:
             let granted = permissions.states[.screenRecording] == .granted
@@ -314,6 +321,35 @@ private struct AppIconImage: View {
 }
 
 /// Welcome slide: what Shotcraft does, as a 2 × 3 grid of feature tiles.
+/// The "Private by design" slide: what stays on the Mac, and why macOS asked before the first launch.
+private struct PrivacyPoints: View {
+    private let points: [(symbol: String, text: String)] = [
+        ("internaldrive.fill", "Captures are saved only on this Mac."),
+        ("person.crop.circle.badge.xmark", "No account, no analytics, no tracking."),
+        ("arrow.up.circle", "Uploads happen only to a destination you configure."),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(points, id: \.text) { p in
+                Label { Text(p.text).font(.callout) } icon: {
+                    Image(systemName: p.symbol).foregroundStyle(.secondary).frame(width: 20)
+                }
+            }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Why did macOS ask before opening Shotcraft?").font(.callout.weight(.semibold))
+                    Text("Shotcraft is an independent, open-source app that isn't notarized by Apple, so macOS asked you to confirm it under Privacy & Security → Open Anyway. That's expected and only needed once.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(4)
+            }
+        }
+        .frame(maxWidth: 420)
+    }
+}
+
 private struct FeatureSummary: View {
     private struct Feature: Identifiable {
         let symbol: String

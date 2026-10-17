@@ -8,8 +8,8 @@ machine's screen and the app was never launched.
 **Evidence tags** (shown after each claim):
 
 - **[V]** seen directly in an official image or video frame (cleanshot.com, official YouTube release videos).
-- **[S]** taken from the app bundle (string tables in `raw/strings-app.txt` and `raw/ui-sentences.txt`, class ivars in
-  `raw/classes-digest.md`, nibs in `raw/nibs.txt`, asset names from `Assets.car`).
+- **[S]** taken from the app bundle (string tables in the app's strings and its UI strings, class ivars in
+  the class metadata, nibs in its nib files, asset names from `Assets.car`).
 - **[U]** unverified: inferred, estimated, or remembered. Treat these as defaults to tune.
 
 **Sizes.** Settings-window sizes come from 2x PNGs on cleanshot.com (1620×1320 px means 810×660 pt), so they are
@@ -28,7 +28,7 @@ overlays and cards. Where the two differ, both are described and 5.0 is the targ
 - Official YouTube videos: "Everything New in CleanShot 5.0" (fUB1s3RaD7c), 4.8 (o5ypDElAMto),
   4.7 (JyqCSh9m9oc), 4.6 (WOQsFWzOWlE) and 4.4 (FNHt4WUa13w).
 - Shortcut lists from pie-menu.com/shortcuts/cleanshot and alchemists.io/articles/clean_shot.
-- Images were downloaded to the session scratchpad only, not to the repo.
+- Reference images are not stored in this repository.
 
 ### 0.1 Global design tokens
 

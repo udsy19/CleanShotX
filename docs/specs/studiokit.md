@@ -5,8 +5,8 @@ It records the screen *without* the cursor while logging input events, then open
 editor where cursor, zooms, background, camera and keystrokes are re-rendered. This document reconstructs it
 from the binary and maps every piece to the Shotcraft implementation in `Sources/StudioKit`.
 
-Evidence sources: `docs/re/raw/classes-digest.md` (ObjC/Swift class metadata: ivars + selectors),
-`docs/re/raw/strings-app.txt`, `docs/re/raw/ui-sentences.txt`, `docs/re/raw/Info.plist.txt`, and `strings`
+Evidence sources: the app's class metadata (ObjC/Swift class metadata: ivars + selectors),
+the app's strings, its UI strings, its Info.plist, and `strings`
 over the arm64 slice (property-name tables that sit next to each other in `__cstring`).
 
 ## 1. Feature map (evidence → implementation)
