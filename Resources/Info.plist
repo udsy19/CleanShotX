@@ -2,73 +2,148 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleDevelopmentRegion</key><string>en</string>
-	<key>CFBundleDisplayName</key><string>Shotcraft</string>
-	<key>CFBundleName</key><string>Shotcraft</string>
-	<key>CFBundleExecutable</key><string>Shotcraft</string>
-	<key>CFBundleIdentifier</key><string>com.udsy.shotcraft</string>
-	<key>CFBundleIconFile</key><string>AppIcon</string>
-	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>1.0.0</string>
-	<key>CFBundleVersion</key><string>1</string>
-	<key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
-	<key>LSMinimumSystemVersion</key><string>14.0</string>
-	<key>LSUIElement</key><true/>
-	<key>NSHighResolutionCapable</key><true/>
-	<key>NSPrincipalClass</key><string>NSApplication</string>
-	<key>NSHumanReadableCopyright</key><string>Shotcraft — an independent reimplementation.</string>
-	<key>NSCameraUsageDescription</key><string>Shotcraft uses the camera only to show your camera overlay during recordings.</string>
-	<key>NSMicrophoneUsageDescription</key><string>Shotcraft records your microphone only during screen recordings when you enable it.</string>
-	<key>NSAppleEventsUsageDescription</key><string>Shotcraft uses Apple Events to scroll content during scrolling capture.</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key><string>com.udsy.shotcraft</string>
-			<key>CFBundleURLSchemes</key><array><string>shotcraft</string></array>
-		</dict>
-	</array>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Shotcraft</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleTypeName</key><string>Image</string>
-			<key>CFBundleTypeRole</key><string>Viewer</string>
-			<key>LSHandlerRank</key><string>Alternate</string>
-			<key>LSItemContentTypes</key><array><string>public.png</string><string>public.jpeg</string><string>public.heic</string><string>public.tiff</string><string>org.webmproject.webp</string></array>
+			<key>CFBundleTypeName</key>
+			<string>Image</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.png</string>
+				<string>public.jpeg</string>
+				<string>public.heic</string>
+				<string>public.tiff</string>
+				<string>org.webmproject.webp</string>
+			</array>
 		</dict>
 		<dict>
-			<key>CFBundleTypeName</key><string>Video</string>
-			<key>CFBundleTypeRole</key><string>Viewer</string>
-			<key>LSHandlerRank</key><string>Alternate</string>
-			<key>LSItemContentTypes</key><array><string>public.movie</string><string>com.compuserve.gif</string></array>
+			<key>CFBundleTypeName</key>
+			<string>Video</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.movie</string>
+				<string>com.compuserve.gif</string>
+			</array>
 		</dict>
 		<dict>
-			<key>CFBundleTypeName</key><string>Shotcraft Document</string>
-			<key>CFBundleTypeRole</key><string>Editor</string>
-			<key>LSHandlerRank</key><string>Owner</string>
-			<key>LSItemContentTypes</key><array><string>com.udsy.shotcraft.document</string></array>
+			<key>CFBundleTypeName</key>
+			<string>Shotcraft Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.udsy.shotcraft.document</string>
+			</array>
 		</dict>
 		<dict>
-			<key>CFBundleTypeName</key><string>Shotcraft Video Project</string>
-			<key>CFBundleTypeRole</key><string>Editor</string>
-			<key>LSHandlerRank</key><string>Owner</string>
-			<key>LSTypeIsPackage</key><true/>
-			<key>LSItemContentTypes</key><array><string>com.udsy.shotcraft.videoproject</string></array>
+			<key>CFBundleTypeName</key>
+			<string>Shotcraft Video Project</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.udsy.shotcraft.videoproject</string>
+			</array>
+			<key>LSTypeIsPackage</key>
+			<true/>
 		</dict>
 	</array>
+	<key>CFBundleExecutable</key>
+	<string>Shotcraft</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.udsy.shotcraft</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Shotcraft</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.udsy.shotcraft</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>shotcraft</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>11</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Shotcraft uses Apple Events to scroll content during scrolling capture.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Shotcraft uses the camera only to show your camera overlay during recordings.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Shotcraft — an independent reimplementation.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Shotcraft records your microphone only during screen recordings when you enable it.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key><string>com.udsy.shotcraft.document</string>
-			<key>UTTypeDescription</key><string>Shotcraft Document</string>
-			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
-			<key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>shotcraft</string></array></dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Shotcraft Document</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.udsy.shotcraft.document</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>shotcraft</string>
+				</array>
+			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key><string>com.udsy.shotcraft.videoproject</string>
-			<key>UTTypeDescription</key><string>Shotcraft Video Project</string>
-			<key>UTTypeConformsTo</key><array><string>com.apple.package</string></array>
-			<key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>shotcraftvideo</string></array></dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Shotcraft Video Project</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.udsy.shotcraft.videoproject</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>shotcraftvideo</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>
