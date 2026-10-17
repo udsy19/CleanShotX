@@ -8,6 +8,7 @@ public enum Log {
     public static let recording = Logger(subsystem: AppPaths.bundleID, category: "recording")
     public static let annotate = Logger(subsystem: AppPaths.bundleID, category: "annotate")
     public static let upload = Logger(subsystem: AppPaths.bundleID, category: "upload")
+    public static let update = Logger(subsystem: AppPaths.bundleID, category: "update")
 }
 
 // MARK: - Sounds (macOS system sounds; no bundled assets)

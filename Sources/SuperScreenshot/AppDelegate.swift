@@ -10,6 +10,7 @@ import OverlayKit
 import TextKit
 import PreferencesKit
 import UploadKit
+import UpdateKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -64,6 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UploadKitModule.confirmTerminationIfUploading() ? .terminateNow : .terminateCancel
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        UpdateKitModule.applicationWillTerminate()
+    }
+
     private func installModules() {
         UploadKitModule.install()
         OverlayKitModule.install()
@@ -73,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RecordingKitModule.install()
         StudioKitModule.install()
         PreferencesKitModule.install()
+        UpdateKitModule.install()
     }
 
     private func registerHotkeys() {

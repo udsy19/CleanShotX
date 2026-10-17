@@ -8,4 +8,5 @@ func registerModuleTests() {
     registerTextKitTests()
     registerPreferencesKitTests()
     registerUploadKitTests()
+    registerUpdateKitTests()
 }

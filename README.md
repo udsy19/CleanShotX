@@ -45,7 +45,8 @@ curl -fsSL https://udsy19.github.io/super-screenshot/install.sh | bash
 drag Super Screenshot to Applications and open it. Super Screenshot isn't notarized by Apple, so the first launch of a
 browser-downloaded copy needs **System Settings → Privacy & Security → Open Anyway** (only once). The one-line installer doesn't need this step.
 
-Requires macOS 14 Sonoma or later, Apple silicon or Intel. Run the same command to update; add
+Requires macOS 14 Sonoma or later, Apple silicon or Intel. Super Screenshot updates itself in the background
+(**Settings → General → Install updates automatically**); running the same command also updates it. Add
 `-s -- --uninstall` after `bash` to remove it.
 
 ## Quick start
@@ -153,7 +154,9 @@ Example: `open "superscreenshot://capture-area?action=copy"`
 
 ## Privacy & permissions
 
-Super Screenshot has no accounts, analytics or servers — see [PRIVACY.md](PRIVACY.md). It asks for:
+Super Screenshot has no accounts, analytics or servers — see [PRIVACY.md](PRIVACY.md). Its only network request of
+its own is an anonymous check of GitHub Releases every few hours for updates, which install in the background; turn
+it off in **Settings → General**. It asks for:
 
 | Permission | Used for |
 |---|---|

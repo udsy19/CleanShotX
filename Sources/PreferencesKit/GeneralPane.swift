@@ -9,6 +9,7 @@ struct GeneralPane: View {
     @Default(.showMenuBarIcon) private var showMenuBarIcon
     @Default(.exportLocation) private var exportLocation
     @Default(.hideDesktopIconsWhileCapturing) private var hideDesktopIcons
+    @Default(.installUpdatesAutomatically) private var installUpdates
     /// Bumped when a confirmation is cancelled, so the switch snaps back to the stored value.
     @State private var menuBarIconRevision = 0
 
@@ -22,6 +23,8 @@ struct GeneralPane: View {
                 }
                 .accessibilityLabel("Show menu bar icon")
                 .id(menuBarIconRevision)
+                SettingToggle("Install updates automatically", isOn: $installUpdates,
+                              help: "Checks GitHub every few hours and installs new versions in the background.")
             }
 
             Section {

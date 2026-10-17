@@ -295,7 +295,7 @@ public enum PreferencesReset {
         .uploadDestination, .uploadCopyLinkWhenStarts, .uploadMaxImageWidth, .s3Endpoint, .s3Region, .s3Bucket,
         .s3AccessKeyID, .s3PublicURLPrefix, .s3PathPrefix, .customHTTPEndpoint, .customHTTPFieldName,
         .customHTTPHeaders, .customHTTPResponseURLPath, .uploadFolderPath, .uploadFolderURLPrefix,
-        .allowURLSchemeAPI, .urlSchemeTrustedApps, .suppressedWarnings, .shortcuts,
+        .allowURLSchemeAPI, .urlSchemeTrustedApps, .suppressedWarnings, .shortcuts, .installUpdatesAutomatically,
     ]
 
     /// Removes every restorable key from the store and notifies observers. Keychain secrets are kept.

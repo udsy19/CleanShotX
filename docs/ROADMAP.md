@@ -6,7 +6,6 @@ Contributions are welcome — see [CONTRIBUTING.md](../CONTRIBUTING.md).
 ## Distribution
 - [ ] Developer ID signing + notarization (removes the first-launch "Open Anyway" step for DMG downloads)
 - [ ] Homebrew cask
-- [ ] In-app update checks
 
 ## Capture & overlays
 - [ ] Hold ⌥ while dragging a Quick Access card to keep it on screen; ⌥-Save to pick a destination

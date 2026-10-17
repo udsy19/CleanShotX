@@ -14,6 +14,7 @@ let featureModules = [
     "TextKit",         // OCR (text recognition) + scrolling capture
     "PreferencesKit",  // settings window, onboarding
     "UploadKit",       // uploads / share links
+    "UpdateKit",       // background updates from GitHub Releases
 ]
 
 var targets: [Target] = [

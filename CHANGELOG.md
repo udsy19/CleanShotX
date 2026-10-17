@@ -3,6 +3,15 @@
 All notable changes to Super Screenshot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.3.0] — 2026-10-17
+
+### Added
+- Automatic updates: Super Screenshot checks GitHub Releases a minute after launch and every 6 hours, downloads a
+  newer version in the background, verifies its SHA-256 and code signature, and installs it when you quit — or,
+  after 10 minutes of inactivity with no windows open, swaps it in and relaunches quietly. "Updated to x.y.z"
+  appears the next time you open the menu. Turn it off in Settings → General → Install updates automatically;
+  Settings → About shows when it last checked.
+
 ## [1.2.0] — 2026-10-17
 
 ### Changed
@@ -53,6 +62,7 @@ First public release.
 - Global shortcuts for every action, a `shotcraft://` URL scheme, share-menu and Quick Look extensions.
 - One-line installer and a universal (Apple silicon + Intel) DMG.
 
+[1.3.0]: https://github.com/udsy19/super-screenshot/releases/tag/v1.3.0
 [1.2.0]: https://github.com/udsy19/super-screenshot/releases/tag/v1.2.0
 [1.1.0]: https://github.com/udsy19/super-screenshot/releases/tag/v1.1.0
 [1.0.1]: https://github.com/udsy19/super-screenshot/releases/tag/v1.0.1

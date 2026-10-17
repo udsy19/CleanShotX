@@ -21,6 +21,8 @@ Sources/
   TextKit/                 text recognition (OCR) and scrolling capture
   PreferencesKit/          Settings window and onboarding
   UploadKit/               uploads to S3-compatible storage, a custom HTTP endpoint or a synced folder
+  UpdateKit/               background updates: GitHub release feed, download, SHA-256 and code-signature checks,
+                           staging next to the app and the swap helper that installs after quit
   SuperScreenshot/         app target: AppDelegate, menu bar, ActionRouter, URL scheme, hotkeys, main menu
   SuperScreenshotSelfTest/ headless logic tests (`swift run SuperScreenshotSelfTest`)
 Extensions/                share-menu and Quick Look extensions (built with swiftc by scripts/build-extensions.sh)
@@ -61,7 +63,8 @@ Quick Access overlay · copy · save · annotate · upload · pin · video edito
 - **Capture exclusion**: Super Screenshot windows above the floating level (overlays, cards, HUDs) never appear in captures;
   pins and editors do, like any other window. Flag special cases with `CaptureExclusion.exclude(_:)`.
 - **Concurrency**: UI code is `@MainActor`; heavy work (Vision, encoding, stitching) runs off the main thread.
-- **Local first**: nothing leaves the Mac except uploads to a destination the user configured. No analytics.
+- **Local first**: nothing leaves the Mac except uploads to a destination the user configured. The only other
+  request is UpdateKit's anonymous check of GitHub Releases (Settings → General can turn it off). No analytics.
 - **Look & feel**: native materials, SF Symbols, system sounds, full dark-mode support, keyboard shortcuts.
 - **No dead code**: remove superseded code in the same change.
 

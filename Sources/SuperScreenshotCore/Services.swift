@@ -156,6 +156,8 @@ public struct CaptureOptions {
     func pinWithPanel()
     func toggleVisibility()
     func closeAll()
+    /// True while any pin exists, including pins hidden with `toggleVisibility()`.
+    var hasPins: Bool { get }
 }
 
 @MainActor public protocol HistoryServicing: AnyObject {

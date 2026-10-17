@@ -5,7 +5,7 @@ Testing has three layers.
 
 ## 1. Self-tests — `swift run SuperScreenshotSelfTest`
 
-83 headless test groups covering the pure logic of every module, e.g.:
+94 headless test groups covering the pure logic of every module, e.g.:
 
 | Area | What's checked |
 |---|---|
@@ -18,6 +18,7 @@ Testing has three layers.
 | TextKit | OCR text assembly & line joining, scrolling-capture stitching (vertical/horizontal, pixel-exact), offset detection |
 | PreferencesKit | pane routing, after-capture validation, shortcut planner, template editing, restore defaults |
 | UploadKit | AWS SigV4 against AWS-published vectors, S3 URLs/XML, multipart bodies, JSON link extraction |
+| UpdateKit | version ordering, release-feed parsing and the SHA-256 line, check schedule, idle gate, leftover cleanup; end-to-end feed → download → SHA-256 → mount → signature → stage → swap of `build/SuperScreenshot.app` through a loopback server (skipped when the app isn't built or is ad-hoc signed; never relaunches) |
 
 ## 2. End-to-end suite — `scripts/e2e.sh`
 

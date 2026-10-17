@@ -8,6 +8,7 @@ import SuperScreenshotCore
 final class PinController: PinServicing {
     static let shared = PinController()
     private(set) var pins: [PinOverlay] = []
+    var hasPins: Bool { !pins.isEmpty }
     private var hidden = false
     private var observer: NSObjectProtocol?
 

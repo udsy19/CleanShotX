@@ -159,6 +159,10 @@ public extension Defaults.Keys {
     static let hideDesktopIconsWhileCapturing = Key<Bool>("hideDesktopIconsWhileCapturing", default: false)
     static let clipboardContent = Key<ClipboardContent>("clipboardContent", default: .fileAndImage)
     static let onboardingCompleted = Key<Bool>("onboardingCompleted", default: false)
+    /// Background updates from GitHub Releases (UpdateKit).
+    static let installUpdatesAutomatically = Key<Bool>("installUpdatesAutomatically", default: true)
+    /// When the release feed last answered; shown in Settings → About.
+    static let lastUpdateCheck = Key<Date?>("lastUpdateCheck", default: nil)
 
     // Wallpaper (used by "Hide desktop icons" and window-screenshot backgrounds)
     static let wallpaperSource = Key<WallpaperSource>("wallpaperSource", default: .desktop)
