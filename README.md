@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  <img src="website/assets/screens/hero.jpg" alt="Shotcraft's Annotate editor and Quick Access overlay" width="860">
+  <img src="website/assets/og.png" alt="Shotcraft's Annotate editor and Quick Access overlay" width="860">
 </p>
 
 ---
