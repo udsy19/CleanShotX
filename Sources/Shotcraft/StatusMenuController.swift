@@ -57,24 +57,19 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
         }
     }
 
-    /// Template glyph matching the app icon: viewfinder corners around a small four-point sparkle.
+    /// Template glyph matching the app icon: viewfinder corners around a solid capture dot.
     private static let menuBarGlyph: NSImage = {
         let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { r in
             let f = r.insetBy(dx: 2, dy: 2), arm: CGFloat = 4.2
             let p = NSBezierPath()
-            p.lineWidth = 1.6; p.lineCapStyle = .round; p.lineJoinStyle = .round
+            p.lineWidth = 1.7; p.lineCapStyle = .round; p.lineJoinStyle = .round
             for (cx, cy, dx, dy) in [(f.minX, f.minY, 1.0, 1.0), (f.maxX, f.minY, -1.0, 1.0), (f.minX, f.maxY, 1.0, -1.0), (f.maxX, f.maxY, -1.0, -1.0)] {
                 p.move(to: NSPoint(x: cx, y: cy + dy * arm)); p.line(to: NSPoint(x: cx, y: cy)); p.line(to: NSPoint(x: cx + dx * arm, y: cy))
             }
             NSColor.black.setStroke(); p.stroke()
-            let c = NSPoint(x: r.midX, y: r.midY), s: CGFloat = 3.6
-            let star = NSBezierPath()
-            star.move(to: NSPoint(x: c.x, y: c.y + s))
-            star.curve(to: NSPoint(x: c.x + s, y: c.y), controlPoint1: c, controlPoint2: c)
-            star.curve(to: NSPoint(x: c.x, y: c.y - s), controlPoint1: c, controlPoint2: c)
-            star.curve(to: NSPoint(x: c.x - s, y: c.y), controlPoint1: c, controlPoint2: c)
-            star.curve(to: NSPoint(x: c.x, y: c.y + s), controlPoint1: c, controlPoint2: c)
-            NSColor.black.setFill(); star.fill()
+            let d: CGFloat = 4.4
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: NSRect(x: r.midX - d / 2, y: r.midY - d / 2, width: d, height: d)).fill()
             return true
         }
         img.isTemplate = true
