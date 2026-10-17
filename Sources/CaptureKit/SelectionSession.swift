@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import QuartzCore
 import ShotcraftCore
 
 /// How the overlay behaves after the mouse is released.
@@ -62,6 +63,14 @@ final class SelectionSession {
 
     private(set) var mode: Mode
     private(set) var selection: CGRect? { didSet { if selection != oldValue { selectedWindowID = nil } } }
+    /// Discrete selection jumps (window picked, fullscreen toggle, ratio) glide from the previous rect.
+    private var selectionTransition: (from: CGRect, start: CFTimeInterval)?
+    /// Window-hover highlight gliding from one window to the next.
+    private var hoverTransition: (from: CGRect, to: CGRect, start: CFTimeInterval)?
+    /// When the dimension badge / resize handles last appeared (they fade in).
+    private var badgeShownAt: CFTimeInterval = 0
+    private var handlesShownAt: CFTimeInterval = 0
+    private lazy var clock = OverlayAnimationClock { [weak self] in self?.refresh() }
     private var selectedWindowID: CGWindowID?
     private(set) var interaction: Interaction = .idle
     private(set) var hovered: WindowInfo?
@@ -129,11 +138,15 @@ final class SelectionSession {
         }
         if isAdjustable { controls = SelectionControls(session: self) }
         updateHover()
+        hoverTransition = nil
+        // The curtain fades in (dim 0 → 38%) rather than snapping over the screen.
+        for p in panels { p.alphaValue = 0 }
         for p in panels where p.overlayScreenFrame != active.frame { p.orderFrontRegardless() }
         if let key = panels.first(where: { $0.overlayScreenFrame == active.frame }) ?? panels.first {
             key.makeKeyAndOrderFront(nil)
             key.makeFirstResponder(key.overlayView)
         }
+        for p in panels { OverlayMotion.fade(p, to: 1, duration: OverlayMotion.overlayFadeIn) }
         NSCursor.crosshair.set()
         // A display added, removed or rearranged invalidates every panel frame: close the overlay.
         screenObserver = NotificationCenter.default.addObserver(
@@ -166,8 +179,12 @@ final class SelectionSession {
         let mods = NSEvent.modifierFlags
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
-        controls?.tearDown()
-        for p in panels { p.tearDown() }
+        clock.stop()
+        // Cancelling fades the overlay (and its controls) away; a capture removes it at once.
+        let fades: Bool
+        if case .cancelled = outcome { fades = true } else { fades = false }
+        if !fades { controls?.tearDown() }
+        for p in panels { p.tearDown(fading: fades) }
         // `finish` usually runs inside one of these panels' event dispatch: release them on the next turn.
         let retired = (panels, controls)
         panels.removeAll()
@@ -187,10 +204,50 @@ final class SelectionSession {
 
     // MARK: Derived state
 
-    /// Rect currently highlighted as a hovered window (no selection or window mode).
+    /// Rect currently highlighted as a hovered window (no selection or window mode), mid-glide when the
+    /// pointer just moved to another window.
     var hoverRect: CGRect? {
         guard let hovered else { return nil }
-        return hovered.cocoaFrame.intersection(desktop)
+        let target = hovered.cocoaFrame.intersection(desktop)
+        guard let t = hoverTransition, t.to == target else { return target }
+        return Self.interpolate(t.from, target, OverlayMotion.progress(since: t.start, duration: OverlayMotion.hoverMove))
+    }
+
+    /// The selection as drawn (gliding after a discrete jump).
+    var displayedSelection: CGRect? {
+        guard let selection else { return nil }
+        guard let t = selectionTransition, !isInteracting else { return selection }
+        return Self.interpolate(t.from, selection, OverlayMotion.progress(since: t.start, duration: OverlayMotion.hoverMove))
+    }
+
+    /// Opacity of the dimension badge and of the resize handles (both fade in when they appear).
+    var badgeAlpha: CGFloat { OverlayMotion.progress(since: badgeShownAt, duration: OverlayMotion.decorationFade) }
+    var handlesAlpha: CGFloat { OverlayMotion.progress(since: handlesShownAt, duration: OverlayMotion.decorationFade) }
+
+    private static func interpolate(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
+        guard t < 1 else { return b }
+        return CGRect(x: a.minX + (b.minX - a.minX) * t, y: a.minY + (b.minY - a.minY) * t,
+                      width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
+    }
+
+    /// Starts a glide from `old` to the current selection.
+    private func animateSelection(from old: CGRect?) {
+        guard let old, let new = selection, old != new else { selectionTransition = nil; return }
+        selectionTransition = (displayedSelectionOrigin(old), CACurrentMediaTime())
+        clock.run(for: OverlayMotion.hoverMove)
+    }
+
+    /// If a glide is already running, continue from where it is drawn now rather than jumping.
+    private func displayedSelectionOrigin(_ old: CGRect) -> CGRect {
+        guard let t = selectionTransition else { return old }
+        return Self.interpolate(t.from, old, OverlayMotion.progress(since: t.start, duration: OverlayMotion.hoverMove))
+    }
+
+    private func decorationsAppeared(badge: Bool = false, handles: Bool = false) {
+        let now = CACurrentMediaTime()
+        if badge { badgeShownAt = now }
+        if handles { handlesShownAt = now }
+        clock.run(for: OverlayMotion.decorationFade)
     }
 
     var isInteracting: Bool { if case .idle = interaction { return false } else { return true } }
@@ -236,10 +293,17 @@ final class SelectionSession {
     // MARK: Mouse
 
     func mouseMoved(to p: CGPoint) {
+        let previous = cursor
         cursor = p
-        updateHover()
+        let hoverChanged = updateHover()
         updateCursor()
-        refresh()
+        // Redraw only when something on screen follows the pointer: no full-screen repaint per mouse move.
+        let hintMoved = hintText != nil && Self.screenFrame(containing: previous) != Self.screenFrame(containing: p)
+        if hoverChanged || showsCrosshair || hintMoved { refresh() }
+    }
+
+    private static func screenFrame(containing p: CGPoint) -> CGRect? {
+        NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) }?.frame
     }
 
     func mouseDown(at p: CGPoint, clickCount: Int) {
@@ -247,11 +311,14 @@ final class SelectionSession {
         showsHint = false
         lastDragPoint = p
         if isAdjustable, mode == .area, let sel = selection {
+            selectionTransition = nil
             if let h = SelectionGeometry.handle(at: p, in: sel) {
                 interaction = .resizing(h, startRect: sel)
+                decorationsAppeared(badge: true)
             } else if sel.contains(p) {
                 if clickCount >= 2 { confirm(); return }
                 interaction = .moving(startRect: sel, startPoint: p)
+                decorationsAppeared(badge: true)
             } else {
                 interaction = .pending(start: p)
             }
@@ -273,6 +340,9 @@ final class SelectionSession {
             hovered = nil
             selection = nil
             interaction = .creating(anchor: start)
+            selectionTransition = nil
+            hoverTransition = nil
+            decorationsAppeared(badge: true)
             lastDragPoint = start
             updateDrag(to: p)
         default:
@@ -303,6 +373,7 @@ final class SelectionSession {
             if let sel = selection, sel.width < 1 || sel.height < 1 { selection = nil }
         }
         if finished { return }
+        if case .creating = previous, isAdjustable, selection != nil { decorationsAppeared(handles: true) }
         updateHover()
         updateCursor()
         refresh()
@@ -322,10 +393,14 @@ final class SelectionSession {
         case .adjustable, .allInOne:
             let r = w.cocoaFrame.intersection(desktop)
             guard !r.isNull else { return }
+            let from = hoverRect
             mode = .area
             selection = r
             selectedWindowID = w.id
             hovered = nil
+            hoverTransition = nil
+            animateSelection(from: from)
+            decorationsAppeared(handles: true)
         }
     }
 
@@ -466,6 +541,7 @@ final class SelectionSession {
         aspect = a
         if let sel = selection, a != .freeform {
             selection = SelectionGeometry.applying(a, to: sel, within: screen(for: sel).frame)
+            animateSelection(from: sel)
         }
         refresh()
     }
@@ -484,6 +560,8 @@ final class SelectionSession {
     /// Toggles the selection between the full screen it is on and the previous rect.
     private var rectBeforeFullscreen: CGRect?
     func toggleFullscreenSelection() {
+        let old = selection
+        defer { animateSelection(from: old) }
         if let sel = selection, sel == screen(for: sel).frame, let prev = rectBeforeFullscreen {
             selection = prev
             rectBeforeFullscreen = nil
@@ -504,11 +582,25 @@ final class SelectionSession {
 
     // MARK: Hover / cursor
 
-    private func updateHover() {
-        guard config.allowsWindowSelection, !isInteracting, mode == .window || selection == nil else {
-            hovered = nil; return
+    /// Returns true when the hovered window changed.
+    @discardableResult
+    private func updateHover() -> Bool {
+        let new: WindowInfo?
+        if config.allowsWindowSelection, !isInteracting, mode == .window || selection == nil {
+            new = windows.first { $0.cocoaFrame.contains(cursor) }
+        } else {
+            new = nil
         }
-        hovered = windows.first { $0.cocoaFrame.contains(cursor) }
+        guard new?.id != hovered?.id else { hovered = new; return false }
+        // Glide the highlight between two windows; appearing from (or vanishing to) nothing is immediate.
+        if let from = hoverRect, let to = new?.cocoaFrame.intersection(desktop), from != to {
+            hoverTransition = (from, to, CACurrentMediaTime())
+            clock.run(for: OverlayMotion.hoverMove)
+        } else {
+            hoverTransition = nil
+        }
+        hovered = new
+        return true
     }
 
     private func updateCursor() {

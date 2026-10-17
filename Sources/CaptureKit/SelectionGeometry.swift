@@ -261,9 +261,9 @@ public enum SelectionGeometry {
 
     // MARK: Formatting
 
-    /// "W × H" (size fields, menus) or "W x H" with `separator: " x "` (the selection badge).
-    public static func dimensionString(_ size: CGSize, separator: String = " × ") -> String {
-        "\(Int(size.width.rounded()))\(separator)\(Int(size.height.rounded()))"
+    /// "W × H" (dimension badge, size fields, menus).
+    public static func dimensionString(_ size: CGSize) -> String {
+        "\(Int(size.width.rounded())) × \(Int(size.height.rounded()))"
     }
 
     /// "#RRGGBB" from 0…1 components.
@@ -291,6 +291,22 @@ public enum SelectionGeometry {
             size = CGSize(width: image.width * f, height: image.height * f)
         }
         return CGRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2, width: size.width, height: size.height)
+    }
+
+    /// Frame of the dimension badge: just outside the selection corner nearest the cursor (diagonally away
+    /// from the selection, like the pointer is "holding" it), flipped to the other side of the cursor when it
+    /// would leave `bounds`, then clamped inside `bounds` (4 pt margin).
+    public static func badgeFrame(size: CGSize, cursor: CGPoint, selection: CGRect, bounds: CGRect,
+                                  offset: CGFloat = 12) -> CGRect {
+        let margin: CGFloat = 4
+        let right = cursor.x >= selection.midX, top = cursor.y >= selection.midY
+        var x = right ? cursor.x + offset : cursor.x - offset - size.width
+        var y = top ? cursor.y + offset : cursor.y - offset - size.height
+        if x < bounds.minX + margin { x = cursor.x + offset } else if x + size.width > bounds.maxX - margin { x = cursor.x - offset - size.width }
+        if y < bounds.minY + margin { y = cursor.y + offset } else if y + size.height > bounds.maxY - margin { y = cursor.y - offset - size.height }
+        x = min(max(x, bounds.minX + margin), bounds.maxX - margin - size.width)
+        y = min(max(y, bounds.minY + margin), bounds.maxY - margin - size.height)
+        return CGRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 
     /// Positions a control of `size` centered below `anchor` (gap `gap`), falling back to above it,

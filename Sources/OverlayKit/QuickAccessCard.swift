@@ -63,6 +63,10 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
 
     /// Frame assigned by the last layout pass (nil = hidden because the stack is full or slid down).
     var targetFrame: CGRect?
+    /// True while the capture hand-off flight stands in for this (still transparent) card.
+    var isHandingOff = false
+    private(set) var hasThumbnail = false
+    private var thumbnailWaiters: [() -> Void] = []
 
     init(media: CapturedMedia) {
         self.media = media
@@ -83,8 +87,6 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         root.layer?.cornerRadius = radius
         root.layer?.cornerCurve = .continuous
         root.layer?.masksToBounds = true
-        root.layer?.borderWidth = 1
-        root.layer?.borderColor = OverlayStyle.cardStroke.cgColor
 
         // Glass behind the thumbnail (visible through transparent captures and letterboxed GIFs).
         chrome.material = .hudWindow
@@ -99,6 +101,10 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
 
         buildHoverOverlay()
         buildProgressOverlay()
+
+        let stroke = CardStrokeView(radius: radius)
+        stroke.autoresizingMask = [.width, .height]
+        root.addSubview(stroke)
 
         root.setAccessibilityElement(true)
         root.setAccessibilityRole(.group)
@@ -125,7 +131,11 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         secondaryPill = secondary
         let center = NSStackView(views: [copy, secondary])
         center.orientation = .vertical
-        center.spacing = 7
+        center.alignment = .centerX
+        center.distribution = .fill
+        center.spacing = 6
+        center.setHuggingPriority(.required, for: .vertical)
+        center.setHuggingPriority(.required, for: .horizontal)
         center.translatesAutoresizingMaskIntoConstraints = false
         hoverOverlay.addSubview(center)
 
@@ -222,12 +232,15 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         let url = media.url
         if media.kind == .gif {
             thumb.setImage(NSImage(contentsOf: url), animated: true)
+            thumbnailDidLoad()
         } else {
             let size = QuickAccessLayout.cardSize(for: media.pixelSize, scale: Defaults[.quickAccessSize])
-            let px = max(size.width, size.height) * 1.5 * (panel.screen ?? NSScreen.active).backingScaleFactor
+            let px = QuickAccessLayout.thumbnailMaxPixel(card: size, media: media.pixelSize,
+                                                         backingScale: (panel.screen ?? NSScreen.active).backingScaleFactor)
             Thumbnailer.thumbnail(for: url, kind: media.kind, maxPixel: px) { [weak self] img in
                 guard let self, self.media.url == url else { return }
                 self.thumb.setImage(img, animated: false)
+                self.thumbnailDidLoad()
             }
         }
         if media.isVideoLike && media.kind != .studioProject {
@@ -239,13 +252,26 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         }
     }
 
+    /// Runs `body` once the first thumbnail is shown (immediately if it already is).
+    func whenThumbnailReady(_ body: @escaping () -> Void) {
+        if hasThumbnail { body() } else { thumbnailWaiters.append(body) }
+    }
+
+    private func thumbnailDidLoad() {
+        hasThumbnail = true
+        let waiters = thumbnailWaiters
+        thumbnailWaiters.removeAll()
+        waiters.forEach { $0() }
+    }
+
     // MARK: Hover
 
     func setHovered(_ hovered: Bool) {
         guard hovered != isHovered, !isClosing else { return }
         isHovered = hovered
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
+            ctx.duration = OverlayStyle.hoverFade
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             hoverOverlay.animator().alphaValue = hovered && !isUploading ? 1 : 0
         }
         if hovered {

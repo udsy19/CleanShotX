@@ -53,18 +53,28 @@ app strings and UI strings of CleanShot X 5.0.1.
   of the screen. Press Space to select a window.", "Drag to capture the scrolling part of the screen.");
   1 pt white selection border with a faint dark outer stroke; white edge-midpoint pills (14×4) and corner
   squares as handles; white L-shaped corner brackets for recording/GIF/Studio selections.
-* Dimension badge: dark-grey pill `rgba(60,60,67,0.85)`, white 11 pt "W x H" (points), above the selection's
-  top-left corner (inside when there is no room); shown while drawing, moving or resizing.
+* Dimension badge: dark `#1C1C1E` 88% pill with a white-16% hairline and soft shadow, white 12 pt SF Mono
+  "W × H" (points), just outside the selection corner nearest the cursor; flipped and clamped (4 pt margin) so
+  it never leaves the screen (`SelectionGeometry.badgeFrame`); shown while drawing, moving or resizing.
 * Window mode: hovered window undimmed, no tint; dark `#1C1C1E` 90% pill with the app name centred on it.
+* Motion (all skipped with Reduce motion, `OverlayMotion`): the curtain fades in (0 → 38% over 0.12 s) and
+  fades out on Esc / cancel (a capture removes it at once); the window highlight glides between windows
+  (0.14 s ease-out), as does the selection after a discrete jump (window picked, fullscreen toggle, ratio);
+  the badge and resize handles fade in (0.12 s). Redraws run only while a transition is in flight or when
+  something under the pointer changes (hover, crosshair, hint screen), never on every mouse move.
+* Fullscreen capture: a white 12% flash over the captured display fading out in 0.25 s as shutter feedback.
+* Every capture passes its source rect (selection, window frame or screen frame, global Cocoa) to
+  `MediaPipeline.didCaptureImage(…, from:)` so Quick Access can animate from it.
 * Adjustable contexts (All-In-One, recording/GIF/Studio/scrolling selections): after mouse-up the selection
   stays with 8 resize handles; drag inside to move, drag a handle to resize (Shift keeps ratio, Option from
   center), arrow keys nudge 1 pt (Shift = 10 pt), Option+arrow resizes, Return / double-click confirms,
   Esc cancels. A confirm bar ("Record ↩", "Capture ↩"…) is shown under the selection.
-* Crosshair mode (`_crosshairMode`): 1 px black-50% guide lines with a light halo across the screen, and the
-  X / Y coordinates as two right-aligned lines just below-right of the cursor.
+* Crosshair mode (`_crosshairMode`): one-device-pixel black-60% guide lines with a light halo across the
+  screen, leaving a 10 pt gap around the pointer, and "X, Y" in a small dark pill just below-right of the cursor.
   Magnifier (`_showMagnifier`, "To enable magnifier, you must enable Crosshair Mode first.") — a 66 pt rounded
   `Loupe` (`pixelCount` 11, `pixelZoom` 6, 1.5 pt dark border) 12 pt below-right of the cursor (flips at screen
-  edges) with a darker band through the centre row/column; coordinates are drawn just above it.
+  edges) with a darker band through the centre row/column and a light inner hairline; coordinates sit in a
+  dark pill just above it.
   Holding ⌘ temporarily shows crosshair + magnifier (and disables snapping).
 * Snapping (`SnappingController`): selection edges snap to on-screen window edges and display edges within
   8 pt while creating, moving and resizing.
@@ -113,9 +123,13 @@ ScreenCaptureKit).
 
 `hideDesktopIcons` / "Hide desktop icons while capturing" (`captureWithoutDesktopIcons`) / "Toggle Desktop
 Icons": one window per screen at `kCGDesktopIconWindowLevel + 1` showing the wallpaper
-(`WallpaperSettings._overlayType` = desktop / custom image / plain color). Desktop images honor
-`NSWorkspace.desktopImageOptions` (scaling, clipping, fill color); dynamic wallpapers that cannot be decoded
-fall back to a ScreenCaptureKit grab of the Dock's wallpaper window. Overlays are rebuilt on display changes
+(`WallpaperSettings._overlayType` = desktop / custom image / plain color; custom and color are used only when
+explicitly chosen). The desktop cover is a ScreenCaptureKit grab, at backing scale, of that display's system
+wallpaper window(s) only (Dock / Wallpaper agent, at or below the desktop level), so dynamic `.heic` sets,
+system landscapes and aerials look exactly as on screen — `desktopImageURL` may name a still that differs.
+Only when the grab fails is the `desktopImageURL` file rendered (honoring `NSWorkspace.desktopImageOptions`:
+scaling, clipping, fill color); if that fails too the screen gets no cover rather than a stand-in. Covers fade
+in / out over 0.15 s (instant with Reduce motion), so only the icons visibly dissolve. Overlays are rebuilt on display changes
 and re-rendered on `activeSpaceDidChange` when "Update wallpaper when switching Spaces" is on. While
 captures run with "Hide desktop icons while capturing", the overlays are shown temporarily and included
 in the capture (ScreenCaptureKit `exceptingWindows`).

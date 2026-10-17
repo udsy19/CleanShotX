@@ -134,10 +134,11 @@ final class QuickAccessController: QuickAccessServicing {
         if panel.isVisible {
             let out = QuickAccessLayout.offscreenFrame(for: panel.frame, in: (panel.screen ?? NSScreen.active).visibleFrame,
                                                        side: Defaults[.quickAccessSide])
+            let reduceMotion = OverlayStyle.reduceMotion
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.22
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                panel.animator().setFrame(out, display: true)
+                ctx.duration = reduceMotion ? 0.18 : 0.24
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.8, 0.6)
+                if !reduceMotion { panel.animator().setFrame(out, display: true) }
                 panel.animator().alphaValue = 0
             }, completionHandler: {
                 // `card` is captured so the panel stays alive until the animation finishes.
@@ -179,24 +180,25 @@ final class QuickAccessController: QuickAccessServicing {
                 continue
             }
             if card === appearing {
-                panel.setFrame(QuickAccessLayout.offscreenFrame(for: frame, in: visible, side: side), display: false)
-                panel.alphaValue = 1
-                panel.orderFrontRegardless()
-                NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = 0.35
-                    ctx.timingFunction = OverlayStyle.springTiming
-                    panel.animator().setFrame(frame, display: true)
-                }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
+                let source = card.media.captureRect
+                card.media.captureRect = nil   // only meaningful right after the capture (not on restore)
+                if let source, !OverlayStyle.reduceMotion {
+                    handOff(card, from: source, to: frame, in: visible, side: side)
+                } else {
+                    slideIn(card, to: frame, in: visible, side: side)
+                }
+            } else if card.isHandingOff {
+                panel.setFrame(frame, display: false)   // still transparent: the flight reveals it
             } else if !panel.isVisible || (panel.alphaValue < 1 && !card.isDragging) {
                 panel.setFrame(frame, display: false)
                 if !panel.isVisible { panel.alphaValue = 0 }
                 panel.orderFrontRegardless()
                 NSAnimationContext.runAnimationGroup { $0.duration = 0.2; panel.animator().alphaValue = 1 }
             } else if panel.frame != frame {
-                if animated {
+                if animated && !OverlayStyle.reduceMotion {
                     NSAnimationContext.runAnimationGroup({ ctx in
-                        ctx.duration = 0.25
-                        ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                        ctx.duration = 0.3
+                        ctx.timingFunction = OverlayStyle.easeOut
                         panel.animator().setFrame(frame, display: true)
                     }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
                 } else {
@@ -206,6 +208,46 @@ final class QuickAccessController: QuickAccessServicing {
         }
         if !isSlidDown, let hf = result.header { showHeader(at: hf, animated: animated) } else { hideHeader() }
         if !animated { layoutDidSettle() }
+    }
+
+    /// First appearance: slides in from the screen edge with a slight overshoot (a fade with Reduce Motion).
+    private func slideIn(_ card: QuickAccessCard, to frame: CGRect, in visible: CGRect, side: ScreenSide) {
+        let panel = card.panel
+        let reduceMotion = OverlayStyle.reduceMotion
+        panel.setFrame(reduceMotion ? frame : QuickAccessLayout.offscreenFrame(for: frame, in: visible, side: side), display: false)
+        panel.alphaValue = reduceMotion ? 0 : 1
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup({ ctx in
+            if reduceMotion {
+                ctx.duration = 0.2
+                panel.animator().alphaValue = 1
+            } else {
+                ctx.duration = 0.35
+                ctx.timingFunction = OverlayStyle.springTiming
+                panel.animator().setFrame(frame, display: true)
+            }
+        }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
+    }
+
+    /// CleanShot-style hand-off: the captured image appears exactly where it was captured and flies into the
+    /// card's slot; the (transparent, already placed) card then takes over in the same frame.
+    private func handOff(_ card: QuickAccessCard, from source: CGRect, to frame: CGRect, in visible: CGRect, side: ScreenSide) {
+        let panel = card.panel
+        panel.setFrame(frame, display: false)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        card.isHandingOff = true
+        let finish = { [weak self] (flown: Bool) in
+            card.isHandingOff = false
+            guard let self, !card.isClosing, self.cards.contains(where: { $0 === card }) else { return }
+            if flown { panel.alphaValue = 1 } else { self.slideIn(card, to: card.targetFrame ?? frame, in: visible, side: side) }
+            self.layoutDidSettle()
+        }
+        CaptureFlight.fly(media: card.media, from: source, to: frame, radius: OverlayStyle.cardCornerRadius,
+                          // The flight may only end once the card can show the same picture (no blank flash).
+                          land: { reveal in card.whenThumbnailReady { reveal() } },
+                          isCancelled: { card.isClosing },
+                          completion: finish)
     }
 
     /// Fades a card that lost its slot; the order-out is skipped if a later layout gave it a slot again.

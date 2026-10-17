@@ -207,13 +207,18 @@ struct HistoryStripView: View {
                     Divider()
                     Button("Clear History...") { confirmClear() }.disabled(store.items.isEmpty)
                 } label: {
+                    // Same fixed 28 pt circle as Close: the label is the whole control, never stretched by the menu.
                     Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.white.opacity(0.15)))
+                        .contentShape(Circle())
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.white.opacity(0.15)))
                 .help("History settings")
                 Button(action: close) {
                     Image(systemName: "xmark")

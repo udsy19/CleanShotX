@@ -158,7 +158,8 @@ final class CaptureService: CaptureServicing {
         prepareGeneration += 1
         let generation = prepareGeneration
         Task {
-            let held = await icons.beginTemporaryHide()
+            // Frozen pixels must be icon-free; a live capture happens long after the covers faded in.
+            let held = await icons.beginTemporaryHide(waitUntilVisible: freeze)
             var config = base
             if freeze {
                 do { config.frozen = try await CaptureEngine.captureAllScreens() }
@@ -278,7 +279,8 @@ final class CaptureService: CaptureServicing {
         guard r.width >= 1, r.height >= 1 else { return }
         Defaults[.lastCaptureArea] = CodableRect(r)
         guard let (image, scale) = await grab(r, frozen: frozen) else { return }
-        MediaPipeline.didCaptureImage(image, scale: scale, mode: mode, actions: actions)
+        if mode == .fullscreen { OverlayMotion.shutterFlash(on: screenShowingMost(of: r)) }
+        MediaPipeline.didCaptureImage(image, scale: scale, mode: mode, actions: actions, from: r)
     }
 
     private func captureWindowImage(_ w: WindowInfo, shift: Bool, mode: CaptureMode, actions: Set<AfterCaptureAction>?) async {
@@ -289,7 +291,7 @@ final class CaptureService: CaptureServicing {
             let style = WindowBackgroundComposer.effectiveStyle(preference: Defaults[.windowBackgroundStyle], shiftHeld: shift)
             let final = await WindowBackgroundComposer.compose(image, scale: scale, style: style,
                                                                screen: screenShowingMost(of: w.cocoaFrame), hasSystemShadow: shadow)
-            MediaPipeline.didCaptureImage(final, scale: scale, mode: mode, actions: actions)
+            MediaPipeline.didCaptureImage(final, scale: scale, mode: mode, actions: actions, from: w.cocoaFrame)
         } catch {
             Alerts.error("Couldn't capture the window.", error)
         }

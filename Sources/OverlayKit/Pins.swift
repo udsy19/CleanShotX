@@ -199,8 +199,8 @@ final class PinOverlay: NSObject {
         imageView.autoresizingMask = [.width, .height]
         content.addSubview(imageView)
 
-        closeButton = OverlayButton(.icon("xmark"), tooltip: "Close (Esc)", diameter: 22) { [weak self] in self?.close() }
-        lockButton = OverlayButton(.icon("lock.open.fill"), tooltip: "Lock (click-through)", diameter: 22) { [weak self] in self?.setLocked(true) }
+        closeButton = OverlayButton(.icon("xmark"), tooltip: "Close (Esc)") { [weak self] in self?.close() }
+        lockButton = OverlayButton(.icon("lock.open.fill"), tooltip: "Lock (click-through)") { [weak self] in self?.setLocked(true) }
         dragHandle.translatesAutoresizingMaskIntoConstraints = false
         dragHandle.fileURL = { [weak self] in self?.fileForDragging() }
         dragHandle.dragImage = { [weak self] in self?.image }
@@ -276,7 +276,7 @@ final class PinOverlay: NSObject {
         guard hovered != isHovered, !isClosing else { return }
         isHovered = hovered
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
+            ctx.duration = OverlayStyle.hoverFade
             [closeButton!, lockButton!, dragHandle].forEach { $0.animator().alphaValue = hovered ? 1 : 0 }
         }
         if hovered { HoverHotkeys.shared.activate(owner: self, hotkeyBindings()) } else { HoverHotkeys.shared.deactivate(owner: self) }
@@ -402,7 +402,7 @@ final class PinOverlay: NSObject {
         let p = OverlayWindow.makePanel(NSRect(x: 0, y: 0, width: 28, height: 28), level: OverlayWindow.pinLevel)
         p.hasShadow = false
         let v = NSView()
-        let b = OverlayButton(.icon("lock.fill"), tooltip: "Unlock", diameter: 22) { [weak self] in self?.setLocked(false) }
+        let b = OverlayButton(.icon("lock.fill"), tooltip: "Unlock") { [weak self] in self?.setLocked(false) }
         v.addSubview(b)
         NSLayoutConstraint.activate([b.centerXAnchor.constraint(equalTo: v.centerXAnchor), b.centerYAnchor.constraint(equalTo: v.centerYAnchor)])
         p.contentView = v

@@ -92,7 +92,6 @@ func registerCaptureKitTests() {
         check(G.hexString(r: 0.227, g: 0.482, b: 1.0) == "#3A7BFF", "hex uppercase")
         check(G.hexString(r: -1, g: 2, b: 0.5) == "#00FF80", "hex clamps")
         check(G.dimensionString(CGSize(width: 1279.6, height: 720.2)) == "1280 × 720", "dimension rounding")
-        check(G.dimensionString(CGSize(width: 189, height: 150), separator: " x ") == "189 x 150", "badge separator")
     }))
 
     SelfTest.cases.append(("CaptureKit.layout", {
@@ -107,5 +106,19 @@ func registerCaptureKitTests() {
         check(above.minY == 210, "toolbar flips above when no room below")
         let inside = G.placeBelow(CGSize(width: 200, height: 40), anchor: bounds, bounds: bounds)
         check(bounds.contains(inside), "fullscreen selection keeps toolbar on screen")
+    }))
+
+    SelfTest.cases.append(("CaptureKit.badge", {
+        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let size = CGSize(width: 80, height: 20)
+        let sel = CGRect(x: 100, y: 100, width: 300, height: 200)
+        let br = G.badgeFrame(size: size, cursor: CGPoint(x: 400, y: 100), selection: sel, bounds: bounds)
+        check(br == CGRect(x: 412, y: 68, width: 80, height: 20), "outside the dragged bottom-right corner")
+        let tl = G.badgeFrame(size: size, cursor: CGPoint(x: 100, y: 300), selection: sel, bounds: bounds)
+        check(tl == CGRect(x: 8, y: 312, width: 80, height: 20), "outside the dragged top-left corner")
+        let edge = G.badgeFrame(size: size, cursor: CGPoint(x: 995, y: 2), selection: CGRect(x: 500, y: 2, width: 495, height: 400), bounds: bounds)
+        check(bounds.insetBy(dx: 4, dy: 4).contains(edge), "never leaves the screen at a corner")
+        let full = G.badgeFrame(size: size, cursor: CGPoint(x: 1000, y: 800), selection: bounds, bounds: bounds)
+        check(bounds.insetBy(dx: 4, dy: 4).contains(full), "fullscreen drag keeps the badge on screen")
     }))
 }

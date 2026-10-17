@@ -33,6 +33,14 @@ public enum QuickAccessLayout {
         return CGSize(width: width, height: (width * aspect).rounded())
     }
 
+    /// Longest-side pixel size of a thumbnail that aspect-fills `card` without upscaling, so it stays sharp on a
+    /// `backingScale` display even when a very wide or tall capture is cropped by the fill.
+    public static func thumbnailMaxPixel(card: CGSize, media: CGSize, backingScale: CGFloat) -> CGFloat {
+        guard media.width > 0, media.height > 0 else { return (max(card.width, card.height) * backingScale).rounded(.up) }
+        let fill = max(card.width / media.width, card.height / media.height)
+        return (max(media.width, media.height) * fill * backingScale).rounded(.up)
+    }
+
     public struct Result: Equatable {
         /// One entry per input card (same order); nil when the card doesn't fit on screen.
         public var cards: [CGRect?]

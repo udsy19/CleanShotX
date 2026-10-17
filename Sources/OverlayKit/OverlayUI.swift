@@ -46,9 +46,43 @@ enum OverlayStyle {
     static let cardCornerRadius: CGFloat =
         ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 16 : 12
     static let pinCornerRadius: CGFloat = 10
-    static let cardStroke = NSColor.white.withAlphaComponent(0.2)
     /// Spring-like ease-out with a slight overshoot for slide-ins.
     static let springTiming = CAMediaTimingFunction(controlPoints: 0.22, 1.12, 0.36, 1)
+    /// Calm ease-out (capture hand-off, stack reflow).
+    static let easeOut = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+    static let hoverFade: TimeInterval = 0.12
+    /// System "Reduce motion": slides and flights become plain fades.
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+}
+
+/// Crisp edge for cards: a hairline dark outline (keeps the card readable on light wallpapers) plus a 1 pt light
+/// inner stroke (ui-reference §4: `rgba(255,255,255,0.2)`). Sits above all card content and never takes clicks.
+final class CardStrokeView: NSView {
+    private let inner = CALayer()
+
+    init(radius: CGFloat) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = radius
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
+        inner.cornerRadius = radius - 0.5
+        inner.cornerCurve = .continuous
+        inner.borderWidth = 1
+        inner.borderColor = NSColor.white.withAlphaComponent(0.22).cgColor
+        layer?.addSublayer(inner)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        inner.frame = bounds.insetBy(dx: 0.5, dy: 0.5)
+        CATransaction.commit()
+    }
 }
 
 // MARK: - Temporary hotkeys while an overlay is hovered
@@ -108,66 +142,108 @@ func installHoverTracking(on view: NSView, existing: inout NSTrackingArea?) {
 
 /// Overlay control: a light circular SF Symbol button (card / pin corners) or a light capsule pill
 /// (Copy / Save). Works on first click in an inactive app and highlights on hover.
+///
+/// The glyph and title are drawn by our own centred subviews, never by the button cell: a cell with an image
+/// reports non-zero `alignmentRectInsets` (≈2 pt top, 1.5 pt bottom on macOS 26), so Auto Layout sized the
+/// alignment rect to the constraints and grew the *frame* — and the layer-drawn circle — into a tall oval.
 final class OverlayButton: NSButton {
     enum Style { case icon(String), pill(String), symbolPill(String) }
-    private var style: Style
-    private let diameter: CGFloat
-    private var hoverArea: NSTrackingArea?
-    private var hovering = false { didSet { updateColors() } }
-    var onClick: (() -> Void)?
-
+    static let diameter: CGFloat = 22
+    static let pillHeight: CGFloat = 26
+    static let pillMinWidth: CGFloat = 56
+    static let pillPadding: CGFloat = 13
     static let glyphColor = NSColor(white: 0.13, alpha: 1)
 
-    init(_ style: Style, tooltip: String? = nil, diameter: CGFloat = 20, action: (() -> Void)? = nil) {
+    private var style: Style
+    private let glyph = PassthroughImageView()
+    private let label = PassthroughLabel(labelWithString: "")
+    private var hoverArea: NSTrackingArea?
+    private var hovering = false { didSet { updateFill(animated: true) } }
+    private var pressed = false { didSet { updateFill(animated: false) } }
+    var onClick: (() -> Void)?
+
+    init(_ style: Style, tooltip: String? = nil, action: (() -> Void)? = nil) {
         self.style = style
-        self.diameter = diameter
         self.onClick = action
         super.init(frame: .zero)
         isBordered = false
         bezelStyle = .regularSquare
         setButtonType(.momentaryChange)
+        title = ""
+        imagePosition = .noImage
         focusRingType = .none
         wantsLayer = true
         target = self
         self.action = #selector(clicked)
         translatesAutoresizingMaskIntoConstraints = false
-        switch style {
-        case .icon:
-            imagePosition = .imageOnly
-            layer?.cornerRadius = diameter / 2
-            NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: diameter),
-                                         heightAnchor.constraint(equalToConstant: diameter)])
-        case .pill, .symbolPill:
-            layer?.cornerRadius = 11
-            NSLayoutConstraint.activate([heightAnchor.constraint(equalToConstant: 22),
-                                         widthAnchor.constraint(greaterThanOrEqualToConstant: 48)])
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+
+        let isIcon: Bool
+        if case .icon = style { isIcon = true } else { isIcon = false }
+        let height = isIcon ? Self.diameter : Self.pillHeight
+        layer?.cornerRadius = height / 2
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.22
+        layer?.shadowRadius = 2
+        layer?.shadowOffset = CGSize(width: 0, height: -0.5)
+
+        glyph.imageScaling = .scaleNone
+        glyph.contentTintColor = Self.glyphColor
+        label.font = .systemFont(ofSize: 12.5, weight: .medium)
+        label.textColor = Self.glyphColor
+        label.alignment = .center
+        for v in [glyph, label] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
         }
+        var constraints = [
+            heightAnchor.constraint(equalToConstant: height),
+            glyph.centerXAnchor.constraint(equalTo: centerXAnchor),
+            glyph.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ]
+        if isIcon {
+            constraints.append(widthAnchor.constraint(equalToConstant: Self.diameter))
+        } else {
+            let snug = widthAnchor.constraint(equalToConstant: Self.pillMinWidth)
+            snug.priority = .defaultLow   // as narrow as the title (and a sibling's equal-width constraint) allow
+            constraints += [
+                widthAnchor.constraint(greaterThanOrEqualToConstant: Self.pillMinWidth),
+                widthAnchor.constraint(greaterThanOrEqualTo: label.widthAnchor, constant: Self.pillPadding * 2),
+                snug,
+            ]
+        }
+        NSLayoutConstraint.activate(constraints)
         apply(style, tooltip: tooltip)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // The frame is exactly the drawn circle / capsule.
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric) }
 
     /// Swaps glyph/title in place (lock ↔ unlock, Save ↔ Trash) keeping the button's geometry.
     func apply(_ style: Style, tooltip: String?) {
         self.style = style
         toolTip = tooltip
         switch style {
-        case .icon(let symbol):
-            image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
-                .withSymbolConfiguration(.init(pointSize: (diameter * 0.45).rounded(), weight: .bold))
+        case .icon(let symbol), .symbolPill(let symbol):
+            let size: CGFloat = if case .icon = style { 11 } else { 12 }
+            glyph.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
+                .withSymbolConfiguration(.init(pointSize: size, weight: .semibold))
+            label.stringValue = ""
             setAccessibilityLabel(tooltip)
         case .pill(let title):
-            image = nil
-            imagePosition = .noImage
+            glyph.image = nil
+            label.stringValue = title
             setAccessibilityLabel(title)
-        case .symbolPill(let symbol):
-            image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
-                .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
-            imagePosition = .imageOnly
-            setAccessibilityLabel(tooltip)
         }
-        updateColors()
-        invalidateIntrinsicContentSize()
+        updateFill(animated: false)
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -178,28 +254,26 @@ final class OverlayButton: NSButton {
     }
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) {
+        pressed = true
+        super.mouseDown(with: event)   // runs the tracking loop; returns on mouse-up
+        pressed = false
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: bounds.height / 2, cornerHeight: bounds.height / 2, transform: nil)
+    }
 
     @objc private func clicked() { onClick?() }
 
-    private func updateColors() {
-        contentTintColor = Self.glyphColor
-        switch style {
-        case .icon:
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.97 : 0.82).cgColor
-        case .pill(let t):
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.95 : 0.8).cgColor
-            attributedTitle = NSAttributedString(string: t, attributes: [
-                .foregroundColor: Self.glyphColor, .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            ])
-        case .symbolPill:
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.95 : 0.8).cgColor
-        }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        var s = super.intrinsicContentSize
-        if case .pill = style { s.width += 22 }
-        return s
+    private func updateFill(animated: Bool) {
+        let alpha: CGFloat = pressed ? 0.7 : hovering ? 0.98 : 0.85
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.12 : 0)
+        CATransaction.setDisableActions(!animated)
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(alpha).cgColor
+        CATransaction.commit()
     }
 }
 
@@ -327,6 +401,11 @@ final class ClosureMenuItem: NSMenuItem {
     @objc private func run() { handler() }
 }
 
+/// Non-interactive label whose clicks reach the control underneath.
+final class PassthroughLabel: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Image view that never intercepts mouse events (its container handles clicks and drags).
 final class PassthroughImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -378,6 +457,7 @@ final class ThumbnailView: NSView {
     override func updateLayer() {
         guard let layer else { return }
         layer.contentsGravity = .resizeAspectFill
+        layer.minificationFilter = .trilinear   // crisp downscale of the oversampled thumbnail
         layer.masksToBounds = true
         guard let img = staticImage else { layer.contents = nil; return }
         let scale = img.recommendedLayerContentsScale(window?.backingScaleFactor ?? 2)

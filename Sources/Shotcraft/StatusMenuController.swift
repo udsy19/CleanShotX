@@ -24,9 +24,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
     private func setVisible(_ visible: Bool) {
         if visible, item == nil {
             let i = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            // Attached the standard way so macOS positions the menu under the icon. While recording the menu is
+            // detached and a click stops the recording instead (`setRecording`).
+            i.menu = recording ? nil : menu
             i.button?.target = self
-            i.button?.action = #selector(statusItemClicked)
-            i.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            i.button?.action = #selector(stopRecordingClicked)
             i.button?.window?.registerForDraggedTypes([.fileURL])
             i.button?.window?.delegate = self
             item = i
@@ -82,31 +84,29 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
 
     private func setRecording(_ active: Bool, elapsed: String?) {
         recording = active
+        item?.menu = active ? nil : menu
         updateIcon()
         item?.button?.title = active && Defaults[.recordShowTimeInMenuBar] ? " \(elapsed ?? "")" : ""
         item?.button?.imagePosition = .imageLeading
     }
 
-    @objc private func statusItemClicked() {
-        if recording { ActionRouter.stopAnyRecording(); return }
-        guard let button = item?.button else { return }
-        rebuild()
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+    @objc private func stopRecordingClicked() {
+        if recording { ActionRouter.stopAnyRecording() }
     }
+
+    /// Rebuilt right before it opens so titles (desktop icons, uploads) and shortcuts are current.
+    func menuNeedsUpdate(_ menu: NSMenu) { rebuild() }
 
     func rebuild() {
         menu.removeAllItems()
         add(.allInOne, symbol: "1.circle")
         add(.captureArea, symbol: "viewfinder")
-        add(.capturePreviousArea, symbol: "arrow.counterclockwise")
         add(.captureFullscreen, symbol: "display")
         add(.captureWindow, symbol: "macwindow")
         add(.scrollingCapture, symbol: "arrow.down")
         add(.selfTimer, symbol: "timer")
         add(.captureText, title: "Capture Text (OCR)", symbol: "textformat")
         add(.recordScreen, symbol: "video")
-        add(.recordGIF, symbol: "photo.stack")
-        add(.recordStudio, symbol: "video.badge.waveform")
         menu.addItem(.separator())
 
         let hidden = Services.capture?.desktopIconsHidden == true
@@ -114,20 +114,17 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
         menu.addItem(.separator())
 
         add(.openAnnotate, title: "Open…", symbol: "pencil")
-        add(.openFromClipboard, symbol: "doc.on.clipboard")
         add(.pinScreenshot, title: "Pin to the Screen…", symbol: "pin")
         menu.addItem(.separator())
 
         add(.openHistory, title: "Capture History…", symbol: "clock.arrow.circlepath")
-        add(.restoreLastCapture, title: "Restore Recently Closed", symbol: "arrow.uturn.backward")
         addUploadItems()
         menu.addItem(.separator())
 
         plain("About Shotcraft…", #selector(showAbout))
-        menu.addItem(.separator())
         plain("Settings…", #selector(showSettings)).keyEquivalent = ","
         menu.addItem(.separator())
-        plain("Quit", #selector(NSApplication.terminate(_:)), target: NSApp).keyEquivalent = "q"
+        plain("Quit", #selector(NSApplication.terminate(_:)), target: NSApp)
     }
 
     @discardableResult

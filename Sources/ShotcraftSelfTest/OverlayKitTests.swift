@@ -19,6 +19,15 @@ func registerOverlayKitTests() {
         check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 0.1).width == 104, "scale clamped to 0.6")
     }))
 
+    SelfTest.cases.append(("OverlayKit.thumbnailMaxPixel", {
+        let card = CGSize(width: 174, height: 124)
+        check(QuickAccessLayout.thumbnailMaxPixel(card: card, media: CGSize(width: 1740, height: 1240), backingScale: 2) == 348,
+              "matching aspect: card width × backing scale")
+        let wide = QuickAccessLayout.thumbnailMaxPixel(card: card, media: CGSize(width: 3000, height: 1000), backingScale: 2)
+        check(wide == 744, "wide capture cropped by aspect-fill still fills the card height without upscaling")
+        check(QuickAccessLayout.thumbnailMaxPixel(card: card, media: .zero, backingScale: 2) == 348, "unknown size falls back")
+    }))
+
     SelfTest.cases.append(("OverlayKit.stackLayout", {
         let vis = CGRect(x: 0, y: 0, width: 1000, height: 800)
         let card = CGSize(width: 200, height: 125)

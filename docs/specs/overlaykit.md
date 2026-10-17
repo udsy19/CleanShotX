@@ -42,11 +42,27 @@ UI parity follows `docs/specs/ui-reference.md` §4.
   height from the media aspect clamped to `[0.71, 1.25] × width`; the thumbnail is aspect-filled. 16 pt
   side/bottom margin, 12 pt spacing, newest at the bottom; cards that don't fit are hidden until space frees up.
   A Close All / Save All header sits above the stack when ≥ 3 cards are shown.
-- Look: corner radius 12 pt (16 pt on macOS 26), 1 px white 20 % inner stroke, window shadow, glass behind
-  transparent captures. Slides in from the configured edge with a slight-overshoot 0.35 s ease; slides out to it.
-- Hover: thumbnail dimmed + frosted; centred **Copy / Save** pills (22 pt, white 80 %); 20 pt light corner
-  buttons inset 6 pt — close (TL), pin (TR, images) or Quick Look eye (TR, videos), Annotate pencil / Trim
-  scissors (BL), Upload (BR, per `.quickAccessShowUploadButton`). When the file is already saved (auto-save
+- Look: corner radius 12 pt (16 pt on macOS 26), continuous corners; a crisp edge (`CardStrokeView`: 0.5 pt
+  black 18 % hairline outside a 1 pt white 22 % inner stroke, readable on light and dark wallpapers); window
+  shadow; glass behind transparent captures. The thumbnail is aspect-filled and sharp: it is decoded at the
+  pixel size the fill actually needs (`QuickAccessLayout.thumbnailMaxPixel`, so wide/tall captures cropped by
+  the fill are never upscaled) and drawn with trilinear minification; it is blurred only under the hover frost.
+- Motion: the first appearance slides in from the configured edge (slight-overshoot 0.35 s); dismissals slide
+  out to it with a fade (0.24 s); stack reflows glide (0.3 s ease-out); hover controls fade in/out in 0.12 s.
+  With Reduce Motion, entrances/exits are plain fades and reflows are instant.
+- Capture hand-off: when `CapturedMedia.captureRect` is set (right after a capture; consumed on first show, so
+  restores slide in normally) and Reduce Motion is off, `CaptureFlight` shows the captured image in a
+  click-through borderless window exactly over the captured area and flies it (scale + move, 0.35 s ease-out,
+  corners rounding to the card radius, soft shadow) into the card's slot. The card is placed there transparent
+  meanwhile; it is revealed only once its own thumbnail is loaded, and the stand-in is removed right after, so
+  the image never blanks or doubles. If the image can't be loaded the card slides in instead.
+- Hover: thumbnail dimmed + frosted; centred **Copy / Save** pills stacked vertically (26 pt tall, 12.5 pt
+  medium title, 13 pt side padding, ≥ 56 pt wide, equal widths, 6 pt gap); 22 pt circular corner buttons
+  (11 pt semibold SF Symbols, white 85 % with a soft shadow) inset 6 pt — close (TL), pin (TR, images) or Quick
+  Look eye (TR, videos), Annotate pencil / Trim scissors (BL), Upload (BR, per `.quickAccessShowUploadButton`).
+  `OverlayButton` draws its glyph/title with its own centred subviews and reports zero `alignmentRectInsets`:
+  an `NSButton` cell with an image reports ≈2 pt/1.5 pt top/bottom insets, which made Auto Layout grow the frame
+  (and the layer-drawn circle) into a tall oval. When the file is already saved (auto-save
   after-capture action) a Trash pill replaces Save. Video cards show the duration on hover and play muted.
 - Hovered hotkeys (temporary global hotkeys): ⌘C, ⌘S, ⌘E (Annotate / Video Editor), ⌘P, ⌘U, ⌘W, Esc, Space.
 - Hover state is re-derived from the pointer after every layout and once a second, so a card that moves under
@@ -93,7 +109,8 @@ UI parity follows `docs/specs/ui-reference.md` §6.
   Rounded corners 10 pt (on), shadow per `.pinShowShadow`, border off — each toggleable per pin.
 - Drag anywhere to move; scroll or pinch scales around the cursor (10 %–500 %) with a dark "100%" pill;
   ⌥-scroll changes opacity (10–100 %). Middle-click closes.
-- Hover chrome: close (TL) and lock (TR) as 22 pt light circles inset 8 pt; a "Drag me" pill at the bottom
+- Hover chrome (fades in 0.12 s): close (TL) and lock (TR) as 22 pt light circles inset 8 pt (same
+  `OverlayButton` as the cards); a "Drag me" pill at the bottom
   centre drags the file out (a temporary PNG is written for pins without a file).
 - Lock: click-through (`ignoresMouseEvents`); a small unlock button floats over the top-right corner while the
   cursor is over the pin. With `.pinLockAndHideOnHover` the locked pin fades to 5 % on hover.
@@ -131,7 +148,7 @@ Defaults sample: `mediaHistory` is a JSON array of objects (`[{"url":"file:\/\/�
 - UI (ui-reference §10, 5.0 look): a full-width strip of dark glass (280 pt) across the middle of the active
   screen, hairline borders. Filter pills All / Screenshots / Videos / GIFs (selected = accent). A horizontal
   row of 180×120 pt thumbnails (radius 14, gap 24); the selected one has a 3 pt accent border and a blue
-  "↩ Restore" capsule below it. Gear menu: Keep History (1 day … 1 month, Forever) and "Clear History...".
+  "↩ Restore" capsule below it. Gear (28 pt circle, like Close) menu: Keep History (1 day … 1 month, Forever) and "Clear History...".
 - Keys: ←/→ select, Space Quick Look, Return restore (→ Quick Access), ⌘E annotate, ⌘C copy, ⌘⌫ trash,
   Esc/⌘W close. Double-click → Annotate. Drag out. Context menu: Restore, Annotate, Pin, Quick Look, Copy,
   Save As…, Upload to Cloud, Show in Finder, Delete.

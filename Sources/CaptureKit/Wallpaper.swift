@@ -6,43 +6,28 @@ import ShotcraftCore
 @MainActor
 enum WallpaperProvider {
 
-    /// The desktop picture of `screen`, rendered at the screen's pixel size honoring the user's
-    /// "fill / fit / stretch / center" choice. Falls back to grabbing the Dock's wallpaper window (dynamic
-    /// wallpapers that NSImage cannot decode), then nil.
+    /// What the desktop of `screen` looks like right now, without icons, at the screen's pixel size: a
+    /// ScreenCaptureKit grab of the system's wallpaper window(s), so dynamic, aerial and system landscape
+    /// wallpapers match pixel for pixel. Falls back to rendering `desktopImageURL` (honoring the user's
+    /// fill / fit / stretch / center choice) only when the grab fails.
     static func renderedDesktop(for screen: NSScreen) async -> CGImage? {
-        let pixel = pixelSize(of: screen)
-        if let url = NSWorkspace.shared.desktopImageURL(for: screen), let src = loadImage(url) {
-            let opts = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
-            let scaling = (opts[.imageScaling] as? NSNumber).flatMap { NSImageScaling(rawValue: $0.uintValue) }
-                ?? .scaleProportionallyUpOrDown
-            let clipping = (opts[.allowClipping] as? NSNumber)?.boolValue ?? true
-            let fill = (opts[.fillColor] as? NSColor)?.usingColorSpace(.sRGB)
-            let mode: SelectionGeometry.ImagePlacement
-            switch scaling {
-            case .scaleAxesIndependently: mode = .stretch
-            case .scaleNone: mode = .center
-            default: mode = clipping ? .fill : .fit
-            }
-            let bg = fill.map { RGBAColor(r: $0.redComponent, g: $0.greenComponent, b: $0.blueComponent) } ?? .black
-            // `.center` draws at the image's point size (honoring its DPI), converted to screen pixels.
-            var factor = screen.backingScaleFactor
-            if mode == .center, let pts = NSImage(contentsOf: url)?.size, pts.width > 0 {
-                factor *= pts.width / CGFloat(src.width)
-            }
-            return render(src, canvas: pixel, mode: mode, background: bg, centerScale: factor)
-        }
-        return await grabWallpaperWindow(for: screen)
+        if let live = await grabWallpaperWindows(for: screen) { return live }
+        return renderDesktopPicture(for: screen)
     }
 
-    /// Image for the "Hide desktop icons" covers, per the Wallpaper settings. nil = use `wallpaperColor`.
-    static func iconCoverImage(for screen: NSScreen) async -> CGImage? {
+    /// Content of a "Hide desktop icons" cover per the Wallpaper settings; nil = no cover for this screen
+    /// (better to leave the icons visible than to show a desktop that is not the user's).
+    static func iconCover(for screen: NSScreen) async -> IconCoverContent? {
         switch Defaults[.wallpaperSource] {
-        case .color: return nil
+        case .color:
+            return .color(Defaults[.wallpaperColor])
         case .custom:
-            guard let src = customImage() else { return await renderedDesktop(for: screen) }
-            return render(src, canvas: pixelSize(of: screen), mode: .fill, background: .black, centerScale: 1)
+            if let src = customImage() {
+                return render(src, canvas: pixelSize(of: screen), mode: .fill, background: .black, centerScale: 1).map(IconCoverContent.image)
+            }
+            return await renderedDesktop(for: screen).map(IconCoverContent.image)
         case .desktop:
-            return await renderedDesktop(for: screen)
+            return await renderedDesktop(for: screen).map(IconCoverContent.image)
         }
     }
 
@@ -81,29 +66,65 @@ enum WallpaperProvider {
         return ctx.makeImage()
     }
 
-    /// ScreenCaptureKit grab of the Dock-owned wallpaper window covering `screen` (needs screen-recording access).
-    private static func grabWallpaperWindow(for screen: NSScreen) async -> CGImage? {
-        guard Permissions.hasScreenRecording else { return nil }
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false) else { return nil }
-        let cgScreen = ScreenGeometry.cgRect(fromCocoa: screen.frame)
-        let desktopLevel = Int(CGWindowLevelForKey(.desktopWindow))
-        let candidates = content.windows.filter {
-            $0.owningApplication?.bundleIdentifier == "com.apple.dock" && $0.windowLayer <= desktopLevel + 1
-                && $0.frame.intersects(cgScreen)
+    /// Renders the file behind `desktopImageURL` (may be a still of a dynamic set, so only a fallback).
+    private static func renderDesktopPicture(for screen: NSScreen) -> CGImage? {
+        guard let url = NSWorkspace.shared.desktopImageURL(for: screen), let src = loadImage(url) else { return nil }
+        let opts = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
+        let scaling = (opts[.imageScaling] as? NSNumber).flatMap { NSImageScaling(rawValue: $0.uintValue) }
+            ?? .scaleProportionallyUpOrDown
+        let clipping = (opts[.allowClipping] as? NSNumber)?.boolValue ?? true
+        let fill = (opts[.fillColor] as? NSColor)?.usingColorSpace(.sRGB)
+        let mode: SelectionGeometry.ImagePlacement
+        switch scaling {
+        case .scaleAxesIndependently: mode = .stretch
+        case .scaleNone: mode = .center
+        default: mode = clipping ? .fill : .fit
         }
-        guard let window = candidates.max(by: { $0.frame.intersection(cgScreen).width * $0.frame.intersection(cgScreen).height
-                                                < $1.frame.intersection(cgScreen).width * $1.frame.intersection(cgScreen).height }) else { return nil }
-        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let bg = fill.map { RGBAColor(r: $0.redComponent, g: $0.greenComponent, b: $0.blueComponent) } ?? .black
+        // `.center` draws at the image's point size (honoring its DPI), converted to screen pixels.
+        var factor = screen.backingScaleFactor
+        if mode == .center, let pts = NSImage(contentsOf: url)?.size, pts.width > 0 {
+            factor *= pts.width / CGFloat(src.width)
+        }
+        return render(src, canvas: pixelSize(of: screen), mode: mode, background: bg, centerScale: factor)
+    }
+
+    /// True for the system's wallpaper windows: owned by the Dock or the Wallpaper agent, at or below the
+    /// desktop level (under the icons), excluding the full-screen backdrop that sits just above it.
+    nonisolated static func isWallpaperWindow(owner bundleID: String?, ownerName: String?, layer: Int) -> Bool {
+        let wallpaperOwner = bundleID == "com.apple.dock" || bundleID?.hasPrefix("com.apple.wallpaper") == true
+            || ownerName == "Wallpaper"
+        return wallpaperOwner && layer <= Int(CGWindowLevelForKey(.desktopWindow))
+    }
+
+    /// ScreenCaptureKit grab of the wallpaper window(s) on `screen` only (icons, our covers and every other
+    /// window left out), at the display's backing scale. Needs screen-recording access.
+    private static func grabWallpaperWindows(for screen: NSScreen) async -> CGImage? {
+        guard Permissions.hasScreenRecording,
+              let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let display = content.displays.first(where: { $0.displayID == screen.displayID }) else { return nil }
+        let cgScreen = ScreenGeometry.cgRect(fromCocoa: screen.frame)
+        let windows = content.windows.filter {
+            isWallpaperWindow(owner: $0.owningApplication?.bundleIdentifier, ownerName: $0.owningApplication?.applicationName,
+                              layer: $0.windowLayer) && $0.frame.intersects(cgScreen)
+        }
+        guard !windows.isEmpty else { return nil }
+        let filter = SCContentFilter(display: display, including: windows)
         let config = SCStreamConfiguration()
-        let scale = CGFloat(filter.pointPixelScale)
-        config.width = Int((filter.contentRect.width * scale).rounded())
-        config.height = Int((filter.contentRect.height * scale).rounded())
+        let pixel = pixelSize(of: screen)
+        config.width = Int(pixel.width)
+        config.height = Int(pixel.height)
         config.showsCursor = false
         config.captureResolution = .best
         config.colorSpaceName = CGColorSpace.sRGB
-        guard let img = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else { return nil }
-        return render(img, canvas: pixelSize(of: screen), mode: .fill, background: .black, centerScale: 1)
+        return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }
+}
+
+/// What a desktop-icon cover shows.
+enum IconCoverContent {
+    case image(CGImage)
+    case color(RGBAColor)
 }
 
 /// Places a window screenshot onto the configured background ("Window background" settings).

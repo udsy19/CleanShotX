@@ -84,11 +84,12 @@ monochrome template glyphs on the left. Shortcuts are right-aligned in secondary
 | 12 | Capture History... | `menubarHistory`: clock with counter-clockwise arrow → `clock.arrow.circlepath` | ⇧⌘7 (user-set) |
 | — | separator | | |
 | 13 | About CleanShot... | none | |
-| 14 | Check for Updates... | none | |
+| 14 | Settings... | none | ⌘, |
 | — | separator | | |
-| 15 | Settings... | none | ⌘, |
-| — | separator | | |
-| 16 | Quit | none | |
+| 15 | Quit | none | (no key equivalent shown) |
+
+Verified against the running app (Setapp build, 2026-10): About and Settings share one group with no separator,
+and there is no "Check for Updates..." item (Setapp handles updates).
 
 The 4.4 menu (macOS Monterey) [V] had these extra items, which 5.0 hides by default or shows conditionally:
 - "Capture Previous Area" (icon `menubarRepeat`, a circular arrow) after Capture Area.

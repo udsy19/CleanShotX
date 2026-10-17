@@ -15,22 +15,24 @@ final class DesktopIconsController {
     private var settingsSubscription: AnyCancellable?
     private var renderGeneration = 0
 
-    var isShowing: Bool { !covers.isEmpty }
-    /// Window numbers of the covers, to keep them in ScreenCaptureKit captures.
 
     func setUserHidden(_ hidden: Bool) {
         userHidden = hidden
         Task { await update() }
     }
 
-    /// Shows the covers for the duration of a capture (no-op unless the preference is on) and waits until
-    /// they are on screen. Balance with `endTemporaryHide()`.
-    func beginTemporaryHide() async -> Bool {
+    /// Shows the covers for the duration of a capture (no-op unless the preference is on). With
+    /// `waitUntilVisible` it returns once they have faded in and been composited, so pixels read next are
+    /// icon-free. Balance with `endTemporaryHide()`.
+    func beginTemporaryHide(waitUntilVisible: Bool = true) async -> Bool {
         guard Defaults[.hideDesktopIconsWhileCapturing] else { return false }
         temporaryHolds += 1
         await update()
-        // Let the window server composite the new windows before pixels are read.
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        if waitUntilVisible {
+            // Fade-in plus a frame or two for the window server to composite it.
+            let wait = (OverlayMotion.reduced ? 0 : IconCoverWindow.fadeDuration) + 0.05
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+        }
         return true
     }
 
@@ -57,20 +59,25 @@ final class DesktopIconsController {
         let generation = renderGeneration
         let screens = NSScreen.screens
         let ids = Set(screens.map(\.displayID))
-        for (id, w) in covers where !ids.contains(id) { w.orderOut(nil); w.close(); covers[id] = nil }
+        for (id, w) in covers where !ids.contains(id) { w.fadeOutAndClose(); covers[id] = nil }
         for screen in screens {
-            let image = await WallpaperProvider.iconCoverImage(for: screen)
+            let content = await WallpaperProvider.iconCover(for: screen)
             // A newer rebuild or a tear-down happened while rendering.
             guard generation == renderGeneration, shouldShow else { return }
+            guard let content else {
+                // Never show a desktop that is not the user's: leave this screen's icons visible.
+                covers.removeValue(forKey: screen.displayID)?.fadeOutAndClose()
+                continue
+            }
             let cover = covers[screen.displayID] ?? IconCoverWindow()
             covers[screen.displayID] = cover
-            cover.show(on: screen, image: image, color: Defaults[.wallpaperColor])
+            cover.show(on: screen, content: content)
         }
     }
 
     private func tearDown() {
         renderGeneration += 1
-        for w in covers.values { w.orderOut(nil); w.close() }
+        for w in covers.values { w.fadeOutAndClose() }
         covers.removeAll()
         let center = NSWorkspace.shared.notificationCenter
         for o in observers { center.removeObserver(o); NotificationCenter.default.removeObserver(o) }
@@ -100,19 +107,24 @@ final class DesktopIconsController {
     }
 }
 
-/// Borderless, non-activating window that paints the wallpaper over the desktop icons of one screen.
+/// Borderless, non-activating window that paints the wallpaper over the desktop icons of one screen. Its
+/// pixels match the live desktop, so fading it in only makes the icons dissolve.
 @MainActor
 private final class IconCoverWindow: NSPanel {
+    static let fadeDuration: TimeInterval = 0.15
+
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isReleasedWhenClosed = false
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        isOpaque = true
+        isOpaque = false
         hasShadow = false
         hidesOnDeactivate = false
+        ignoresMouseEvents = true
         animationBehavior = .none
-        backgroundColor = .black
+        backgroundColor = .clear
+        alphaValue = 0
         let view = NSView()
         view.wantsLayer = true
         view.layer?.contentsGravity = .resize
@@ -122,12 +134,27 @@ private final class IconCoverWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    func show(on screen: NSScreen, image: CGImage?, color: RGBAColor) {
+    func show(on screen: NSScreen, content: IconCoverContent) {
         setFrame(screen.frame, display: false)
         let layer = contentView?.layer
-        layer?.contents = image
+        switch content {
+        case .image(let image):
+            layer?.contents = image
+            layer?.backgroundColor = nil
+        case .color(let color):
+            layer?.contents = nil
+            layer?.backgroundColor = color.cgColor
+        }
         layer?.contentsScale = screen.backingScaleFactor
-        layer?.backgroundColor = color.cgColor
+        let appearing = !isVisible
         orderFrontRegardless()
+        if appearing { OverlayMotion.fade(self, to: 1, duration: Self.fadeDuration) }
+    }
+
+    func fadeOutAndClose() {
+        OverlayMotion.fade(self, to: 0, duration: Self.fadeDuration) { [self] in
+            orderOut(nil)
+            close()
+        }
     }
 }
