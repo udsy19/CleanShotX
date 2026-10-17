@@ -18,6 +18,15 @@ Contributions are welcome — see [CONTRIBUTING.md](../CONTRIBUTING.md).
 - [ ] Rotate / flip in crop mode
 - [ ] Retina-aware clipboard (TIFF with DPI) so images paste at point size everywhere
 
+## New tools
+- [ ] Auto-redact sensitive data (emails, phone numbers, card numbers, API keys) and faces with on-device Vision
+- [ ] Measure tool (pixel ruler with px/pt toggle)
+- [ ] Translate recognized text
+- [ ] Background removal (Vision foreground mask)
+- [ ] Image adjustments (brightness, contrast, saturation, presets)
+- [ ] Custom menu bar icon
+- [ ] Localization
+
 ## Recording & Studio
 - [ ] Cancel GIF rendering / uploads from the menu bar progress indicator
 - [ ] Settings for merging microphone + system audio into one track, GIF optimisation and maximum resolution
