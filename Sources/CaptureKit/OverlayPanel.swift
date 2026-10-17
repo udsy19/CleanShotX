@@ -124,6 +124,7 @@ final class OverlayView: NSView {
     override func flagsChanged(with event: NSEvent) { session?.flagsChanged(event) }
     override func cancelOperation(_ sender: Any?) { session?.cancel() }
 
+
     // MARK: Drawing
 
     private func local(_ r: CGRect) -> CGRect { r.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY) }
@@ -135,150 +136,206 @@ final class OverlayView: NSView {
         let hover = s.hoverRect
         let windowMode = s.mode == .window
 
-        // Curtain with a hole for the selection or the hovered window.
+        // Curtain (black ~38%) with a full-brightness hole for the selection or the hovered window.
         let hole: CGRect? = windowMode ? hover : (selection ?? hover)
-        let dimAlpha: CGFloat = (selection == nil && hover == nil && !windowMode) ? 0.18 : 0.38
         ctx.saveGState()
         ctx.addRect(bounds)
         if let hole { ctx.addRect(local(hole)) }
-        ctx.setFillColor(NSColor.black.withAlphaComponent(dimAlpha).cgColor)
+        ctx.setFillColor(NSColor.black.withAlphaComponent(OverlayStyle.dimAlpha).cgColor)
         ctx.fillPath(using: .evenOdd)
         ctx.restoreGState()
 
-        if let hover, hole == hover {
-            drawWindowHighlight(local(hover), tinted: windowMode, ctx: ctx)
-            if windowMode, let info = s.hovered { drawWindowLabel(info, in: local(hover)) }
+        if windowMode, let hover, let info = s.hovered {
+            let name = info.ownerName.isEmpty ? info.title : info.ownerName
+            if !name.isEmpty { drawWindowName(name, in: local(hover)) }
         }
         if let selection, !windowMode {
-            drawSelection(local(selection), handles: s.isAdjustable && !s.isCreating, ctx: ctx)
-            if s.config.showsDimensions && (s.isInteracting || (s.isAdjustable && s.config.style != .allInOne)) {
-                drawDimensions(selection, ctx: ctx)
+            drawSelection(local(selection), handles: s.isAdjustable && !s.isCreating, brackets: s.isRecordingPurpose, ctx: ctx)
+            if s.showsDimensionBadge { drawDimensionBadge(selection) }
+        }
+        let guides = !windowMode && (!s.isAdjustable || selection == nil || s.isCreating)
+        if guides, s.showsCrosshair {
+            drawCrosshair(at: local(s.cursor), ctx: ctx)
+            if screenFrame.contains(s.cursor) {
+                let coords = OverlayStyle.coordinates(of: s.cursor, on: screenFrame)
+                if s.showsMagnifier, let screen = screenOrNil(), let image = s.pixels?.image(for: screen) {
+                    LoupeRenderer.draw(in: ctx, cursor: s.cursor, screenFrame: screenFrame, image: image, bounds: bounds, coordinates: coords)
+                } else {
+                    drawCoordinates(coords, near: local(s.cursor))
+                }
             }
         }
-        if s.crosshair, !windowMode, !s.isAdjustable || selection == nil || s.isCreating {
-            drawCrosshair(at: local(s.cursor), ctx: ctx)
-        }
-        if s.magnifier, !windowMode, screenFrame.contains(s.cursor), let image = s.pixels?.image(for: screenOrNil()),
-           !(s.isAdjustable && selection != nil && !s.isCreating) {
-            LoupeRenderer.draw(in: ctx, cursor: s.cursor, screenFrame: screenFrame, image: image, bounds: bounds)
-        }
-        if let hint = s.hintText, NSScreen.active.frame == screenFrame {
-            drawPill(hint, center: CGPoint(x: bounds.midX, y: bounds.midY), font: .systemFont(ofSize: 14, weight: .medium))
-        }
+        if let hint = s.hintText, NSScreen.active.frame == screenFrame { drawHint(hint) }
     }
 
-    private func screenOrNil() -> NSScreen { NSScreen.screens.first { $0.frame == screenFrame } ?? NSScreen.active }
+    private func screenOrNil() -> NSScreen? { NSScreen.screens.first { $0.frame == screenFrame } }
 
-    private func drawSelection(_ r: CGRect, handles: Bool, ctx: CGContext) {
+    private func drawSelection(_ r: CGRect, handles: Bool, brackets: Bool, ctx: CGContext) {
         ctx.saveGState()
         ctx.setLineWidth(1)
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.35).cgColor)
-        ctx.stroke(r.insetBy(dx: -1, dy: -1))
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor)
+        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.25).cgColor)
+        ctx.stroke(r.insetBy(dx: -1.5, dy: -1.5))
+        ctx.setStrokeColor(NSColor.white.cgColor)
         ctx.stroke(r.insetBy(dx: -0.5, dy: -0.5))
         ctx.restoreGState()
+
+        if brackets {
+            // Record mode: white L-shaped corner brackets just outside the rect.
+            let o = r.insetBy(dx: -4, dy: -4), arm: CGFloat = 14
+            ctx.saveGState()
+            ctx.setShadow(offset: .zero, blur: 2, color: NSColor.black.withAlphaComponent(0.4).cgColor)
+            ctx.setStrokeColor(NSColor.white.cgColor)
+            ctx.setLineWidth(2)
+            ctx.setLineCap(.round)
+            for (x, y, sx, sy) in [(o.minX, o.minY, 1.0, 1.0), (o.maxX, o.minY, -1.0, 1.0), (o.minX, o.maxY, 1.0, -1.0), (o.maxX, o.maxY, -1.0, -1.0)] {
+                ctx.move(to: CGPoint(x: x + sx * arm, y: y))
+                ctx.addLine(to: CGPoint(x: x, y: y))
+                ctx.addLine(to: CGPoint(x: x, y: y + sy * arm))
+            }
+            ctx.strokePath()
+            ctx.restoreGState()
+        }
+
         guard handles else { return }
+        // Small white pills on the edge midpoints, rounded squares on the corners.
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -0.5), blur: 2, color: NSColor.black.withAlphaComponent(0.45).cgColor)
+        ctx.setFillColor(NSColor.white.cgColor)
         for h in SelectionHandle.allCases {
             let c = h.point(in: r)
-            let size: CGFloat = h.isCorner ? 10 : 8
-            let hr = CGRect(x: c.x - size / 2, y: c.y - size / 2, width: size, height: size)
-            ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: -1), blur: 3, color: NSColor.black.withAlphaComponent(0.5).cgColor)
-            ctx.setFillColor(NSColor.white.cgColor)
-            ctx.fillEllipse(in: hr)
-            ctx.restoreGState()
-            ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-            ctx.setLineWidth(1)
-            ctx.strokeEllipse(in: hr.insetBy(dx: 0.5, dy: 0.5))
+            let size: CGSize
+            if h.isCorner { size = CGSize(width: 8, height: 8) }
+            else if h == .top || h == .bottom { size = CGSize(width: 14, height: 4) }
+            else { size = CGSize(width: 4, height: 14) }
+            let hr = CGRect(x: c.x - size.width / 2, y: c.y - size.height / 2, width: size.width, height: size.height)
+            ctx.addPath(CGPath(roundedRect: hr, cornerWidth: 2, cornerHeight: 2, transform: nil))
         }
-    }
-
-    private func drawWindowHighlight(_ r: CGRect, tinted: Bool, ctx: CGContext) {
-        ctx.saveGState()
-        if tinted {
-            ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor)
-            ctx.fill(r)
-        }
-        ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-        ctx.setLineWidth(tinted ? 3 : 2)
-        ctx.stroke(r.insetBy(dx: 1.5, dy: 1.5))
+        ctx.fillPath()
         ctx.restoreGState()
     }
 
-    private func drawWindowLabel(_ info: WindowInfo, in r: CGRect) {
-        let name = info.title.isEmpty ? info.ownerName : "\(info.ownerName) — \(info.title)"
-        let size = SelectionGeometry.dimensionString(info.cgFrame.size)
-        drawPill("\(name)   \(size)", center: CGPoint(x: r.midX, y: r.midY), font: .systemFont(ofSize: 13, weight: .semibold))
-    }
-
-    private func drawDimensions(_ selection: CGRect, ctx: CGContext) {
-        let screen = NSScreen.screens.first { $0.frame.contains(CGPoint(x: selection.minX, y: selection.minY)) } ?? screenOrNil()
-        var text = SelectionGeometry.dimensionString(selection.size)
-        let px = screen.backingScaleFactor
-        if px != 1 {
-            text += "  ·  " + SelectionGeometry.dimensionString(CGSize(width: selection.width * px, height: selection.height * px)) + " px"
-        }
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+    /// Dark-grey "W x H" badge above the selection's top-left corner (inside it when there is no room).
+    private func drawDimensionBadge(_ selection: CGRect) {
+        let corner = CGPoint(x: selection.minX, y: selection.maxY)
+        let screen = NSScreen.screens.first { NSMouseInRect(corner, $0.frame, false) } ?? screenShowingMost(of: selection)
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
                                                     .foregroundColor: NSColor.white]
-        let textSize = (text as NSString).size(withAttributes: attrs)
-        let pill = CGSize(width: textSize.width + 16, height: textSize.height + 8)
-        // Below the bottom-left corner, or inside when there is no room.
-        var origin = CGPoint(x: selection.minX, y: selection.minY - pill.height - 6)
-        if origin.y < screen.frame.minY + 2 { origin.y = selection.minY + 6 }
+        let text = SelectionGeometry.dimensionString(selection.size, separator: " x ") as NSString
+        let textSize = text.size(withAttributes: attrs)
+        let pill = CGSize(width: ceil(textSize.width) + 12, height: ceil(textSize.height) + 6)
+        var origin = CGPoint(x: selection.minX, y: selection.maxY + 6)
+        if origin.y + pill.height > screen.frame.maxY - 2 { origin.y = selection.maxY - pill.height - 6 }
         origin.x = min(max(origin.x, screen.frame.minX + 2), screen.frame.maxX - pill.width - 2)
+        origin.y = max(origin.y, screen.frame.minY + 2)
         let r = local(CGRect(origin: origin, size: pill))
         guard r.intersects(bounds) else { return }
-        let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
-        NSColor.black.withAlphaComponent(0.72).setFill()
-        path.fill()
-        (text as NSString).draw(at: CGPoint(x: r.minX + 8, y: r.minY + 4), withAttributes: attrs)
+        OverlayStyle.badgeFill.setFill()
+        NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5).fill()
+        text.draw(at: CGPoint(x: r.minX + 6, y: r.minY + 3), withAttributes: attrs)
     }
 
+    /// Thin full-length guide lines (black ~50% with a light halo).
     private func drawCrosshair(at p: CGPoint, ctx: CGContext) {
         guard bounds.insetBy(dx: -1, dy: -1).contains(p) else { return }
+        let x = p.x.rounded(.down) + 0.5, y = p.y.rounded(.down) + 0.5
         ctx.saveGState()
-        for (color, width) in [(NSColor.black.withAlphaComponent(0.45), CGFloat(3)), (NSColor.white.withAlphaComponent(0.9), CGFloat(1))] {
+        for (color, width) in [(NSColor.white.withAlphaComponent(0.3), CGFloat(3)), (NSColor.black.withAlphaComponent(0.5), CGFloat(1))] {
             ctx.setStrokeColor(color.cgColor)
             ctx.setLineWidth(width)
-            ctx.move(to: CGPoint(x: bounds.minX, y: p.y.rounded() + 0.5))
-            ctx.addLine(to: CGPoint(x: bounds.maxX, y: p.y.rounded() + 0.5))
-            ctx.move(to: CGPoint(x: p.x.rounded() + 0.5, y: bounds.minY))
-            ctx.addLine(to: CGPoint(x: p.x.rounded() + 0.5, y: bounds.maxY))
+            ctx.move(to: CGPoint(x: bounds.minX, y: y)); ctx.addLine(to: CGPoint(x: bounds.maxX, y: y))
+            ctx.move(to: CGPoint(x: x, y: bounds.minY)); ctx.addLine(to: CGPoint(x: x, y: bounds.maxY))
             ctx.strokePath()
         }
         ctx.restoreGState()
     }
 
-    private func drawPill(_ text: String, center: CGPoint, font: NSFont) {
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
-        let size = (text as NSString).size(withAttributes: attrs)
-        let maxWidth = bounds.width - 40
-        let w = min(size.width + 28, maxWidth), h = size.height + 16
-        let r = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
-        let path = NSBezierPath(roundedRect: r, xRadius: h / 2, yRadius: h / 2)
-        NSColor.black.withAlphaComponent(0.7).setFill()
-        path.fill()
-        NSColor.white.withAlphaComponent(0.15).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-        let textRect = CGRect(x: r.minX + 14, y: r.minY + 8, width: w - 28, height: size.height)
+    /// X over Y, right-aligned small monospaced text just below-right of the cursor (flips at screen edges).
+    private func drawCoordinates(_ coords: (x: String, y: String), near p: CGPoint) {
+        let attrs = OverlayStyle.coordinateAttributes(alignment: .right)
+        let line = max((coords.x as NSString).size(withAttributes: attrs).width, (coords.y as NSString).size(withAttributes: attrs).width)
+        let size = CGSize(width: ceil(line) + 2, height: 28)
+        var r = CGRect(x: p.x + 10, y: p.y - 10 - size.height, width: size.width, height: size.height)
+        if r.maxX > bounds.maxX - 2 { r.origin.x = p.x - 10 - size.width }
+        if r.minY < bounds.minY + 2 { r.origin.y = p.y + 10 }
+        ("\(coords.x)\n\(coords.y)" as NSString).draw(in: r, withAttributes: attrs)
+    }
+
+    /// Centred light instruction pill.
+    private func drawHint(_ text: String) {
         let para = NSMutableParagraphStyle()
         para.alignment = .center
-        para.lineBreakMode = .byTruncatingMiddle
-        var a = attrs
-        a[.paragraphStyle] = para
-        (text as NSString).draw(in: textRect, withAttributes: a)
+        para.lineBreakMode = .byTruncatingTail
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 15), .paragraphStyle: para,
+                                                    .foregroundColor: NSColor.black.withAlphaComponent(0.85)]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let h: CGFloat = 32
+        let w = min(ceil(size.width) + 32, bounds.width - 40)
+        let r = CGRect(x: (bounds.midX - w / 2).rounded(), y: (bounds.midY - h / 2).rounded(), width: w, height: h)
+        let path = NSBezierPath(roundedRect: r, xRadius: h / 2, yRadius: h / 2)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.shadowBlurRadius = 8
+        shadow.set()
+        NSColor.white.withAlphaComponent(0.88).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        (text as NSString).draw(in: CGRect(x: r.minX + 16, y: r.midY - size.height / 2, width: w - 32, height: size.height), withAttributes: attrs)
+    }
+
+    /// Dark app-name pill centred on the hovered window (CleanShot: `windowNameLabel`).
+    private func drawWindowName(_ name: String, in r: CGRect) {
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.lineBreakMode = .byTruncatingTail
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 17, weight: .medium),
+                                                    .foregroundColor: NSColor.white, .paragraphStyle: para]
+        let size = (name as NSString).size(withAttributes: attrs)
+        let h: CGFloat = 34
+        let w = min(ceil(size.width) + 36, max(r.width - 16, 60))
+        let pill = CGRect(x: (r.midX - w / 2).rounded(), y: (r.midY - h / 2).rounded(), width: w, height: h)
+        OverlayStyle.namePillFill.setFill()
+        NSBezierPath(roundedRect: pill, xRadius: h / 2, yRadius: h / 2).fill()
+        (name as NSString).draw(in: CGRect(x: pill.minX + 18, y: pill.midY - size.height / 2, width: w - 36, height: size.height), withAttributes: attrs)
     }
 }
 
-/// The magnifier (CleanShot: `Loupe` – `pixelZoom`, `pixelCount`): a zoomed pixel grid around the cursor
-/// with the screen coordinates and the hex color of the center pixel.
+/// Overlay design tokens (ui-reference §0.1 / §2).
+@MainActor
+enum OverlayStyle {
+    static let dimAlpha: CGFloat = 0.38
+    static let badgeFill = NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.85)
+    static let namePillFill = NSColor(srgbRed: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255, alpha: 0.9)
+
+    /// Cursor position in points from the screen's top-left, like the system tools.
+    static func coordinates(of p: CGPoint, on screenFrame: CGRect) -> (x: String, y: String) {
+        (String(Int((p.x - screenFrame.minX).rounded(.down))), String(Int((screenFrame.maxY - p.y).rounded(.down))))
+    }
+
+    /// Small dark monospaced digits with a light halo, readable on any background.
+    static func coordinateAttributes(alignment: NSTextAlignment) -> [NSAttributedString.Key: Any] {
+        let para = NSMutableParagraphStyle()
+        para.alignment = alignment
+        let halo = NSShadow()
+        halo.shadowColor = NSColor.white.withAlphaComponent(0.9)
+        halo.shadowBlurRadius = 2
+        halo.shadowOffset = .zero
+        return [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
+                .foregroundColor: NSColor.black.withAlphaComponent(0.85), .shadow: halo, .paragraphStyle: para]
+    }
+}
+
+/// The magnifier (CleanShot: `Loupe` – `pixelZoom`, `pixelCount`): a rounded square of nearest-neighbour
+/// pixels around the cursor with a darker crosshair band, and the coordinates just above it.
 @MainActor
 enum LoupeRenderer {
-    static let pixelCount = 15
-    static let pixelZoom: CGFloat = 8
+    static let pixelCount = 11
+    static let pixelZoom: CGFloat = 6
+    static let offset: CGFloat = 12
 
-    static func draw(in ctx: CGContext, cursor: CGPoint, screenFrame: CGRect, image: CGImage, bounds: CGRect) {
+    static func draw(in ctx: CGContext, cursor: CGPoint, screenFrame: CGRect, image: CGImage, bounds: CGRect,
+                     coordinates: (x: String, y: String)) {
         let k = CGFloat(image.width) / screenFrame.width
         let px = Int(((cursor.x - screenFrame.minX) * k).rounded(.down))
         let py = Int(((screenFrame.maxY - cursor.y) * k).rounded(.down))
@@ -295,67 +352,49 @@ enum LoupeRenderer {
             sample.interpolationQuality = .none
             sample.draw(part, in: CGRect(x: x, y: y, width: visible.width, height: visible.height))
         }
-        var hex = "#000000"
-        if let data = sample.data {
-            let bytes = data.assumingMemoryBound(to: UInt8.self)
-            let i = half * sample.bytesPerRow + half * 4
-            hex = SelectionGeometry.hexString(r: Double(bytes[i]) / 255, g: Double(bytes[i + 1]) / 255, b: Double(bytes[i + 2]) / 255)
-        }
         guard let zoomed = sample.makeImage() else { return }
 
         let side = CGFloat(n) * pixelZoom
-        let labelHeight: CGFloat = 22
-        let total = CGSize(width: side, height: side + labelHeight + 4)
+        let text = "\(coordinates.x), \(coordinates.y)" as NSString
+        let attrs = OverlayStyle.coordinateAttributes(alignment: .center)
+        let labelHeight = ceil(text.size(withAttributes: attrs).height)
+        let total = CGSize(width: side, height: side + labelHeight + 2)
         let lp = CGPoint(x: cursor.x - screenFrame.minX, y: cursor.y - screenFrame.minY)
-        var origin = CGPoint(x: lp.x + 24, y: lp.y - 24 - total.height)
-        if origin.x + total.width > bounds.maxX - 4 { origin.x = lp.x - 24 - total.width }
-        if origin.y < bounds.minY + 4 { origin.y = lp.y + 24 }
-        let grid = CGRect(x: origin.x, y: origin.y + labelHeight + 4, width: side, height: side)
+        var origin = CGPoint(x: lp.x + offset, y: lp.y - offset - total.height)
+        if origin.x + total.width > bounds.maxX - 4 { origin.x = lp.x - offset - total.width }
+        if origin.y < bounds.minY + 4 { origin.y = lp.y + offset }
+        let grid = CGRect(x: origin.x.rounded(), y: origin.y.rounded(), width: side, height: side)
+        let shape = CGPath(roundedRect: grid, cornerWidth: 8, cornerHeight: 8, transform: nil)
 
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -2), blur: 8, color: CGColor(gray: 0, alpha: 0.5))
+        ctx.setShadow(offset: CGSize(width: 0, height: -2), blur: 6, color: CGColor(gray: 0, alpha: 0.35))
         ctx.setFillColor(CGColor(gray: 0, alpha: 1))
-        ctx.addPath(CGPath(roundedRect: grid, cornerWidth: 10, cornerHeight: 10, transform: nil))
+        ctx.addPath(shape)
         ctx.fillPath()
         ctx.restoreGState()
 
         ctx.saveGState()
-        ctx.addPath(CGPath(roundedRect: grid, cornerWidth: 10, cornerHeight: 10, transform: nil))
+        ctx.addPath(shape)
         ctx.clip()
         ctx.interpolationQuality = .none
         ctx.draw(zoomed, in: grid)
-        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.12))
-        ctx.setLineWidth(0.5)
-        for i in 1..<n {
-            let o = CGFloat(i) * pixelZoom
-            ctx.move(to: CGPoint(x: grid.minX + o, y: grid.minY)); ctx.addLine(to: CGPoint(x: grid.minX + o, y: grid.maxY))
-            ctx.move(to: CGPoint(x: grid.minX, y: grid.minY + o)); ctx.addLine(to: CGPoint(x: grid.maxX, y: grid.minY + o))
-        }
-        ctx.strokePath()
-        let center = CGRect(x: grid.minX + CGFloat(half) * pixelZoom, y: grid.minY + CGFloat(half) * pixelZoom,
-                            width: pixelZoom, height: pixelZoom)
-        ctx.setLineWidth(2)
-        ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.8))
-        ctx.stroke(center.insetBy(dx: -1, dy: -1))
+        // Darker translucent band through the centre row and column, then the centre pixel outline.
+        let c = CGFloat(half) * pixelZoom
+        ctx.setFillColor(CGColor(gray: 0, alpha: 0.22))
+        ctx.fill(CGRect(x: grid.minX + c, y: grid.minY, width: pixelZoom, height: c))
+        ctx.fill(CGRect(x: grid.minX + c, y: grid.minY + c + pixelZoom, width: pixelZoom, height: side - c - pixelZoom))
+        ctx.fill(CGRect(x: grid.minX, y: grid.minY + c, width: c, height: pixelZoom))
+        ctx.fill(CGRect(x: grid.minX + c + pixelZoom, y: grid.minY + c, width: side - c - pixelZoom, height: pixelZoom))
+        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.9))
         ctx.setLineWidth(1)
-        ctx.setStrokeColor(CGColor(gray: 1, alpha: 1))
-        ctx.stroke(center.insetBy(dx: -0.5, dy: -0.5))
+        ctx.stroke(CGRect(x: grid.minX + c, y: grid.minY + c, width: pixelZoom, height: pixelZoom).insetBy(dx: -0.5, dy: -0.5))
         ctx.restoreGState()
 
-        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.6))
-        ctx.setLineWidth(1)
-        ctx.addPath(CGPath(roundedRect: grid.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 10, cornerHeight: 10, transform: nil))
+        ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.6))
+        ctx.setLineWidth(1.5)
+        ctx.addPath(CGPath(roundedRect: grid.insetBy(dx: 0.75, dy: 0.75), cornerWidth: 7.5, cornerHeight: 7.5, transform: nil))
         ctx.strokePath()
 
-        // Coordinates are shown in points relative to the screen's top-left, like the system tools.
-        let coords = "\(Int(cursor.x - screenFrame.minX)), \(Int(screenFrame.maxY - cursor.y))"
-        let text = "\(coords)   \(hex)"
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-                                                    .foregroundColor: NSColor.white]
-        let label = CGRect(x: origin.x, y: origin.y, width: side, height: labelHeight)
-        NSColor.black.withAlphaComponent(0.75).setFill()
-        NSBezierPath(roundedRect: label, xRadius: 6, yRadius: 6).fill()
-        let size = (text as NSString).size(withAttributes: attrs)
-        (text as NSString).draw(at: CGPoint(x: label.midX - size.width / 2, y: label.midY - size.height / 2), withAttributes: attrs)
+        text.draw(in: CGRect(x: grid.minX - 20, y: grid.maxY + 2, width: side + 40, height: labelHeight), withAttributes: attrs)
     }
 }

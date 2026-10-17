@@ -131,37 +131,37 @@ final class Artwork: @unchecked Sendable {
 
     // MARK: Keystroke labels
 
-    /// A dark pill containing `text`, `fontSize` pixels.
-    func label(_ text: String, fontSize: CGFloat) -> CGImage? {
+    /// A rounded keystroke label containing `text` at `fontSize` pixels: dark glass with white glyphs, or light
+    /// with dark glyphs. SF Pro Rounded semibold.
+    func label(_ text: String, fontSize: CGFloat, light: Bool) -> CGImage? {
         let size = max(8, fontSize.rounded())
-        let key = "\(Int(size))|\(text)"
+        let key = "\(Int(size))|\(light)|\(text)"
         lock.lock()
         if let img = labelCache[key] { lock.unlock(); return img }
         lock.unlock()
-        let font = CTFontCreateUIFontForLanguage(.system, size, nil) ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
-        let bold = CTFontCreateCopyWithSymbolicTraits(font, size, nil, .traitBold, .traitBold) ?? font
+        let base = NSFont.systemFont(ofSize: size, weight: .semibold)
+        let font: CTFont = base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? base
         let attrs: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): bold,
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1),
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: light ? 0.1 : 1, alpha: 1),
         ]
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
         var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
         let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
-        let padX = size * 0.75, padY = size * 0.45
+        let padX = size * 0.65, padY = size * 0.42
         let w = Int((width + padX * 2).rounded(.up)), h = Int((ascent + descent + padY * 2).rounded(.up))
         guard let ctx = Self.context(w, h) else { return nil }
         let rect = CGRect(x: 0, y: 0, width: w, height: h)
-        let radius = min(CGFloat(h) / 2, size * 0.6)
+        let radius = min(CGFloat(h) / 2, size * 0.5)
         ctx.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
-        ctx.setFillColor(CGColor(gray: 0.08, alpha: 0.82)); ctx.fillPath()
+        ctx.setFillColor(light ? CGColor(gray: 1, alpha: 0.88) : CGColor(srgbRed: 0.12, green: 0.12, blue: 0.16, alpha: 0.82)); ctx.fillPath()
         ctx.addPath(CGPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerWidth: radius, cornerHeight: radius, transform: nil))
-        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.12)); ctx.setLineWidth(1); ctx.strokePath()
+        ctx.setStrokeColor(CGColor(gray: light ? 0 : 1, alpha: light ? 0.08 : 0.14)); ctx.setLineWidth(1); ctx.strokePath()
         ctx.textPosition = CGPoint(x: padX, y: padY + descent)
         CTLineDraw(line, ctx)
         guard let img = ctx.makeImage() else { return nil }
         lock.lock()
-        labelCache[key] = img
-        labelOrder.append(key)
+        if labelCache.updateValue(img, forKey: key) == nil { labelOrder.append(key) }
         if labelOrder.count > 96 { labelCache[labelOrder.removeFirst()] = nil }
         lock.unlock()
         return img

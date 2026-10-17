@@ -4,13 +4,17 @@ import ShotcraftCore
 /// Pure geometry for the Quick Access stack (no AppKit state), so it can be self-tested.
 /// All rects are global Cocoa coordinates (origin bottom-left).
 public enum QuickAccessLayout {
-    public static let baseCardWidth: CGFloat = 200
-    public static let minAspect: CGFloat = 0.45   // height / width
+    /// ~174×124 pt at the default (3rd) "Overlay size" tick for a 16:10 capture (ui-reference §4).
+    public static let baseCardWidth: CGFloat = 174
+    /// Height / width clamp. The thumbnail is aspect-filled, so wider captures are cropped rather than letterboxed.
+    public static let minAspect: CGFloat = 0.71
     public static let maxAspect: CGFloat = 1.25
     public static let margin: CGFloat = 16
     public static let spacing: CGFloat = 12
     public static let headerHeight: CGFloat = 30
-    public static let headerWidth: CGFloat = 200
+    public static let headerWidth: CGFloat = 174
+    /// How much of the newest card stays visible while the stack is temporarily slid down.
+    public static let slideDownPeek: CGFloat = 14
     /// The header with Close All / Save All appears from this many cards on.
     public static let headerThreshold = 3
 
@@ -74,6 +78,13 @@ public enum QuickAccessLayout {
     public static func offscreenFrame(for frame: CGRect, in visible: CGRect, side: ScreenSide) -> CGRect {
         var f = frame
         f.origin.x = side == .left ? visible.minX - frame.width - 8 : visible.maxX + 8
+        return f
+    }
+
+    /// Where a card sits while the stack is temporarily hidden by sliding it down: only its top edge peeks out.
+    public static func slidDownFrame(for frame: CGRect, in visible: CGRect) -> CGRect {
+        var f = frame
+        f.origin.y = visible.minY - frame.height + slideDownPeek
         return f
     }
 

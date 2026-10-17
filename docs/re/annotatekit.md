@@ -45,19 +45,27 @@ Tool identifiers recovered from `sa` 4199–4306 (`annotateArrowTool`, `annotate
 | Tool | Key | Options (evidence) |
 |---|---|---|
 | Move / select | V | — (`annotateMoveTool`) |
-| Crop & Resize | C | ratio popup, W×H fields, swap, snapping, Resize popover (cd ANCropController, ANResizeControlViewController) |
+| Crop & Resize | K | ratio popup, W×H fields, swap, snapping, Resize popover (cd ANCropController, ANResizeControlViewController) |
 | Rectangle | R | color, thickness |
 | Filled Rectangle | F | color |
-| Ellipse | O | color, thickness |
+| Ellipse | E | color, thickness |
 | Line | L | color, thickness |
 | Arrow | A | style: standard / curved / double / fancy / slim (`annotateArrowStyle*` sa 4205–4212; generators `OriginalArrowGenerator`, `FancyArrowGenerator`, `SlimArrowGenerator(controlPoint, doubleHeaded)` cd 1–46) |
 | Text | T | style: standard / outline / box / rounded / rounded box / monospaced / monospaced box (`annotateTextStyle*` sa 4291–4298); font size (`annotateLastTextSize`); emoji (ANTextEmojiButton) |
-| Pen (draw) | P | color, thickness; smoothing per `_smoothDrawing`; ⇧ draws a straight segment (`isDrawingStraightLine`) |
-| Highlighter | H | shape: freehand / rectangle (`annotate_highlight_shape`, `annotateLastHighlightShape`), opacity (`annotateLastHighlightOpacity`), multiply blending (`multiplyBlendingMode`) |
-| Pixelate | B | style: pixelate / blur / secure blur / black out (`annotatePixelateStyle*` sa 4270–4277), intensity slider (`annotatePixelateIntensity`) |
-| Spotlight | S | shape rect/ellipse (ANSpotlightShapeButton), opacity slider (`spotlightOpacitySlider`) |
-| Counter | N | style numbers / letters / roman (sa 14092, 16651), "Starting number:" (sa 19528), size (ANCounterSettingsButton `sizeChangedWithSender:`) |
-| Background | G | sidebar (§5) |
+| Pen (draw) | D | color, thickness; smoothing per `_smoothDrawing`; ⇧ draws a straight segment (`isDrawingStraightLine`) |
+| Highlighter | M | shape: freehand / rectangle (`annotate_highlight_shape`, `annotateLastHighlightShape`), opacity (`annotateLastHighlightOpacity`), multiply blending (`multiplyBlendingMode`) |
+| Pixelate | P | style: pixelate / blur / secure blur / black out (`annotatePixelateStyle*` sa 4270–4277), intensity slider (`annotatePixelateIntensity`) |
+| Spotlight | H | shape rect/ellipse (ANSpotlightShapeButton), opacity slider (`spotlightOpacitySlider`) |
+| Counter | C | style numbers / letters / roman (sa 14092, 16651), "Starting number:" (sa 19528), size (ANCounterSettingsButton `sizeChangedWithSender:`) |
+| Background | B | sidebar (§5) |
+
+Keys follow CleanShot X 5.0 (`docs/re/ui-reference.md` §5). Toolbar, left → right: Crop, Add image (⇧⌘I new
+screenshot, ⌘I from file, paste), Background chips · segmented tools Move, Rectangle, Filled Rectangle, Ellipse, Line,
+Arrow, Text, Pixelate, Spotlight, Counter, Draw, Highlighter · colour well (palette popover), tool-style popover
+(per-tool options), draw lock (off = back to Move after each object) · Save / Save as… (per "Save button behavior"),
+Done (⌘S, ⌘↩). In crop mode the tool group becomes the crop bar and Save/Done become Cancel/Crop. Bottom bar: zoom
+popup, "Drag me", Share, Pin, Copy (⌥ keeps the editor open), Upload. Save As / Save Project / Open / Print live in
+the canvas context menu and on ⇧⌘S / ⌥⌘S / ⌘O / ⌘P.
 
 Thickness shortcuts `annotateIncreaseThickness` / `annotateDecreaseThickness` → `]`/`[` (without ⌘).
 Modifiers: ⇧ constrains (45° for lines/arrows, square/circle for shapes, aspect for image), ⌥ draws from center.
@@ -109,16 +117,21 @@ Remembering the sidebar: "Remember if background tool was opened" (ui 660, `.ann
 Shotcraft `BackgroundSettings`: fill `none | color | gradient(id) | desktop wallpaper | image file`;
 padding (pt), inset (pt, colour sampled from the image corner), auto-balance (centre the opaque part of the image —
 window screenshots with transparent shadow margins), corner radius (pt), shadow (0–1), 9-point alignment,
-aspect ratio `auto, 1:1, 4:3, 3:2, 16:10, 16:9, 9:16, custom`. 24 original gradients (12 shown, "Show More").
-Presets live in `annotate.backgroundPresets`; the last settings in `annotate.lastBackground`.
+aspect ratio `auto, 1:1, 4:3, 3:2, 16:10, 16:9, 9:16, custom`. 20 original gradients (10 shown, "Show more"),
+wallpapers (desktop + recent custom images in `annotate.customWallpapers`), blurred fills (blurred wallpaper, frosted
+light, frosted grey), plain colours (8 saturated + transparent, 8 pastel + custom wheel).
+Presets live in `annotate.backgroundPresets`; the last settings in `annotate.lastBackground`; the default preset
+(auto-applied to newly opened screenshots) in `annotate.defaultBackgroundPreset`.
 
 ## 6. Colour palette
 
 `ANColorPalette(defaultColors, defaultColorsNames, showsAlpha)`, custom colours (`annotateCustomColors`,
 `annotate_custom_colors_count`), `ANColorPicker` with pipette (`pipetteClicked`), `_showColorNames`.
-Shotcraft: popover with named presets (names shown per `.annotateShowColorNames`), custom swatches
-(`annotate.customColors`, add via NSColorPanel, right-click to delete), opacity slider, and an eyedropper
-(`NSColorSampler`, works on the canvas).
+Shotcraft: popover with two columns — ten default colours (names shown per `.annotateShowColorNames`) and ten
+"My Colors" slots (`annotate.customColors`; hover ✕ deletes, drag reorders, empty slot adds the current colour) — plus
+a colour-wheel button (NSColorPanel) and an expand chevron (`annotate.paletteExpanded`) that reveals a
+saturation/brightness square, hue and alpha sliders, hex field, eyedropper (`NSColorSampler`), R/G/B/Alpha fields and
+"Add to My Colors".
 
 ## 7. Saving, exporting
 

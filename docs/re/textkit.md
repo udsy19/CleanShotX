@@ -44,9 +44,12 @@ Shotcraft's `TextKit` reimplements them. Evidence references: `docs/re/raw/class
    then `VNDetectBarcodesRequest`. Small captures (< 0.4 MP) are upscaled 2× first — Vision misses tiny glyphs.
 4. Layout → reading order (see §3), join per `keepLineBreaks ?? ocrKeepLineBreaks`; barcode payloads not already
    present in the text are appended on their own lines.
-5. Empty → HUD "No text detected". Otherwise `Clipboard.copy(text:)`, `Sound.play(.textCopied)`, HUD "Text has been copied".
-6. If `ocrOpenLinks` and the whole result is one http(s) URL → alert "Do you want to open this link?" with
-   *Open Link in Browser* / *Cancel* / *Never open links* (turns the preference off).
+5. Empty → toast "No text detected". Otherwise `Clipboard.copy(text:)`, `Sound.play(.textCopied)`, toast "Text has been
+   copied". The toast is TextKit's own dark pill (`#1C1C1E` 90 %, white 13 pt medium, `doc.on.doc`, radius 10) at the
+   bottom-centre of the selection's screen, fading out after 1.5 s (ui-reference §11).
+6. If `ocrOpenLinks` ("Detect links") and a QR/barcode payload is an http(s) link, or the whole result is one link →
+   alert "Do you want to open this link?" with the URL, *Open Link in Browser* / *Don't Open* and a
+   "Don't detect links" checkbox (turns the preference off).
 
 ## 3. Reading order and joining (`TextAssembler`, pure)
 * Boxes converted to top-left pixel space. Median line height `h` is the unit for all thresholds.
@@ -61,26 +64,32 @@ Shotcraft's `TextKit` reimplements them. Evidence references: `docs/re/raw/class
   otherwise a single space. With line breaks rows are joined with `\n`.
 
 ## 4. Scrolling Capture (`startScrollingCapture`)
-### UI (SGOverlay equivalents)
-* **Frame window**: full-screen click-through window dimming everything but the area, with a border just outside it.
-  All our windows belong to our process and are therefore excluded by `ScreenCapturer`.
-* **Controls panel** (below the area, else above, else inside): orientation popup (Auto / Vertical / Horizontal,
-  persisted as `textkit.scrollingOrientation`), *Auto-Scroll* toggle, *Start Capture* → *Done*, frame counter,
-  Help popover (rephrased troubleshooting list), *Cancel*. Esc cancels, Return starts/finishes (local monitor, plus a
-  global monitor which works when Accessibility is granted).
-* **Preview panel** beside the area (right, else left; below/above for horizontal): live stitched image anchored to the
-  newest content + pixel dimensions.
-* **Hint pill** centred in the area: "Move cursor here to start scrolling" (cursor outside), "Slowly scroll down the
-  content" / "Slowly scroll right" / "Scroll Vertically or Horizontally" (until the first match), "Please slow down..."
-  (shakes; no overlap found), "Scroll down to continue" (pause after scrolling back), "Screenshot is very large"
-  (permanent, capture stops growing at 30 000 px).
+### UI (SGOverlay equivalents, ui-reference §12)
+* **Frame window**: full-screen click-through window dimming (black 38 %) everything but the area, with a 1 pt white
+  border plus faint dark outer stroke. All our windows belong to our process and are excluded by `ScreenCapturer`.
+* **Controls** (`ScrollingControls`): 24 pt capsule pills (12 pt medium) docked bottom-centre *inside* the area
+  (below/above it when the area is too small): dark "▶ Auto-Scroll" on top; below it dark "?" (help popover with the
+  rephrased troubleshooting list), dark "✕ Cancel" and a light "Start Capture" that becomes "✓ Done". When horizontal
+  scrolling is detected the vertical Auto-Scroll pill is replaced by a horizontal one at the area's right edge. While
+  auto-scrolling the pill reads "■ Stop Auto-Scroll". Esc cancels (in any state, also while rendering), Return
+  starts/finishes (local monitor, plus a global Esc monitor that works with Accessibility). Orientation is always
+  detected (no manual picker — CleanShot has none).
+* **Preview**: white card (radius 6, shadow) docked outside the area — right side (else left), bottom-aligned, 165 pt
+  wide, growing taller with the stitched image (newest content anchored at the bottom once it no longer fits); for
+  horizontal captures a 100 pt strip above (else below) the area, growing wider.
+* **Alert pill** (light frosted pill centred in the area): "Move cursor here to start scrolling" (cursor outside),
+  "Slowly scroll down the content" / "Slowly scroll right" / "Scroll Vertically or Horizontally" (until the first
+  match), "Please slow down..." (shakes; no overlap found), "Paused — scroll down to continue" (after scrolling back),
+  "Screenshot is very large" (permanent, capture stops growing at 30 000 px), "Auto-Scroll needs Accessibility
+  permission".
 
 ### Frame loop
-* Manual: a 10 Hz timer grabs `ScreenCapturer.capture(rect:on:showsCursor:false)`; a grab is skipped while the
+* Manual: a 10 Hz timer (run-loop `.common` mode, so it keeps firing while the help popover is open) grabs `ScreenCapturer.capture(rect:on:showsCursor:false)`; a grab is skipped while the
   previous one is still being captured/processed, so the effective rate adapts to the machine (8–10 fps typical).
 * Auto-scroll: needs Accessibility (`Permissions.requestAccessibility()` otherwise). Cursor is parked at the area centre;
-  each step posts pixel-unit `CGEvent` scroll-wheel events (≈ 35 % of the area, chunked ≤ 60 px), waits 0.35 s for
-  smooth-scrolling to settle, grabs and compares. Three consecutive unchanged frames = end of content → auto Done.
+  each step posts pixel-unit `CGEvent` scroll-wheel events (≈ 35 % of the area, chunked ≤ 60 px) at a point of the
+  area not covered by our pills, waits 0.35 s for smooth-scrolling to settle, grabs and compares (a failed grab is
+  retried before scrolling again). Moving the cursor out of the area stops auto-scroll (events would land elsewhere). Three consecutive unchanged frames = end of content → auto Done.
   "No overlap" makes it scroll back by the same step and halve the step.
 
 ### Stitching (`ScrollStitcher`, `OffsetDetector`, pure)
@@ -97,9 +106,14 @@ Shotcraft's `TextKit` reimplements them. Evidence references: `docs/re/raw/class
 * **Canvas**: first frame up to its footer, then for each accepted frame the `d` rows just above the footer, finally the
   last frame's footer. Strips are copied into their own bitmaps so frames are not retained. Length is capped at
   30 000 px. Comparison is always against the last *accepted* frame, so scrolling back up and down again recovers.
-* Orientation "Auto": vertical and horizontal stitchers run side by side until one produces a match; the other is
+* Orientation: vertical and horizontal stitchers run side by side until one produces a match; the other is
   dropped (CleanShot's `verticalMatches/horizontalMatches/isDetecting`).
 * Done → `MediaPipeline.didCaptureImage(stitched, scale: screen.backingScaleFactor, mode: .scrolling, actions: options.actions)`.
+
+### Lifecycle
+* `end()` is idempotent: it invalidates the timer, cancels the auto-scroll and finish tasks, removes key monitors,
+  orders out every panel and drops the engine (releasing the strips). The finish task re-checks its state after every
+  await, so cancelling while rendering never delivers a result.
 
 ## 5. Not reproduced
 * Onboarding pages (OCR/scrolling) — owned by PreferencesKit's onboarding.

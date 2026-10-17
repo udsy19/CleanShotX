@@ -32,6 +32,24 @@ struct UploadPane: View {
     var body: some View {
         PaneForm(pane: .upload) {
             Section {
+                HStack(spacing: 12) {
+                    IconTile(symbol: destinationSymbol, tint: PreferencesPane.upload.tint, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(destination == .none ? "Uploading is off" : destination.displayName).font(.headline)
+                        Text(destinationSummary).font(.callout).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                    Spacer(minLength: 8)
+                    if destination != .none {
+                        Button("Test Connection") { runTest() }
+                            .disabled(testState == .running || Services.upload == nil)
+                            .help("Uploads a tiny test file with these settings and removes it again where possible.")
+                    }
+                }
+                .padding(.vertical, 4)
+                if testState != .idle {
+                    HStack(spacing: 8) { testStatus; Spacer(minLength: 0) }
+                }
                 Picker("Destination", selection: $destination) {
                     ForEach(UploadDestinationKind.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
@@ -46,30 +64,23 @@ struct UploadPane: View {
             case .folder: folderSection
             }
 
-            if destination != .none {
-                Section {
-                    HStack(spacing: 10) {
-                        Button("Test Connection") { runTest() }
-                            .disabled(testState == .running || Services.upload == nil)
-                        testStatus
-                        Spacer(minLength: 0)
-                    }
-                } footer: {
-                    HelpText("Uploads a tiny test file with the settings above and removes it again where possible.")
-                }
-            }
-
-            Section("Options") {
-                Toggle("Copy link when upload starts", isOn: $copyLinkWhenStarts)
+            Section("Upload") {
                 Picker(selection: $maxImageWidth) {
-                    ForEach(maxWidthChoices, id: \.self) { Text($0 == 0 ? "Original size" : "\($0) px").tag($0) }
+                    ForEach(PickerChoices.including(maxImageWidth, in: Self.widthChoices), id: \.self) {
+                        Text($0 == 0 ? "Original size" : "\($0) px wide").tag($0)
+                    }
                 } label: {
-                    Text("Maximum image width")
-                    Text("Larger screenshots are scaled down before uploading.")
+                    Text("Screenshot size")
+                    Text("Larger screenshots are scaled down before uploading to balance quality and loading time.")
                 }
             }
 
-            Section("Recent uploads") {
+            Section("Clipboard") {
+                SettingToggle("Copy link when upload starts", isOn: $copyLinkWhenStarts,
+                              help: "The link is copied as soon as it is known, before the upload finishes.")
+            }
+
+            Section("Recently Uploaded") {
                 if recent.isEmpty {
                     Text("Nothing uploaded yet.").foregroundStyle(.secondary)
                 } else {
@@ -78,6 +89,14 @@ struct UploadPane: View {
             }
         }
         .onAppear(perform: load)
+        .onChange(of: destination) { _, _ in testState = .idle }
+        // Restore Defaults (Advanced) or another window may rewrite the stored headers; keep the rows in step.
+        .onChange(of: httpHeaders) { _, dict in
+            if HeaderRow.dictionary(from: headerRows) != dict { headerRows = HeaderRow.rows(from: dict) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            recent = Services.upload?.recentUploads ?? []
+        }
     }
 
     // MARK: Sections
@@ -85,6 +104,7 @@ struct UploadPane: View {
     private var s3Section: some View {
         Section("S3-compatible storage") {
             TextField("Endpoint", text: $s3Endpoint, prompt: Text("https://s3.us-east-1.amazonaws.com"))
+            ValidationNote(problem: SettingsValidation.urlProblem(s3Endpoint))
             TextField("Region", text: $s3Region, prompt: Text("us-east-1"))
             TextField("Bucket", text: $s3Bucket, prompt: Text("my-screenshots"))
             TextField("Access key ID", text: $s3AccessKeyID)
@@ -103,12 +123,14 @@ struct UploadPane: View {
                 Text("Public URL prefix")
                 Text("Used to build the shared link; leave empty to use the bucket URL.")
             }
+            ValidationNote(problem: SettingsValidation.urlProblem(s3PublicURLPrefix))
         }
     }
 
     private var httpSection: some View {
         Section("Custom HTTP endpoint") {
             TextField("Endpoint URL", text: $httpEndpoint, prompt: Text("https://example.com/upload"))
+            ValidationNote(problem: SettingsValidation.urlProblem(httpEndpoint))
             TextField(text: $httpFieldName, prompt: Text("file")) {
                 Text("File field name")
                 Text("Name of the multipart form field carrying the file.")
@@ -148,6 +170,7 @@ struct UploadPane: View {
                 Text("URL prefix")
                 Text("The file name is appended to build the shared link.")
             }
+            ValidationNote(problem: SettingsValidation.urlProblem(folderURLPrefix))
         }
     }
 
@@ -162,8 +185,25 @@ struct UploadPane: View {
         }
     }
 
-    private var maxWidthChoices: [Int] {
-        Self.widthChoices.contains(maxImageWidth) ? Self.widthChoices : (Self.widthChoices + [maxImageWidth]).sorted()
+    private var destinationSymbol: String {
+        switch destination {
+        case .none: "icloud.slash"
+        case .s3: "externaldrive.connected.to.line.below"
+        case .customHTTP: "network"
+        case .folder: "folder"
+        }
+    }
+
+    /// One-line summary of where uploads go, shown in the header box.
+    private var destinationSummary: String {
+        let summary: String
+        switch destination {
+        case .none: return "Choose a destination below to share captures as links."
+        case .s3: summary = [s3Bucket, s3Endpoint].filter { !$0.isEmpty }.joined(separator: " · ")
+        case .customHTTP: summary = httpEndpoint
+        case .folder: summary = folderPath.isEmpty ? "" : (folderPath as NSString).abbreviatingWithTildeInPath
+        }
+        return summary.isEmpty ? "Not set up yet" : summary
     }
 
     @ViewBuilder private var testStatus: some View {

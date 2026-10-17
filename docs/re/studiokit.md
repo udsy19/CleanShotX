@@ -48,17 +48,23 @@ over the arm64 slice (property-name tables that sit next to each other in `__cst
 
 1. `startStudioRecording(rect:)`: with no rect, `Services.capture.selectArea(purpose: .studio)` (Return = whole
    screen is handled by CaptureKit). The area is clipped to the display holding most of it.
-2. Pre-record bar (HUD panel under the area): microphone menu, system-audio toggle, camera menu (opens a live
-   camera bubble), keystrokes toggle (asks for Accessibility), *Start Recording* (Return), cancel (Esc).
-3. Countdown (`recordCountdown` / `recordCountdownSeconds`), Esc cancels back to the bar.
+2. Pre-record panel (ui-reference §7.1, 227 pt wide, two stacked dark-glass blocks under the area): a settings
+   row — microphone menu, system audio, camera menu (opens a live 160 pt camera bubble with a 3 pt white
+   border), keystrokes (asks for Accessibility), cancel — where active toggles are full white with a small tick
+   and inactive ones 55 %; then the "Record in Studio Mode" pill (`movieclapper.fill`, "↩").
+3. Countdown (`recordCountdown` / `recordCountdownSeconds`): 80 pt black disc, 44 pt bold digit, a ring that
+   fills each second; hover shows a cancel button, Esc cancels back to the panel.
 4. Capture: `SCStream`, display filter excluding Shotcraft's own windows, `sourceRect` = area, native pixel size
    (`backingScaleFactor`), `showsCursor = false`, BGRA, `videoFPS` (30–60). H.264, HEVC above 4096×2304.
    System audio via SCStream audio, microphone via `AVCaptureSession`, each its own AAC track (system first).
 5. `RecordingClock` maps every host timestamp (SCStream PTS, `AVCaptureSession.synchronizationClock`
    converted to the host clock, input-monitor callback time) to media time with pauses removed. All three files
-   share one timeline starting at 0; samples during pauses are dropped. The last screen frame is re-appended at
-   stop so idle endings keep their length.
-6. Controls panel: Stop, timer, Pause/Resume, Restart ("Are you sure you want to cancel this recording and
+   share one timeline starting at 0; samples during pauses are dropped. Click/scroll/key events use the
+   event's own `NSEvent.timestamp` (same mach time base) and `cgEvent.location`, so they line up with frames even
+   when the monitor callback runs late. ScreenCaptureKit only delivers frames when the screen changes, so the
+   newest pre-start frame is written at 0 and the last frame is re-appended at stop.
+6. Controls bar (§7.2): dark pill (`#161616` 95 %, radius 20) — red `stop.circle` + red m:ss timer, pause/resume
+   circle, restart, trash, drag grip, separated by hairlines. Stop, Restart ("Are you sure you want to cancel this recording and
    start a new one?"), Delete ("Are you sure you want to delete this recording?"). `StatusBar.setRecording` every
    250 ms with the elapsed time when "Display recording time in menu bar" is on.
 7. Stop → finalize writers → events.json → project.json (style from the last edited project, auto zooms from
@@ -72,16 +78,37 @@ keys; normalized area coordinates, top-left origin) · `project.json` (`StudioPr
 
 ## 3. Editing model
 
-* **Clips** are source ranges; the output timeline is their concatenation. Split at playhead (S), delete clip
-  (⌫, cut), trim by dragging edges (bounded by neighbours, min 0.1 s). Cut marks (scissors) show source jumps.
+* **Clips** are source ranges; the output timeline is their concatenation. Split at playhead (⌘B) or click with
+  the Cut tool (B; V returns to Selection), delete clip (⌫), trim by dragging edges (bounded by neighbours,
+  min 0.1 s). Grey scissors badges under the clip track mark every cut; removed ranges ≥ 0.5 s read "✂ 4s".
 * **Zooms** and **camera full-screen segments** are stored in *source* time so they stay attached to the
   content when clips are cut; the timeline maps them through the clips (`outputTimeClamped`). Lane edits
   (`LaneMath`) never overlap: click adds a 2 s segment, drag creates one, drag body moves, edges resize,
-  ⌥S splits a zoom, "Apply Zoom Level to All", "Remove All Zooms", "Regenerate Zooms from Clicks".
+  ⇧⌘B splits a zoom. Zoom context menu: Zoom Level ▸, Apply Zoom Level to All, Zoom Mode ▸, Split Zoom at
+  Playhead, Duplicate, Remove, Remove All Zooms.
 * **Undo/redo**: snapshot history (≤200), continuous gestures coalesce into one step.
 * **Saving**: ⌘S writes project.json; every edit autosaves autosave.json after 1 s; closing with unsaved edits
-  asks "Do you want to save your project before closing?" (Save / Don't Save / Cancel). Title edits rename the
-  package immediately.
+  asks "Do you want to save your project before closing?" (Save / Don't Save / Cancel). All package writes go
+  through one serial queue and pending autosaves are cancelled first, so a late autosave can never resurrect
+  autosave.json after Save / Don't Save. Title edits rename the package immediately (blocked while exporting)
+  and reload the media from the new location.
+* **Compatibility**: every style struct, `StudioProject` and `StudioEvents` decode field by field with
+  defaults, so projects from older/newer builds open (old 4-corner camera positions and top/bottom keystroke
+  positions map onto the 3×3 grid; the old "muted" flag turns both audio sources off).
+
+### Editor window (ui-reference §9)
+
+Always dark (`#1E1E1E` window, `#232323` panels, 8 % white hairlines). Unified toolbar: centred editable title
+plus grey "Edited", then ⋯ (Save, Export Current Frame, Reveal in Finder), grey `icloud.and.arrow.up`
+(Export & Upload) and the blue "Export" button. Left: 44 pt icon rail — Cursor, Keystrokes, Audio, Camera,
+Background, Animations; the selected icon sits on a 28 pt accent square — with the scissors (Cut tool) pinned at
+the bottom, level with the transport. Beside it the 245 pt properties panel (11 pt section labels, switches,
+sliders with value labels, segmented pairs whose selected half is blue, popups, checkboxes, 3×3 position
+grids). Selecting a zoom swaps in the contextual Zoom panel (level %, Apply to All, Follow Cursor | Manual with
+the focus mini-preview, Animation Settings popover). Preview centred with an expand button (⌘F full screen);
+transport: "00:08 / 00:22", ⏮ ▶ ⏭, "– slider +" timeline zoom. Timeline (full width): ruler with faint
+gridlines, zoom track (grey "Zoom 150%" bars, selected = accent, "+ Click or drag to add zoom"), clip filmstrip
+(8 pt radius, small gaps), cut badges, camera track; red 1 pt playhead with a rounded pin head.
 
 ## 4. Smart zoom (FLSmartZoomAnalyzer)
 
@@ -105,32 +132,37 @@ and AVAssetImageGenerator alike. Per frame, at source time *t*:
    screen placed with padding and rounded mask — all transformed by the single zoom affine so nothing is
    resampled twice.
 4. Cursor: smoothed position (1€, `smoothing` 0…1), vector arrow / I-beam (CoreGraphics) or system hand,
-   scaled with the zoom, press shrink, idle/typing fades; ripple rings for clicks (0.55 s).
+   scaled with the zoom, press shrink, idle/typing fades. Click highlight (0.45 s, grows 0.6→1 and fades):
+   Outline = light ring around a solid dot, or Filled = translucent disc, in a named colour (Blue…White).
 5. Optional CIZoomBlur proportional to viewport speed (motion blur).
-6. Camera (not zoomed): aspect-filled, mirrored, circle / rounded / square bubble in a corner, shrinks up to 30%
+6. Camera (not zoomed): aspect-filled, mirrored, circle / rounded / square bubble on a 3×3 grid, shrinks up to 30%
    while zoomed, animates to full canvas inside full-screen segments; clicking it in the preview toggles a
    segment at the playhead.
-7. Keystroke pill (CoreText) bottom/top centre; shortcuts only or all keys (typing accumulates).
+7. Keystroke label (SF Pro Rounded semibold, Dark or Light style) on a 3×3 grid; shortcuts only or all keys
+   (typing accumulates).
 
 ## 6. Export
 
-Sheet: format (MP4 H.264 / MP4 HEVC / GIF), resolution (Original, 4K, 1080p, 720p, 480p), 30/60 fps, quality,
-"Optimized for sharing" (H.264, ≤1080p, ≤30 fps, balanced bitrate), include audio, output size and
-"Estimated file size". MP4: AVAssetReaderVideoCompositionOutput + AVAssetReaderAudioMixOutput (volumes/mute)
-→ AVAssetWriter. GIF: AVAssetImageGenerator with the same video composition → CGImageDestination. Progress
-sheet with "Cancel Processing…", Dock tile progress bar. Result → `MediaPipeline.didFinishRecording(url, kind:
+Sheet (§8): format (MP4 H.264 / MP4 HEVC / GIF), "Resolution" (Original, 4k, 1440p, 1080p, 720p, 480p, 360p,
+240p — each with its computed size, never upscaling), frame rate, "Quality" slider with a Very low…High label,
+"Audio" switch, "Estimated file size". MP4: AVAssetReaderVideoCompositionOutput + AVAssetReaderAudioMixOutput
+(per-source include toggles and volumes) → AVAssetWriter. GIF: AVAssetImageGenerator with the same video
+composition → CGImageDestination. Progress sheet "Exporting video..." with "~Xs remaining", percentage and
+"Cancel Export"; Dock tile progress bar. Export & Upload (⌘U) adds `.upload` to the after-recording actions. Result → `MediaPipeline.didFinishRecording(url, kind:
 .video/.gif, mode: .studio, pixelSize, scale)`. "Export Current Frame as Image" (⇧⌘E) →
 `MediaPipeline.didCaptureImage`.
 
 ## 7. Keyboard
 
 Space play/pause · J/K/L shuttle · ←/→ frame, ⇧ 10 frames · ↑/↓ previous/next clip edge · Home/End ·
-S split clip · ⌥S split zoom · ⌫ delete selection · Esc deselect · F toggle camera full screen ·
-⌘+/⌘− zoom timeline, ⇧Z fit (also ⌘-scroll / pinch) · ⌘Z/⇧⌘Z · ⌘S save · ⌘E export.
+B cut tool · V selection tool · ⌘B split clip · ⇧⌘B split zoom · ⌫ delete selection · Esc deselect ·
+F toggle camera full screen · ⌘F window full screen · ⌘=/⌘− zoom timeline, ⇧Z fit (also ⌘-scroll / pinch) ·
+⌘Z/⇧⌘Z · ⌘S save · ⌘E export · ⌘U export & upload · ⇧⌘E export current frame · ⌘W close.
 
 ## 8. Not reproduced
 
-* CleanShot Cloud upload from the editor (out of scope; UploadKit handles uploads after export via the pipeline).
+* CleanShot Cloud itself — "Export & Upload" hands the file to UploadKit's configured destination.
+* "Save As…" and the app-level File menu entries (the app target owns the main menu; the shortcuts work).
 * Window-event / text-caret tracking (`_windowEvents`, `_textEvents`, `caretVerification`) used to zoom on the
   focused text field — smart zoom here uses clicks only.
 * Passthrough export (`projectCanEncodeUsingPassthrough`) — every export re-renders.

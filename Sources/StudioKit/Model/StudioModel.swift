@@ -89,7 +89,15 @@ public struct StudioEvents: Codable, Equatable, Sendable {
     /// False when Accessibility permission was missing, so keystrokes could not be captured.
     public var keystrokesCaptured = true
     public init() {}
-    public var isEmpty: Bool { cursor.isEmpty && clicks.isEmpty && keys.isEmpty }
+
+    /// Every list is optional, so a file missing one (or from a newer build) still yields the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = c.value(.version, 1)
+        cursor = c.value(.cursor, []); clicks = c.value(.clicks, []); scrolls = c.value(.scrolls, []); keys = c.value(.keys, [])
+        keystrokesCaptured = c.value(.keystrokesCaptured, true)
+    }
+
 }
 
 // MARK: - Timeline objects
@@ -163,14 +171,18 @@ public enum StudioBackground: Codable, Hashable, Sendable {
     public var isNone: Bool { if case .none = self { return true }; return false }
 }
 
+
 public enum AspectRatio: String, Codable, CaseIterable, Sendable {
-    case auto, wide16x9, standard4x3, square, vertical9x16, portrait3x4
+    // Declaration order is the popup order.
+    case auto, square, standard4x3, classic3x2, wide16x9, wide16x10, vertical9x16, portrait3x4
     public var title: String {
         switch self {
         case .auto: "Auto"
-        case .wide16x9: "16:9"
-        case .standard4x3: "4:3"
         case .square: "1:1"
+        case .standard4x3: "4:3"
+        case .classic3x2: "3:2"
+        case .wide16x9: "16:9"
+        case .wide16x10: "16:10"
         case .vertical9x16: "9:16"
         case .portrait3x4: "3:4"
         }
@@ -179,9 +191,11 @@ public enum AspectRatio: String, Codable, CaseIterable, Sendable {
     public var value: Double? {
         switch self {
         case .auto: nil
-        case .wide16x9: 16.0 / 9
-        case .standard4x3: 4.0 / 3
         case .square: 1
+        case .standard4x3: 4.0 / 3
+        case .classic3x2: 3.0 / 2
+        case .wide16x9: 16.0 / 9
+        case .wide16x10: 16.0 / 10
         case .vertical9x16: 9.0 / 16
         case .portrait3x4: 3.0 / 4
         }
@@ -198,15 +212,45 @@ public enum CursorStyle: String, Codable, CaseIterable, Sendable {
     public var title: String {
         switch self {
         case .macOS: "macOS"
-        case .inverted: "Inverted"
-        case .touch: "Touch"
+        case .inverted: "Alternative"
+        case .touch: "Dot"
         }
     }
 }
 
 public enum ClickEffect: String, Codable, CaseIterable, Sendable {
     case none, ripple
-    public var title: String { self == .none ? "None" : "Ripple animation" }
+}
+
+/// Look of the click highlight (Settings → Click highlight: Outline / Filled).
+public enum ClickStyle: String, Codable, CaseIterable, Sendable {
+    case outline, filled
+    public var title: String { rawValue.capitalized }
+}
+
+/// Named click colours (the "Color" popup).
+public enum ClickColor: String, CaseIterable, Sendable {
+    case blue, purple, pink, red, orange, yellow, green, white
+    public var title: String { rawValue.capitalized }
+    public var rgba: RGBAColor {
+        switch self {
+        case .blue: RGBAColor(r: 0.04, g: 0.52, b: 1.0)
+        case .purple: RGBAColor(r: 0.69, g: 0.32, b: 0.87)
+        case .pink: RGBAColor(r: 1.0, g: 0.22, b: 0.37)
+        case .red: RGBAColor(r: 1.0, g: 0.27, b: 0.23)
+        case .orange: RGBAColor(r: 1.0, g: 0.62, b: 0.04)
+        case .yellow: RGBAColor(r: 1.0, g: 0.84, b: 0.04)
+        case .green: RGBAColor(r: 0.19, g: 0.82, b: 0.35)
+        case .white: RGBAColor(r: 1, g: 1, b: 1)
+        }
+    }
+    /// The named colour closest to `c` (projects may hold any colour).
+    public static func nearest(_ c: RGBAColor) -> ClickColor {
+        allCases.min { a, b in
+            func d(_ x: RGBAColor) -> Double { pow(x.r - c.r, 2) + pow(x.g - c.g, 2) + pow(x.b - c.b, 2) }
+            return d(a.rgba) < d(b.rgba)
+        } ?? .blue
+    }
 }
 
 public enum ZoomAnimationStyle: String, Codable, CaseIterable, Sendable {
@@ -234,15 +278,21 @@ public enum ZoomEasing: String, Codable, CaseIterable, Sendable {
     }
 }
 
-public enum Corner: String, Codable, CaseIterable, Sendable {
-    case topLeft, topRight, bottomLeft, bottomRight
-    public var title: String {
-        switch self {
-        case .topLeft: "Top Left"
-        case .topRight: "Top Right"
-        case .bottomLeft: "Bottom Left"
-        case .bottomRight: "Bottom Right"
-        }
+/// A cell of the 3×3 position grid (camera bubble, keystroke label). Raw values of the old 4-corner and
+/// top/bottom enums are kept so existing projects decode unchanged.
+public enum GridPosition: String, Codable, CaseIterable, Sendable {
+    case topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight
+    private var index: Int { Self.allCases.firstIndex(of: self) ?? 7 }
+    /// 0 = left, 1 = centre, 2 = right.
+    public var column: Int { index % 3 }
+    /// 0 = top, 1 = middle, 2 = bottom.
+    public var row: Int { index / 3 }
+
+    /// Origin (bottom-left, CI space) of an item of `size` placed in `canvas` with margin `m`.
+    public func origin(of size: CGSize, in canvas: CGSize, margin m: CGFloat) -> CGPoint {
+        let x: CGFloat = [m, (canvas.width - size.width) / 2, canvas.width - m - size.width][column]
+        let y: CGFloat = [canvas.height - m - size.height, (canvas.height - size.height) / 2, m][row]
+        return CGPoint(x: x, y: y)
     }
 }
 
@@ -251,9 +301,15 @@ public enum CameraShape: String, Codable, CaseIterable, Sendable {
     public var title: String { rawValue.capitalized }
 }
 
-public enum KeystrokePosition: String, Codable, CaseIterable, Sendable {
-    case bottom, top
+public enum KeystrokeStyle: String, Codable, CaseIterable, Sendable {
+    case dark, light
     public var title: String { rawValue.capitalized }
+}
+
+// Style structs decode every field with a fallback so projects written by older (or newer) builds still open.
+
+extension KeyedDecodingContainer {
+    func value<T: Decodable>(_ key: Key, _ fallback: T) -> T { (try? decodeIfPresent(T.self, forKey: key)) ?? fallback }
 }
 
 public struct CursorSettings: Codable, Hashable, Sendable {
@@ -263,13 +319,27 @@ public struct CursorSettings: Codable, Hashable, Sendable {
     /// 0 = raw movement, 1 = heavily smoothed.
     public var smoothing = 0.6
     public var hideWhenIdle = false
-    public var hideWhenTyping = false
+    public var hideWhenTyping = true
     public var clickEffect: ClickEffect = .ripple
+    public var clickStyle: ClickStyle = .outline
     /// Shrink the cursor slightly while a button is held.
     public var pressEffect = true
     public var style: CursorStyle = .macOS
-    public var rippleColor = RGBAColor(r: 1, g: 1, b: 1, a: 0.9)
+    public var rippleColor = ClickColor.blue.rgba
     public init() {}
+
+    /// Values for the "Motion" pair.
+    public static let naturalSmoothing = 0.3
+    public static let smoothSmoothing = 0.75
+    public var isSmoothMotion: Bool { smoothing >= (Self.naturalSmoothing + Self.smoothSmoothing) / 2 }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self), d = Self()
+        show = c.value(.show, d.show); size = c.value(.size, d.size); smoothing = c.value(.smoothing, d.smoothing)
+        hideWhenIdle = c.value(.hideWhenIdle, d.hideWhenIdle); hideWhenTyping = c.value(.hideWhenTyping, d.hideWhenTyping)
+        clickEffect = c.value(.clickEffect, d.clickEffect); clickStyle = c.value(.clickStyle, d.clickStyle)
+        pressEffect = c.value(.pressEffect, d.pressEffect); style = c.value(.style, d.style); rippleColor = c.value(.rippleColor, d.rippleColor)
+    }
 }
 
 public struct ZoomSettings: Codable, Hashable, Sendable {
@@ -282,33 +352,74 @@ public struct ZoomSettings: Codable, Hashable, Sendable {
     /// 0…1 zoom blur applied while a zoom animates.
     public var motionBlur = 0.0
     public init() {}
+
+    /// "Zoom animations: Smooth | Dynamic" presets over (animation, easing).
+    public var isDynamic: Bool { animation == .quick || animation == .instant || easing == .snappy }
+    public mutating func setDynamic(_ dynamic: Bool) {
+        animation = dynamic ? .quick : .smooth
+        easing = dynamic ? .snappy : .smooth
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self), d = Self()
+        defaultLevel = c.value(.defaultLevel, d.defaultLevel); autoZoom = c.value(.autoZoom, d.autoZoom)
+        followCursorByDefault = c.value(.followCursorByDefault, d.followCursorByDefault)
+        animation = c.value(.animation, d.animation); easing = c.value(.easing, d.easing); motionBlur = c.value(.motionBlur, d.motionBlur)
+    }
 }
 
 public struct CameraSettings: Codable, Hashable, Sendable {
     public var show = true
-    public var position: Corner = .bottomRight
+    public var position: GridPosition = .bottomRight
     /// Bubble size as a fraction of the canvas' short side.
     public var size = 0.24
     public var shape: CameraShape = .circle
     public var shrinkOnZoom = true
     public var flip = true
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self), d = Self()
+        show = c.value(.show, d.show); position = c.value(.position, d.position); size = c.value(.size, d.size)
+        shape = c.value(.shape, d.shape); shrinkOnZoom = c.value(.shrinkOnZoom, d.shrinkOnZoom); flip = c.value(.flip, d.flip)
+    }
 }
 
 public struct KeystrokeSettings: Codable, Hashable, Sendable {
     public var show = false
     public var size = 1.0
-    public var position: KeystrokePosition = .bottom
+    public var style: KeystrokeStyle = .dark
+    public var position: GridPosition = .bottom
     /// false = only shortcuts with ⌘ / ⌃ / ⌥.
     public var displayAll = false
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self), d = Self()
+        show = c.value(.show, d.show); size = c.value(.size, d.size); style = c.value(.style, d.style)
+        position = c.value(.position, d.position); displayAll = c.value(.displayAll, d.displayAll)
+    }
 }
 
 public struct AudioSettings: Codable, Hashable, Sendable {
+    public var includeMicrophone = true
     public var microphoneVolume = 1.0
+    public var includeSystemAudio = true
     public var systemVolume = 1.0
-    public var muted = false
     public init() {}
+
+    private enum LegacyKeys: String, CodingKey { case muted }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self), d = Self()
+        let mutedBefore = (try? decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .muted)) ?? false
+        includeMicrophone = c.value(.includeMicrophone, d.includeMicrophone && !mutedBefore)
+        includeSystemAudio = c.value(.includeSystemAudio, d.includeSystemAudio && !mutedBefore)
+        microphoneVolume = c.value(.microphoneVolume, d.microphoneVolume); systemVolume = c.value(.systemVolume, d.systemVolume)
+    }
+
+    public var microphoneGain: Float { includeMicrophone ? Float(microphoneVolume) : 0 }
+    public var systemGain: Float { includeSystemAudio ? Float(systemVolume) : 0 }
 }
 
 /// Every look-and-feel property of a project; the last-used style seeds new projects.
@@ -316,8 +427,9 @@ public struct StudioStyle: Codable, Hashable, Sendable {
     public var background: StudioBackground = .gradient(.dusk)
     /// Padding around the recording, fraction of the canvas' short side (0…0.3).
     public var padding = 0.08
-    /// Corner radius in pixels at a 1080-pixel canvas (scales with output size).
+    /// Corner radius in pixels at a 1080-pixel canvas (scales with output size), 0…`maxCornerRadius`.
     public var cornerRadius = 18.0
+    public static let maxCornerRadius = 60.0
     /// 0…1.
     public var shadow = 0.6
     /// Crop from each edge of the recording, fraction of its short side (0…0.15).
@@ -329,6 +441,14 @@ public struct StudioStyle: Codable, Hashable, Sendable {
     public var keystrokes = KeystrokeSettings()
     public var audio = AudioSettings()
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self), d = Self()
+        background = c.value(.background, d.background); padding = c.value(.padding, d.padding)
+        cornerRadius = c.value(.cornerRadius, d.cornerRadius); shadow = c.value(.shadow, d.shadow); inset = c.value(.inset, d.inset)
+        aspectRatio = c.value(.aspectRatio, d.aspectRatio); cursor = c.value(.cursor, d.cursor); zoom = c.value(.zoom, d.zoom)
+        camera = c.value(.camera, d.camera); keystrokes = c.value(.keystrokes, d.keystrokes); audio = c.value(.audio, d.audio)
+    }
 
     /// Effective values (no background ⇒ no padding/corners/shadow).
     public var effectivePadding: Double { background.isNone ? 0 : padding }
@@ -377,6 +497,18 @@ public struct StudioProject: Codable, Hashable, Sendable {
         cameraFullscreen = []
     }
 
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = c.value(.version, 1)
+        title = try c.decode(String.self, forKey: .title)
+        recording = try c.decode(RecordingInfo.self, forKey: .recording)
+        let clips = c.value(.clips, [StudioClip]()).filter { $0.duration > 0 }
+        self.clips = clips.isEmpty ? [StudioClip(start: 0, duration: recording.duration)] : clips
+        zooms = c.value(.zooms, [])
+        cameraFullscreen = c.value(.cameraFullscreen, [])
+        style = c.value(.style, StudioStyle())
+    }
+
     public var timeline: ClipTimeline { ClipTimeline(clips: clips, sourceDuration: recording.duration) }
 }
 
@@ -390,8 +522,6 @@ extension Defaults.Keys {
     static let studioExportResolution = Key<String>("studio.export.resolution", default: "original")
     static let studioExportFPS = Key<Int>("studio.export.fps", default: 60)
     static let studioExportQuality = Key<Double>("studio.export.quality", default: 0.75)
-    static let studioExportOptimized = Key<Bool>("studio.export.optimized", default: false)
-    static let studioTimelineHeight = Key<Double>("studio.timelineHeight", default: 190)
 }
 
 enum StudioStyleMemory {

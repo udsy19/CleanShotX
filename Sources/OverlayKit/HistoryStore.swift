@@ -9,11 +9,14 @@ final class HistoryStore: ObservableObject, HistoryServicing {
 
     /// Newest first. The same `CapturedMedia` instances are shared with Quick Access and pins.
     @Published private(set) var items: [CapturedMedia] = []
+    /// Bumped on every `CapturedMedia.didChange` so views holding the same (reference-type) media re-render.
+    @Published private(set) var revisions: [UUID: Int] = [:]
 
     private let fileURL: URL
     private var observers: [NSObjectProtocol] = []
     private var defaultsSub: AnyCancellable?
     private var pruneTimer: Timer?
+    private var saveScheduled = false
 
     private init() {
         fileURL = AppPaths.history.appendingPathComponent("history.json")
@@ -22,6 +25,10 @@ final class HistoryStore: ObservableObject, HistoryServicing {
         observers.append(NotificationCenter.default.addObserver(forName: CapturedMedia.didChange, object: nil, queue: .main) { [weak self] n in
             guard let media = n.object as? CapturedMedia else { return }
             MainActor.assumeIsolated { self?.mediaDidChange(media) }
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                                                queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flush() }
         })
         defaultsSub = Defaults.changes.receive(on: DispatchQueue.main).sink { [weak self] name in
             MainActor.assumeIsolated {
@@ -45,6 +52,7 @@ final class HistoryStore: ObservableObject, HistoryServicing {
         var list = items.filter { $0.id != media.id }
         list.append(media)
         items = list.sorted { $0.createdAt > $1.createdAt }
+        prune()      // also drops entries whose file disappeared (e.g. trashed by another module)
         save()
     }
 
@@ -71,6 +79,7 @@ final class HistoryStore: ObservableObject, HistoryServicing {
             try? fm.removeItem(at: media.url)
         }
         items = []
+        revisions = [:]
         save()
     }
 
@@ -81,6 +90,7 @@ final class HistoryStore: ObservableObject, HistoryServicing {
     func remove(id: UUID) {
         guard items.contains(where: { $0.id == id }) else { return }
         items.removeAll { $0.id == id }
+        revisions[id] = nil
         save()
     }
 
@@ -98,12 +108,16 @@ final class HistoryStore: ObservableObject, HistoryServicing {
         }
         let keep = Set(result.kept.map(\.id)).union(onScreen.subtracting(result.missing.map(\.id)))
         items = items.filter { keep.contains($0.id) }
+        revisions = revisions.filter { keep.contains($0.key) }
         save()
     }
 
+    func revision(of media: CapturedMedia) -> Int { revisions[media.id] ?? 0 }
+
     private func mediaDidChange(_ media: CapturedMedia) {
         guard let idx = items.firstIndex(where: { $0.id == media.id }) else { return }
-        if items[idx] !== media { items[idx] = media } else { objectWillChange.send() }
+        if items[idx] !== media { items[idx] = media }
+        revisions[media.id, default: 0] += 1
         save()
     }
 
@@ -114,7 +128,19 @@ final class HistoryStore: ObservableObject, HistoryServicing {
         items = HistoryIndex.decode(data).map { $0.makeMedia() }
     }
 
+    /// Coalesces bursts of changes (save + upload + rename …) into one write on the next run-loop turn.
+    /// All mutation and I/O stay on the main actor, so writes can never interleave or land out of order.
     private func save() {
+        guard !saveScheduled else { return }
+        saveScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.flush() }
+        }
+    }
+
+    private func flush() {
+        guard saveScheduled else { return }
+        saveScheduled = false
         do {
             let data = try HistoryIndex.encode(items.map(HistoryEntry.init))
             try data.write(to: fileURL, options: .atomic)

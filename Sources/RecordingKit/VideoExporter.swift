@@ -3,14 +3,17 @@ import ShotcraftCore
 
 struct VideoExportOptions {
     var timeRange: CMTimeRange
-    var removeAudio: Bool
+    var includeAudio: Bool
+    /// Audio gain, 0…1.
+    var volume: Float
     var quality: VideoQuality
     /// Resolution factor, 0 < scale ≤ 1.
     var scale: Double
     var fileType: AVFileType
 
-    /// Original quality at full size needs no re-encode.
-    var isPassthrough: Bool { quality == .original && scale >= 0.999 }
+    var changesVolume: Bool { includeAudio && abs(volume - 1) > 0.001 }
+    /// Original quality at full size with untouched audio needs no re-encode.
+    var isPassthrough: Bool { quality == .original && scale >= 0.999 && !changesVolume }
 }
 
 enum VideoExportError: LocalizedError {
@@ -29,14 +32,17 @@ enum VideoExporter {
     static func fileType(for url: URL) -> AVFileType { url.pathExtension.lowercased() == "mov" ? .mov : .mp4 }
 
     /// Builds a composition containing `range` of the asset's video (and, unless removed, audio) tracks.
-    static func composition(of asset: AVAsset, range: CMTimeRange, removeAudio: Bool) async throws -> AVMutableComposition {
+    static func composition(of asset: AVAsset, range: CMTimeRange, includeAudio: Bool) async throws -> AVMutableComposition {
         let comp = AVMutableComposition()
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard !videoTracks.isEmpty else { throw VideoExportError.noVideo }
-        let audioTracks = removeAudio ? [] : try await asset.loadTracks(withMediaType: .audio)
+        let audioTracks = includeAudio ? try await asset.loadTracks(withMediaType: .audio) : []
         for track in videoTracks + audioTracks {
-            guard let dst = comp.addMutableTrack(withMediaType: track.mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-            try dst.insertTimeRange(range, of: track, at: .zero)
+            // A track may start late or end early (e.g. a microphone track); insert only its overlap.
+            let overlap = range.intersection(try await track.load(.timeRange))
+            guard !overlap.isEmpty,
+                  let dst = comp.addMutableTrack(withMediaType: track.mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+            try dst.insertTimeRange(overlap, of: track, at: overlap.start - range.start)
             if track.mediaType == .video { dst.preferredTransform = try await track.load(.preferredTransform) }
         }
         return comp
@@ -46,7 +52,7 @@ enum VideoExporter {
     static func export(source url: URL, options: VideoExportOptions, to output: URL,
                        progress: @escaping @Sendable (Double) -> Void) async throws -> CGSize {
         let asset = AVURLAsset(url: url)
-        let comp = try await composition(of: asset, range: options.timeRange, removeAudio: options.removeAudio)
+        let comp = try await composition(of: asset, range: options.timeRange, includeAudio: options.includeAudio)
         try? FileManager.default.removeItem(at: output)
         if options.isPassthrough {
             try await passthrough(comp, to: output, fileType: options.fileType, progress: progress)
@@ -100,7 +106,8 @@ enum VideoExporter {
         }
         let dims = RecordingMath.evenPixelSize(points: pixelSize, scale: CGFloat(options.scale))
         let video = RecordingMath.videoBitrate(width: dims.width, height: dims.height, fps: fps, quality: options.quality)
-        let audio = options.removeAudio ? [] : Array(repeating: RecordingMath.audioBitrate(mono: false), count: audioTracks)
+        // Re-encoding mixes every audio track into one stereo track.
+        let audio = options.includeAudio && audioTracks > 0 ? [RecordingMath.audioBitrate(mono: false)] : []
         return RecordingMath.estimatedFileSize(videoBitrate: video, audioBitrates: audio, duration: duration)
     }
 }
@@ -157,20 +164,27 @@ private final class Transcoder: @unchecked Sendable {
         reader.add(vOut); writer.add(vIn)
         pairs.append((vOut, vIn, true))
 
-        for aTrack in try await asset.loadTracks(withMediaType: .audio) {
-            let descs = try await aTrack.load(.formatDescriptions)
-            let channels = descs.first.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee.mChannelsPerFrame } ?? 2
-            let ch = Int(min(2, max(1, channels)))
-            let aOut = AVAssetReaderTrackOutput(track: aTrack, outputSettings: [
-                AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: ch,
+        // Every audio track (system audio + microphone) is mixed into one stereo track at the chosen volume.
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        if !audioTracks.isEmpty {
+            let aOut = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
             ])
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = audioTracks.map { track in
+                let p = AVMutableAudioMixInputParameters(track: track)
+                p.setVolume(options.volume, at: .zero)
+                return p
+            }
+            aOut.audioMix = mix
             let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: ch,
-                AVEncoderBitRateKey: RecordingMath.audioBitrate(mono: ch == 1),
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
+                AVEncoderBitRateKey: RecordingMath.audioBitrate(mono: false),
             ])
-            guard reader.canAdd(aOut), writer.canAdd(aIn) else { continue }
-            reader.add(aOut); writer.add(aIn)
-            pairs.append((aOut, aIn, false))
+            if reader.canAdd(aOut), writer.canAdd(aIn) {
+                reader.add(aOut); writer.add(aIn)
+                pairs.append((aOut, aIn, false))
+            }
         }
 
         guard reader.startReading() else { throw VideoExportError.failed(reader.error?.localizedDescription ?? "Could not create the video reader.") }

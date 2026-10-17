@@ -7,25 +7,21 @@ struct ScrollUpdate {
     var event: ScrollStitcher.Event
     /// nil while the orientation is still being detected.
     var axis: ScrollAxis?
-    var frames: Int
-    var pixelSize: CGSize
     var parts: [CGImage]
     var partsAxis: ScrollAxis
 }
 
 /// Owns the stitcher(s) of a session. Every method must be called on `queue`.
-/// With orientation `nil` (Auto), a vertical and a horizontal stitcher run side by side until one of them
-/// matches a movement; the other is then dropped.
+/// A vertical and a horizontal stitcher run side by side until one of them matches a movement (or auto-scroll
+/// forces a direction); the other is then dropped.
 final class ScrollEngine: @unchecked Sendable {   // confined to `queue`
     let queue = DispatchQueue(label: "shotcraft.textkit.scrolling", qos: .userInitiated)
     private var candidates: [ScrollStitcher]
     private(set) var locked: ScrollStitcher?
 
-    init(axis: ScrollAxis?, maxLength: Int) {
-        let axes: [ScrollAxis] = axis.map { [$0] } ?? [.vertical, .horizontal]
-        candidates = axes.map { ScrollStitcher(axis: $0, maxLength: maxLength) }
+    init(maxLength: Int) {
+        candidates = [ScrollAxis.vertical, .horizontal].map { ScrollStitcher(axis: $0, maxLength: maxLength) }
         for s in candidates { s.hint = VisionRegistration.offset }
-        if candidates.count == 1 { locked = candidates[0] }
     }
 
     /// Forces an orientation (e.g. when auto-scroll starts) unless one was already detected.
@@ -53,8 +49,7 @@ final class ScrollEngine: @unchecked Sendable {   // confined to `queue`
             }
         }
         let s = locked ?? candidates[0]
-        return ScrollUpdate(event: event, axis: locked?.axis, frames: s.acceptedFrames, pixelSize: s.pixelSize,
-                            parts: s.parts(), partsAxis: s.axis)
+        return ScrollUpdate(event: event, axis: locked?.axis, parts: s.parts(), partsAxis: s.axis)
     }
 
     func render() -> CGImage? { (locked ?? candidates.first)?.render() }

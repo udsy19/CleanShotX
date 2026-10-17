@@ -26,7 +26,7 @@ enum MediaActions {
     }
 
     static func editTitle(for media: CapturedMedia) -> String {
-        media.isImage ? "Open Annotate tool (⌘A)" : "Open Video Editor (⌘A)"
+        media.isImage ? "Open Annotate tool (⌘E)" : "Open Video Editor (⌘E)"
     }
 
     static func pin(_ media: CapturedMedia) {
@@ -34,29 +34,41 @@ enum MediaActions {
         Services.pin?.pin(media)
     }
 
-    static var canUpload: Bool { Services.upload?.isConfigured ?? false }
-
-    /// Starts an upload. When no destination is configured, explains and offers to open Settings.
-    static func upload(_ media: CapturedMedia, progress: ((Double) -> Void)?, completion: ((Result<URL, Error>) -> Void)?) {
-        guard let up = Services.upload, up.isConfigured else {
-            if Alerts.confirm(UploadError.notConfigured.localizedDescription, confirmTitle: "Open Settings") {
-                Services.preferences?.show(pane: "upload")
-            }
-            completion?(.failure(UploadError.notConfigured))
-            return
-        }
-        up.upload(media, progress: progress) { result in
-            if case .success(let link) = result, media.uploadedURL != link {
-                media.uploadedURL = link
-                media.notifyChanged()
-            }
-            completion?(result)
-        }
+    /// Starts (or joins) an upload. UploadKit owns all feedback: the "not set up" prompt, error alerts, the done
+    /// sound and the "Link has been copied" HUD; it also sets `uploadedURL` and posts progress notifications.
+    static func upload(_ media: CapturedMedia, completion: ((Result<URL, Error>) -> Void)? = nil) {
+        guard let up = Services.upload else { NSSound.beep(); return }
+        up.upload(media, progress: nil, completion: completion)
     }
 
-    static func open(_ media: CapturedMedia) {
-        if media.kind == .studioProject { Services.studio?.openProject(media.url); return }
-        NSWorkspace.shared.open(media.url)
+    /// "Open With ▸" submenu: the default app first, then every other app that can open the file.
+    static func openWithMenuItem(for media: CapturedMedia) -> NSMenuItem {
+        let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: nil)
+        let menu = NSMenu()
+        let ws = NSWorkspace.shared
+        let url = media.url
+        let defaultApp = ws.urlForApplication(toOpen: url)
+        var apps = ws.urlsForApplications(toOpen: url).filter { $0 != defaultApp }
+        apps.sort { $0.deletingPathExtension().lastPathComponent.localizedCaseInsensitiveCompare($1.deletingPathExtension().lastPathComponent) == .orderedAscending }
+        for (i, app) in ([defaultApp].compactMap { $0 } + apps).enumerated() {
+            var title = FileManager.default.displayName(atPath: app.path)
+            if title.hasSuffix(".app") { title = String(title.dropLast(4)) }
+            if i == 0 && app == defaultApp { title += " (default)" }
+            let mi = ClosureMenuItem(title) {
+                ws.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                    if let error { DispatchQueue.main.async { Alerts.error("Couldn't open the file.", error) } }
+                }
+            }
+            let icon = ws.icon(forFile: app.path)
+            icon.size = NSSize(width: 16, height: 16)
+            mi.image = icon
+            menu.addItem(mi)
+            if i == 0 && app == defaultApp && !apps.isEmpty { menu.addItem(.separator()) }
+        }
+        if menu.items.isEmpty { item.isEnabled = false }
+        item.submenu = menu
+        return item
     }
 
     static func showInFinder(_ media: CapturedMedia) {
@@ -152,7 +164,7 @@ final class QuickLookController: NSObject, NSWindowDelegate {
             p = NSPanel(contentRect: frame, styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
                         backing: .buffered, defer: false)
             p.isReleasedWhenClosed = false
-            p.level = OverlayWindow.quickAccessLevel
+            p.level = OverlayWindow.quickLookLevel
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             p.hidesOnDeactivate = false
             p.delegate = self
@@ -172,15 +184,18 @@ final class QuickLookController: NSObject, NSWindowDelegate {
 
     func close() {
         panel?.orderOut(nil)
-        previewView?.previewItem = nil
-        currentURL = nil
-        removeKeyMonitor()
+        didClose()
     }
 
     func windowWillClose(_ notification: Notification) {
+        didClose()
+    }
+
+    private func didClose() {
         previewView?.previewItem = nil
         currentURL = nil
         removeKeyMonitor()
+        HistoryWindowController.shared.refocus()
     }
 
     /// Space / Esc close the preview while it is key.

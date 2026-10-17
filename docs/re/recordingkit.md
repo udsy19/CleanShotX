@@ -13,25 +13,25 @@ Evidence sources: `docs/re/raw/classes-digest.md` (ObjC/Swift class metadata fro
 | `ScreenRecorder` | `currentRecordingOverlay, recorder, durationTimer, recordingToGif, recordingRetinaVideo, cancelGifModal, watchdogTimer, cursorHighlighter, keyboardOverlay, gifsicle, audioMixer, showRecordingTimeInMenuBar, showRecordingControls`; `checkIfRecordingStarted`, `updateRecordingTimeLabel` | `RecordingService` (state machine) + `RecordingSession` |
 | `RecorderOverlay : FSOverlay` | `recorderSettingsChildWindow, recorderControlsChildWindow, windowNameLabel, displayId, screenFactor, cameraOverlay, countDownOverlay`; `rectangleChanged`, `ratioChanged`, `performKeyEquivalent:` | `RecorderSetupOverlay` (area editor + setup bar) |
 | `RecorderOverlayChildWindow` | `cancelOperation:` → Esc cancels | setup window `cancelOperation` |
-| `RecorderSettingsView` | `settingsButton, highlightCursorButton, cameraButton, keystrokesButton, systemAudioButton, videoSizeControl, popover`; `startVideoRecordingClicked`, `startGIFRecordingClicked` | `RecorderSetupBar` |
+| `RecorderSettingsView` | `settingsButton, highlightCursorButton, cameraButton, keystrokesButton, systemAudioButton, videoSizeControl, popover`; `startVideoRecordingClicked`, `startGIFRecordingClicked` | `RecorderSettingsPanel` |
 | `MicrophoneAccessController` | `audioButton, vuMeter`; `openInputDevicesMenuIn:`, `setAudioDeviceWithSender:` | mic menu in setup bar (`AVDeviceMenuItem` ≙ menu item with `representedObject = uniqueID`) |
 | `CameraAccessController` | `changeCameraShape…`, `changeCameraSize…`, `toggleCameraFullscreen…`, `changeCameraFlip…`, `setCameraDevice…` | camera menu + `CameraOverlay` context menu |
 | `RecorderControlsView` | `stopButton, pauseButton`; `stopClicked pauseClicked restartClicked trashClicked` | `RecordingControlsPanel` |
 | `StopButton : CSButton` | `label, levelLayer` (time label inside the stop button) | stop button with elapsed time |
 | `CountDownOverlay` | `seconds, secondsLabel, cancelButton, progress, intervalTimer`; `secondElapsed`, `cancelClicked` | `CountdownOverlay` (click to skip, Esc to cancel) |
-| `CursorHighlighter` | `style, initSize, targetSize, fadeSize, color, animate, eventMonitors` | `ClickHighlighter` (ripple ring) |
-| `ClickHighlightSettings` | `_size, _color, _style, _animate` | color from `.clickHighlightColor` |
+| `CursorHighlighter` | `style, initSize, targetSize, fadeSize, color, animate, eventMonitors` | `ClickHighlighter` (outline ring + dot, or filled disc) |
+| `ClickHighlightSettings` | `_size, _color, _style, _animate` | color from `.clickHighlightColor`, style `recordingKit.clickStyle` |
 | `CursorOverlay` | `cursorView, cursorUpdateTimer` | cursor-idle watcher toggling `showsCursor` |
 | `KeyboardOverlay` | `box, label, fadeTimer, isDisplayingFullShortcut, displayAllKeys, eventListener` | `KeystrokeOverlay` |
 | `KeyEventTapListener` / `MouseEventTapListener` | `eventTap, callback, queue, runLoop` | `NSEvent` global + local monitors |
 | `CameraOverlay` | `videoPreviewLayer, captureSession, rectangle, contentPadding, margin`; `refreshSize refreshFullscreen refreshFlip` | `CameraOverlay` |
 | `PausableTimer` | `timer, count, targetInterval` | `RecordingClock` (pure, pause-aware) |
-| `VUMeter`, `PowerMeter(Aggregator)` | microphone level metering | not implemented (see §8) |
+| `VUMeter`, `PowerMeter(Aggregator)` | microphone level metering | level bar under the timer in the controls pill |
 | `GIFProcessingPopup` | `gifProgressView`; `progressViewDidPressCancel` | `GIFProcessingPopup` |
 | `Gifsicle`, `GIFUtility`, `GIFTrimmer` | external `gifsicle` task (`gifsicleOptimize`, `gifsicleTrim`) | `GIFEncoder` (ImageIO only, no gifsicle) |
 | `VideoTrimmer` | `playerView, exportSession, trimButton`; `windowShouldClose:` | `VideoEditorWindowController` |
-| `VideoPopup : ScreenRecordingPopup` | `removeAudioTrack` | "Remove the Audio" in editor |
-| `AudioMixer` | `micVolume, audioVolume, mergeAudioButton` | not implemented (separate tracks kept) |
+| `VideoPopup : ScreenRecordingPopup` | `removeAudioTrack` | "Include audio" toggle in the editor's Audio panel |
+| `AudioMixer` | `micVolume, audioVolume, mergeAudioButton` | editor Volume slider; re-encodes mix all tracks into one |
 | `StatusMenuProgressIndicator` | `cancelGifClicked` | `StatusBar.setProgress` during GIF encoding |
 
 `ScreenRecordingSettings` ivars (digest): `_videoFPS, _maxResolution, _downscaleRetina, _showRecordingControls,
@@ -46,20 +46,22 @@ _gifMaxSize, _optimizeGifs, _gifQuality` — all map 1:1 onto the Core keys in `
    `.recording`/`.gifRecording`, `initialRect` = `.lastRecordingArea` when `.rememberLastRecordingArea`.
    A window click yields that window's rect; an empty rect means "whole screen" (ui: "Drag to record a part
    of the screen.").
-2. **Setup overlay** (RecorderOverlay): outside of the area is dimmed, the area has a border, 8 resize
-   handles, can be dragged; a dimension label shows `W × H`. Under the area (or above / inside when there is
-   no room) sits the setup bar:
-   close · Video/GIF switch · microphone menu (devices + "Do Not Record Microphone" — ui) · system audio
-   toggle ("Record system audio" — ui) · camera menu ("Record camera" — ui) · settings menu ("Show cursor",
-   "Highlight clicks", "Show Keystrokes", "Hide cursor when not moving", "Dim screen while recording",
-   "Record audio in mono", countdown, FPS, quality — ui) · "Start Video Recording" / "Start GIF Recording"
-   button (ui). Esc cancels (`cancelOperation:`), Return starts.
-3. **Countdown** (`CountDownOverlay`): `.recordCountdownSeconds` (default 3) with a tick sound each second;
-   click skips, Esc cancels.
-4. **Recording** with ScreenCaptureKit (see §3). Controls panel (`RecorderControlsView`): Stop (shows time),
-   Pause/Resume, "Restart Recording", Delete ("Are you sure you want to delete this recording?" — ui).
-   Hidden when "Show controls while recording" is off. Menu bar shows time when "Display recording time in
-   menu bar" (ui) is on; the status item becomes the stop button ("Press to stop recording" — ui).
+2. **Setup overlay** (RecorderOverlay): outside of the area is dimmed, the area has a dashed border and 8
+   resize handles, can be dragged or redrawn. The pre-record panel (ui-reference §7.1) is centred in the area
+   (below / above it when the area is small): three 227-pt dark-glass blocks —
+   **grid** (row 1: settings `slider.vertical.3` menu · editable W × H fields · full-screen toggle · aspect /
+   size menu `crop` with Freeform, 16:9, 4:3, 1:1, 9:16, 640×480, 1280×720, 1920×1080 — a ratio locks resizing;
+   row 2: microphone menu · system audio · camera menu · highlight clicks · keystrokes; active = white glyph +
+   tick, inactive = 55 % white), **actions** ("Record GIF" with a GIF badge, "Record Video" `video.fill`;
+   Return records the kind that was requested, ⌥Return the other), **Studio** pill ("Record in Studio Mode",
+   only when `Services.studio` exists; "?" opens the "What is Studio Mode?" card). Esc cancels.
+3. **Countdown** (`CountDownOverlay`): black 80-pt disc (90 %), white 44-pt bold digit, white progress arc
+   each second, tick sound; click starts now, hover shows a cancel button, Esc cancels, Return starts.
+4. **Recording** with ScreenCaptureKit (see §3). Controls pill (`RecorderControlsView`, #161616 @ 95 %, radius
+   20): red `stop.circle` + red m:ss timer (mic level bar underneath when recording the mic) | `pause.circle` ⇄
+   `play.circle` | `arrow.counterclockwise` | `trash` ("Are you sure you want to delete this recording?") |
+   drag grip; separators are explicit-frame 1-pt views. Hidden when "Show controls while recording" is off.
+   Menu bar shows time when "Display recording time in menu bar" is on.
 5. **Stop** → finalize → GIF conversion when kind == gif → `MediaPipeline.didFinishRecording`.
 
 ## 3. Capture pipeline
@@ -78,10 +80,18 @@ _gifMaxSize, _optimizeGifs, _gifQuality` — all map 1:1 onto the Core keys in `
   converted from the session's synchronization clock to the host clock (same timebase as SCK samples).
   "Microphone and system audio will remain on separate tracks." (ui) → two AAC tracks.
 - `AVAssetWriter` (container per `.videoFormat`), all writer access on one serial sample queue. Session
-  starts at the first complete video frame's PTS. Pause drops samples and accumulates the pause duration;
-  later samples are re-timed with `CMSampleBufferCreateCopyWithNewTiming` (pts − offset). Non-monotonic
-  samples per track are dropped. The session ends at the (offset-adjusted) stop time so a static screen
-  still yields the full duration.
+  starts at the first complete video frame's PTS (audio before it is dropped). Pause/resume are recorded as
+  host-clock intervals (`PauseTimeline`); every sample is kept or dropped by **its own timestamp**, not by
+  arrival time, and kept samples are re-timed by the total length of earlier pauses
+  (`CMSampleBufferCreateCopyWithNewTiming`). Non-monotonic samples per track are dropped. The session ends at
+  the pause-adjusted stop time (never before the last frame) so a static screen still yields the full
+  duration.
+- Failure handling: a failed `startCapture` / microphone / output setup cancels the writer, stops the mic
+  and deletes the file. A writer that fails between appends, or a stream that stops with an error, is
+  reported once; the session then finalizes what was written (HUD with the reason) or alerts if nothing
+  could be saved. The session also stops when its display disappears
+  (`didChangeScreenParametersNotification`) or the Mac goes to sleep. A Stop that arrives while the stream
+  is still starting is honoured as soon as it runs.
 - Codec: H.264 High (`low/medium/high`), HEVC for `original` quality and for any frame side > 4096 px
   (H.264 level limit). Bitrate = w × h × bpp × 30 × (fps/30)^0.6 with bpp low .02 / medium .04 /
   high .07 / original .12, clamped to 0.5…120 Mbit/s (strings: `bitrateKey`, `estimatedDataRate`).
@@ -91,47 +101,59 @@ _gifMaxSize, _optimizeGifs, _gifQuality` — all map 1:1 onto the Core keys in `
 
 ## 4. Overlays during recording
 
-- **Dim**: borderless click-through window per screen, black 45 % outside the area, 1 pt border just
-  outside the area (not captured: excluded & outside `sourceRect`).
+- **Dim**: borderless click-through window per screen, black 45 % outside the area with a faint 1-pt white
+  border; with "Dim screen" off, a 2-pt red frame outlines the area instead (drawn outside the captured rect).
 - **Click highlight**: click-through transparent window over the area's screen; `NSEvent` global + local
-  monitors (no Accessibility needed for mouse). Mouse-down shows a filled ring in `.clickHighlightColor`
-  that follows drags; mouse-up expands and fades it (ripple).
-- **Keystrokes**: global `keyDown` monitor (needs Accessibility; requested through `Permissions`). Shortcuts
-  render as `⌃⌥⇧⌘K`; plain typing accumulates characters; fades after 1.5 s; HUD at bottom-center of the
-  area.
-- **Camera**: borderless panel with `AVCaptureVideoPreviewLayer`, circle or rounded-rect shape, sizes
-  S/M/L, mirror toggle, device menu (context menu); draggable; placed in the bottom-left of the area so
-  it is recorded.
+  monitors. Outline style: 36-pt ring (colour mixed toward white, 70 %, 3 pt) around a 12-pt solid dot;
+  Filled style: translucent disc. Pops in 0.6→1.0, follows drags, fades over 0.35 s on release.
+- **Keystrokes**: global `keyDown` monitor (needs Accessibility). Rounded rect (radius 14, height 52, 18-pt
+  padding) 60 pt above the bottom-centre of the area, `rgba(30,30,40,.75)` + blur, SF Pro Rounded semibold
+  28 pt. Shortcuts render as `⌃⌥⇧⌘K`; "Show only command keys" (default on) hides plain typing; fades after
+  1 s idle; repeating the same shortcut bumps the HUD.
+- **Camera**: borderless panel with `AVCaptureVideoPreviewLayer`; Circle / Square / Rectangle (16:9), heights
+  120/160/240, 3-pt white border, shadow, bottom-right of the area inset 16 pt (follows the area while it is
+  being adjusted until dragged). Click toggles full-screen camera (fills the area); drag moves; scroll /
+  pinch resizes; context menu: device, shape, size, "Flip Camera", full screen, "Hide Camera". A spinner
+  shows until the session runs.
 
 ## 5. GIF
 
 No gifsicle: video is recorded at `.gifFPS`, then frames are sampled with `AVAssetImageGenerator`
-(zero tolerance, `maximumSize` = width ≤ `.gifMaxWidth`) and written via `CGImageDestination`
-(`kCGImagePropertyGIFLoopCount = 0`). Delays are centisecond-quantised with error diffusion so total
+(`maximumSize` = width ≤ `.gifMaxWidth`) and written by `StreamingGIFWriter`: each frame is quantized and
+LZW-compressed by ImageIO as a single-frame GIF and its blocks are spliced into the output (local colour
+table + our Graphic Control Extension, NETSCAPE2.0 loop forever). A multi-frame `CGImageDestination` holds
+every frame until `Finalize` (measured ≈ 2 GB for 200 frames at 1280×720); streaming keeps memory flat. Delays are centisecond-quantised with error diffusion so total
 duration matches (GIF delay unit is 1/100 s; fps clamped to ≤ 50 because browsers clamp delays < 2 cs).
 Progress popup with Cancel ("User canceled GIF creation" — ui) and menu-bar progress.
 
-## 6. Video editor (`VideoTrimmer`, `VideoPopup`)
+## 6. Video editor (`VideoTrimmer`, `VideoPopup`; 5.0 Video Editor look)
 
-- `AVPlayerView` (floating controls, `beginTrimming` for trimming; Space toggles play).
-- Bottom bar: Trim, "Remove the Audio" ("Are you sure you want to remove the audio track?" — ui; disabled
-  with "This video has no audio." when none), Quality (Original/High/Medium/Low) and Resolution
-  (100/75/50/25 %) menus with an "Estimated file size" label (ui), "Convert to GIF", "Save as New Video"
-  (ui), "Save" ("Do you want to replace the existing video?" — ui).
-- Export: original quality at 100 % → `AVAssetExportSession` passthrough over an `AVMutableComposition`
-  (trim/remove audio without re-encoding); otherwise an `AVAssetReader`→`AVAssetWriter` transcode with
-  the same bitrate model as recording (writer scales via `AVVideoScalingModeResizeAspect`).
-- Closing with an un-applied trim asks "Do you want to trim the video?" (ui).
-- GIF media: animated preview + start/end frame sliders, re-encoded with ImageIO keeping original delays.
+- Window titled with the file name. Left rail "Audio" panel: "Include audio" switch and Volume slider
+  (disabled with "This video has no audio."). Player (`AVPlayerView`, no controls) on black. Bottom bar:
+  play/pause + time, then a thumbnail timeline with yellow trim handles and a playhead (drag handles to
+  trim, click/drag to scrub; I / O set in/out at the playhead; Space plays the trimmed range).
+- Title-bar buttons: "Convert to GIF", "Export…" (⌘S). Export sheet: Resolution (Original (W × H), 4k,
+  1440p, 1080p, 720p, 480p, 360p, 240p — only sizes below the source, by short side), Quality slider
+  (Low…Original), Audio switch, "Estimated file size ~X", "Replace the original video" (confirms "Do you want
+  to replace the existing video?"), Cancel / Export. Progress sheet: "Exporting video…", bar, "~Xs
+  remaining", percentage, "Cancel Export".
+- Export: original quality, full size, unchanged volume → `AVAssetExportSession` passthrough over an
+  `AVMutableComposition` (tracks inserted only where they overlap the trim range); otherwise an
+  `AVAssetReader`→`AVAssetWriter` transcode with the recording bitrate model, audio tracks mixed into one
+  stereo AAC track at the chosen volume (`AVAssetReaderAudioMixOutput`).
+- Closing with unsaved edits asks to save (replaces the original with the last-used export settings).
+- GIF media: same chrome — frame preview, timeline trim (by frame times), "Save as New GIF" / "Save";
+  frames are decoded on demand from the source and re-encoded with `StreamingGIFWriter`.
 
 ## 7. Module-private keys
 
-`recordingKit.cameraShape` (circle|roundedRect), `recordingKit.cameraSize` (small|medium|large),
-`recordingKit.cameraMirror`, `recordingKit.keystrokesShortcutsOnly`, `recordingKit.exportQuality`,
-`recordingKit.exportScale`.
+`recordingKit.cameraShape` (circle|square|rectangle), `recordingKit.cameraSize` (small|medium|large),
+`recordingKit.cameraMirror`, `recordingKit.clickStyle` (outline|filled), `recordingKit.keystrokesShortcutsOnly`
+(default true), `recordingKit.exportQuality`, `recordingKit.exportShortSide` (0 = original).
 
 ## 8. Not reproduced
 
-VU meter / "Your microphone is muted" detection, AudioMixer (merging tracks with volume sliders),
+"Your microphone is muted" detection, per-track mic/system volume, the 5.0 editor's Background/Zoom panels
+and Cut tool (Studio Mode territory), Dock-icon export progress, the Studio info card's demo video,
 "Do Not Disturb" toggling (no public API), crash recovery ("Your screen recording has been successfully
 recovered."), and gifsicle optimisation.

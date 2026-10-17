@@ -128,12 +128,12 @@ public enum HistoryIndex {
     }
 
     public enum Filter: String, CaseIterable, Sendable {
-        case all, screenshots, recordings, gifs
+        case all, screenshots, videos, gifs
         public var title: String {
             switch self {
             case .all: "All"
             case .screenshots: "Screenshots"
-            case .recordings: "Recordings"
+            case .videos: "Videos"
             case .gifs: "GIFs"
             }
         }
@@ -141,7 +141,7 @@ public enum HistoryIndex {
             switch self {
             case .all: true
             case .screenshots: kind == .image
-            case .recordings: kind == .video || kind == .studioProject
+            case .videos: kind == .video || kind == .studioProject
             case .gifs: kind == .gif
             }
         }

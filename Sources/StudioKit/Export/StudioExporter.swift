@@ -85,10 +85,9 @@ final class StudioExporter: @unchecked Sendable {
 
             let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
             writer.shouldOptimizeForNetworkUse = true
-            let format = settings.effectiveFormat
+            let format = settings.format
             let fps = settings.effectiveFPS
-            let bitrate = EncoderEstimate.videoBitrate(size: outputSize, fps: fps, quality: settings.quality, format: format,
-                                                       optimized: settings.optimizedForSharing)
+            let bitrate = EncoderEstimate.videoBitrate(size: outputSize, fps: fps, quality: settings.quality, format: format)
             var compression: [String: Any] = [AVVideoAverageBitRateKey: bitrate,
                                               AVVideoExpectedSourceFrameRateKey: fps,
                                               AVVideoMaxKeyFrameIntervalKey: fps * 2]

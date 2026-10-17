@@ -278,6 +278,14 @@ final class AnnotateRenderer {
             if let img = wallpapers.image(path: path) { aspectFill(img, rect, ctx) }
             else if let d = bg.embeddedImage, let img = wallpapers.image(data: d) { aspectFill(img, rect, ctx) }
             else { drawGradient(GradientPreset.all[0], in: rect, ctx: ctx) }
+        case .blurred(let kind):
+            var source: CGImage?
+            if kind == .wallpaper {
+                if let p = desktopWallpaperPath() { source = wallpapers.image(path: p) }
+                if source == nil, let d = bg.embeddedImage { source = wallpapers.image(data: d) }
+            }
+            if let src = source, let blurred = wallpapers.blurred(src) { aspectFill(blurred, rect, ctx) }
+            else { drawGradient(kind.frost, in: rect, ctx: ctx) }
         }
     }
 

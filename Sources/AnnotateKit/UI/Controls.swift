@@ -87,6 +87,14 @@ enum UI {
         return l
     }
 
+    /// Section header: 12 pt semibold, secondary label colour.
+    static func header(_ text: String) -> NSTextField {
+        let l = NSTextField(labelWithString: text)
+        l.font = .systemFont(ofSize: 12, weight: .semibold)
+        l.textColor = .secondaryLabelColor
+        return l
+    }
+
     static func separator() -> NSView {
         let v = NSBox()
         v.boxType = .separator
@@ -104,22 +112,37 @@ enum UI {
 
 // MARK: - Swatches
 
-/// A clickable swatch: a colour circle, a gradient / image tile, or a symbol tile.
+/// A clickable swatch: a colour circle, a gradient / image tile, a text tile, a colour wheel, or an empty / add slot.
 @MainActor
 final class SwatchButton: NSButton {
     enum Content {
         case color(RGBAColor)
         case gradient(GradientPreset)
         case image(NSImage?)
-        case symbol(String)
+        /// Rainbow colour wheel (opens a colour picker).
+        case wheel
+        /// Empty "My Colors" slot: dashed outline (a plus on hover).
+        case empty
+        /// Dashed "add" tile with a plus.
+        case add
+        /// A text label ("None").
+        case text(String)
     }
     enum Shape { case circle, tile }
 
     var content: Content { didSet { needsDisplay = true } }
     var shape: Shape
     var isChosen = false { didSet { needsDisplay = true } }
+    /// Tile corner radius (content), ignored for circles.
+    var cornerRadius: CGFloat = 10
+    /// Space between the frame and the content: room for the 2.5 pt selection ring and its gap.
+    var contentInset: CGFloat = 4.5
     private var hovering = false { didSet { needsDisplay = true } }
     var onRightClick: (() -> Void)?
+    /// Shows a hover ✕ that removes the swatch.
+    var onDelete: (() -> Void)?
+    /// Enables drag-to-reorder; called with the drop location in window coordinates.
+    var onReorder: ((NSPoint) -> Void)?
 
     init(_ content: Content, shape: Shape, size: CGSize, tooltip: String?, action: @escaping () -> Void) {
         self.content = content
@@ -133,7 +156,7 @@ final class SwatchButton: NSButton {
         widthAnchor.constraint(equalToConstant: size.width).isActive = true
         heightAnchor.constraint(equalToConstant: size.height).isActive = true
         onAction { _ in action() }
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -142,33 +165,64 @@ final class SwatchButton: NSButton {
     override func mouseExited(with event: NSEvent) { hovering = false }
     override func rightMouseDown(with event: NSEvent) { if let f = onRightClick { f() } else { super.rightMouseDown(with: event) } }
 
+    private var deleteRect: CGRect { CGRect(x: bounds.maxX - 11, y: bounds.maxY - 11, width: 11, height: 11) }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if let del = onDelete, deleteRect.insetBy(dx: -2, dy: -2).contains(p) { del(); return }
+        guard let reorder = onReorder, let window else { super.mouseDown(with: event); return }
+        // Click → action; drag beyond a few points → reorder.
+        let start = event.locationInWindow
+        while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if e.type == .leftMouseUp {
+                performClick(nil)
+                return
+            }
+            if hypot(e.locationInWindow.x - start.x, e.locationInWindow.y - start.y) > 4 {
+                NSCursor.closedHand.push()
+                defer { NSCursor.pop() }
+                while let m = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]), m.type != .leftMouseUp {}
+                reorder(window.mouseLocationOutsideOfEventStream)
+                return
+            }
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let inset: CGFloat = 3
+        let inset = contentInset
         let r = bounds.insetBy(dx: inset, dy: inset)
-        let path: NSBezierPath = shape == .circle ? NSBezierPath(ovalIn: r) : NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
+        let radius = max(2, cornerRadius - inset / 2)
+        let path: NSBezierPath = shape == .circle ? NSBezierPath(ovalIn: r) : NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
+        let dashed: Bool
+        switch content { case .empty, .add: dashed = true; default: dashed = false }
+        if dashed {
+            path.lineWidth = 1
+            path.setLineDash([2.5, 2.5], count: 2, phase: 0)
+            (hovering ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor).setStroke()
+            path.stroke()
+            if case .add = content { drawPlus(in: r, size: min(r.width, r.height) * 0.18) } else if hovering { drawPlus(in: r, size: 3) }
+            return
+        }
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
         switch content {
         case .color(let c):
-            if c.a < 1 { drawChecker(r) }
+            if c.a < 1 { Self.drawChecker(r) }
             UI.nsColor(c).setFill(); r.fill()
         case .gradient(let g):
             NSGradient(colors: g.colors.map(UI.nsColor))?.draw(in: r, angle: CGFloat(-g.angle))
         case .image(let img):
             NSColor.quaternaryLabelColor.setFill(); r.fill()
             if let img { img.draw(in: aspectFill(img.size, in: r)) }
-        case .symbol(let name):
+        case .wheel:
+            Self.drawWheel(in: r)
+        case .text(let t):
             NSColor.quaternaryLabelColor.setFill(); r.fill()
-            if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: min(r.width, r.height) * 0.42, weight: .medium)) {
-                let tinted = img.copy() as! NSImage
-                tinted.isTemplate = true
-                let s = tinted.size
-                let dest = CGRect(x: r.midX - s.width / 2, y: r.midY - s.height / 2, width: s.width, height: s.height)
-                NSColor.secondaryLabelColor.set()
-                tinted.draw(in: dest)
-                dest.fill(using: .sourceAtop)
-            }
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor]
+            let size = (t as NSString).size(withAttributes: attrs)
+            (t as NSString).draw(at: CGPoint(x: r.midX - size.width / 2, y: r.midY - size.height / 2), withAttributes: attrs)
+        case .empty, .add:
+            break
         }
         NSGraphicsContext.restoreGraphicsState()
         // Hairline so white swatches are visible in light mode.
@@ -176,16 +230,39 @@ final class SwatchButton: NSButton {
         path.lineWidth = 1
         path.stroke()
         if isChosen || hovering {
+            let ringRect = bounds.insetBy(dx: 1.25, dy: 1.25)
             let ring: NSBezierPath = shape == .circle
-                ? NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
-                : NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
-            ring.lineWidth = isChosen ? 2 : 1
+                ? NSBezierPath(ovalIn: ringRect)
+                : NSBezierPath(roundedRect: ringRect, xRadius: cornerRadius + 1, yRadius: cornerRadius + 1)
+            ring.lineWidth = isChosen ? 2.5 : 1
             (isChosen ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor).setStroke()
             ring.stroke()
         }
+        if hovering, onDelete != nil {
+            let d = deleteRect
+            NSColor.secondaryLabelColor.setFill()
+            NSBezierPath(ovalIn: d).fill()
+            let x = NSBezierPath()
+            let k: CGFloat = 2.5
+            x.move(to: CGPoint(x: d.midX - k, y: d.midY - k)); x.line(to: CGPoint(x: d.midX + k, y: d.midY + k))
+            x.move(to: CGPoint(x: d.midX - k, y: d.midY + k)); x.line(to: CGPoint(x: d.midX + k, y: d.midY - k))
+            x.lineWidth = 1.3
+            NSColor.windowBackgroundColor.setStroke()
+            x.stroke()
+        }
     }
 
-    private func drawChecker(_ r: CGRect) {
+    private func drawPlus(in r: CGRect, size k: CGFloat) {
+        let plus = NSBezierPath()
+        plus.move(to: CGPoint(x: r.midX - k, y: r.midY)); plus.line(to: CGPoint(x: r.midX + k, y: r.midY))
+        plus.move(to: CGPoint(x: r.midX, y: r.midY - k)); plus.line(to: CGPoint(x: r.midX, y: r.midY + k))
+        plus.lineWidth = 1.3
+        plus.lineCapStyle = .round
+        NSColor.secondaryLabelColor.setStroke()
+        plus.stroke()
+    }
+
+    static func drawChecker(_ r: CGRect) {
         NSColor.white.setFill(); r.fill()
         NSColor(white: 0.8, alpha: 1).setFill()
         let s: CGFloat = 4
@@ -197,6 +274,23 @@ final class SwatchButton: NSButton {
         }
     }
 
+    /// Hue wheel: 48 wedges around the centre, fading to white in the middle.
+    static func drawWheel(in r: CGRect) {
+        let c = CGPoint(x: r.midX, y: r.midY), radius = max(r.width, r.height)
+        let n = 48
+        for i in 0..<n {
+            let a0 = CGFloat(i) / CGFloat(n) * 360, a1 = CGFloat(i + 1) / CGFloat(n) * 360 + 0.5
+            let p = NSBezierPath()
+            p.move(to: c)
+            p.appendArc(withCenter: c, radius: radius, startAngle: a0, endAngle: a1)
+            p.close()
+            NSColor(hue: CGFloat(i) / CGFloat(n), saturation: 0.9, brightness: 1, alpha: 1).setFill()
+            p.fill()
+        }
+        NSGradient(colors: [NSColor.white.withAlphaComponent(0.85), NSColor.white.withAlphaComponent(0)])?
+            .draw(in: NSBezierPath(ovalIn: r), relativeCenterPosition: .zero)
+    }
+
     private func aspectFill(_ size: NSSize, in r: CGRect) -> CGRect {
         guard size.width > 0, size.height > 0 else { return r }
         let s = max(r.width / size.width, r.height / size.height)
@@ -204,20 +298,20 @@ final class SwatchButton: NSButton {
     }
 }
 
-/// Toolbar button that shows the current colour and opens the palette popover.
+/// Toolbar colour well (CleanShot `annotateColorPicker`): a 16 pt circle in the current colour plus a chevron.
 @MainActor
 final class ColorWellButton: NSButton {
     var color: RGBAColor { didSet { needsDisplay = true } }
 
     init(color: RGBAColor, action: @escaping (ColorWellButton) -> Void) {
         self.color = color
-        super.init(frame: CGRect(x: 0, y: 0, width: 30, height: 24))
+        super.init(frame: CGRect(x: 0, y: 0, width: 44, height: 24))
         bezelStyle = .texturedRounded
         title = ""
         toolTip = "Color"
         setAccessibilityLabel("Color")
         translatesAutoresizingMaskIntoConstraints = false
-        widthAnchor.constraint(equalToConstant: 34).isActive = true
+        widthAnchor.constraint(equalToConstant: 44).isActive = true
         onAction { [weak self] _ in if let self { action(self) } }
     }
 
@@ -226,17 +320,82 @@ final class ColorWellButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         let d: CGFloat = 16
-        let r = CGRect(x: bounds.midX - d / 2, y: bounds.midY - d / 2, width: d, height: d)
+        let r = CGRect(x: 8, y: bounds.midY - d / 2, width: d, height: d)
         let p = NSBezierPath(ovalIn: r)
-        UI.nsColor(color).setFill()
+        if color.a < 1 {
+            NSGraphicsContext.saveGraphicsState(); p.addClip(); SwatchButton.drawChecker(r); NSGraphicsContext.restoreGraphicsState()
+        }
+        (isEnabled ? UI.nsColor(color) : UI.nsColor(color).withAlphaComponent(0.35)).setFill()
         p.fill()
         NSColor.black.withAlphaComponent(0.25).setStroke()
         p.lineWidth = 1
         p.stroke()
+        drawChevron(in: self, x: r.maxX + 5)
     }
 }
 
-// MARK: - Colour palette popover
+/// Draws the small `chevron.down` used by the toolbar's popover buttons.
+@MainActor
+private func drawChevron(in button: NSButton, x: CGFloat) {
+    guard let img = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+        .withSymbolConfiguration(.init(pointSize: 8, weight: .bold)) else { return }
+    let s = img.size
+    let r = CGRect(x: x, y: button.bounds.midY - s.height / 2, width: s.width, height: s.height)
+    NSGraphicsContext.saveGraphicsState()
+    img.draw(in: r)
+    (button.isEnabled ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor).set()
+    r.fill(using: .sourceAtop)
+    NSGraphicsContext.restoreGraphicsState()
+}
+
+/// Toolbar tool-style button: a stroke-width preview (or a style glyph) plus a chevron; opens the style popover.
+@MainActor
+final class StyleButton: NSButton {
+    enum Preview: Equatable { case width(CGFloat), symbol(String) }
+    var preview: Preview = .symbol("slider.horizontal.3") { didSet { if preview != oldValue { needsDisplay = true } } }
+
+    init(action: @escaping (StyleButton) -> Void) {
+        super.init(frame: CGRect(x: 0, y: 0, width: 44, height: 24))
+        bezelStyle = .texturedRounded
+        title = ""
+        toolTip = "Tool style"
+        setAccessibilityLabel("Tool style")
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: 44).isActive = true
+        onAction { [weak self] _ in if let self { action(self) } }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let fg = isEnabled ? NSColor.labelColor : NSColor.tertiaryLabelColor
+        let box = CGRect(x: 7, y: bounds.midY - 8, width: 18, height: 16)
+        switch preview {
+        case .width(let w):
+            let p = NSBezierPath()
+            p.move(to: CGPoint(x: box.minX + 1, y: box.midY)); p.line(to: CGPoint(x: box.maxX - 1, y: box.midY))
+            p.lineWidth = max(1, min(w, 10))
+            p.lineCapStyle = .round
+            fg.setStroke()
+            p.stroke()
+        case .symbol(let name):
+            if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular)) {
+                let s = img.size
+                let r = CGRect(x: box.midX - s.width / 2, y: box.midY - s.height / 2, width: s.width, height: s.height)
+                NSGraphicsContext.saveGraphicsState()
+                img.draw(in: r)
+                fg.set()
+                r.fill(using: .sourceAtop)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }
+        drawChevron(in: self, x: box.maxX + 4)
+    }
+}
+
+// MARK: - Colour panel bridge
 
 /// Keeps NSColorPanel / NSColorSampler callbacks alive independent of the popover's lifetime.
 @MainActor
@@ -274,126 +433,10 @@ final class ColorPanelBridge: NSObject {
     }
 
     func detach() {
+        onColor = nil
         if NSColorPanel.sharedColorPanelExists, Self.active === self {
             NSColorPanel.shared.setTarget(nil)
             NSColorPanel.shared.setAction(nil)
         }
     }
-}
-
-/// CleanShot `ANColorPalette`: preset colours (optionally with names), custom colours, opacity and eyedropper.
-@MainActor
-final class ColorPaletteController: NSViewController {
-    private let current: RGBAColor
-    private let bridge: ColorPanelBridge
-    private let onPick: (RGBAColor) -> Void
-    private var opacity: Double
-
-    init(current: RGBAColor, bridge: ColorPanelBridge, onPick: @escaping (RGBAColor) -> Void) {
-        self.current = current
-        self.bridge = bridge
-        self.onPick = onPick
-        self.opacity = current.a
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    private func pick(_ c: RGBAColor) {
-        onPick(c.withAlpha(opacity))
-    }
-
-    override func loadView() {
-        let root = NSStackView()
-        root.orientation = .vertical
-        root.alignment = .leading
-        root.spacing = 10
-        root.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-
-        let showNames = Defaults[.annotateShowColorNames]
-        let presets = ColorPalette.presets
-        if showNames {
-            let grid = NSGridView()
-            grid.rowSpacing = 2
-            grid.columnSpacing = 10
-            var row: [NSView] = []
-            for p in presets {
-                let sw = SwatchButton(.color(p.color), shape: .circle, size: CGSize(width: 22, height: 22), tooltip: p.name) { [weak self] in self?.pick(p.color) }
-                sw.isChosen = p.color.isClose(to: current.withAlpha(1))
-                let name = UI.label(p.name, size: 12, color: .labelColor)
-                let item = NSStackView(views: [sw, name])
-                item.spacing = 6
-                row.append(item)
-                if row.count == 2 { grid.addRow(with: row); row = [] }
-            }
-            if !row.isEmpty { grid.addRow(with: row + [NSView()]) }
-            root.addArrangedSubview(grid)
-        } else {
-            var rows: [NSView] = []
-            for chunk in stride(from: 0, to: presets.count, by: 7) {
-                let views = presets[chunk..<min(chunk + 7, presets.count)].map { p -> NSView in
-                    let sw = SwatchButton(.color(p.color), shape: .circle, size: CGSize(width: 26, height: 26), tooltip: p.name) { [weak self] in self?.pick(p.color) }
-                    sw.isChosen = p.color.isClose(to: current.withAlpha(1))
-                    return sw
-                }
-                let r = NSStackView(views: views)
-                r.spacing = 4
-                rows.append(r)
-            }
-            rows.forEach { root.addArrangedSubview($0) }
-        }
-
-        // Custom colours.
-        root.addArrangedSubview(UI.label("Custom"))
-        let customRow = NSStackView()
-        customRow.spacing = 4
-        for (i, c) in Defaults[.annotateCustomColors].enumerated() {
-            let sw = SwatchButton(.color(c), shape: .circle, size: CGSize(width: 26, height: 26), tooltip: "Custom color (right-click to remove)") { [weak self] in
-                self?.opacity = c.a
-                self?.onPick(c)
-            }
-            sw.isChosen = c.isClose(to: current)
-            sw.onRightClick = { [weak self] in
-                var list = Defaults[.annotateCustomColors]
-                if i < list.count { list.remove(at: i) }
-                Defaults[.annotateCustomColors] = list
-                self?.reload()
-            }
-            customRow.addArrangedSubview(sw)
-        }
-        let add = SwatchButton(.symbol("plus"), shape: .circle, size: CGSize(width: 26, height: 26), tooltip: "Add the current color to custom colors") { [weak self] in
-            guard let self else { return }
-            var list = Defaults[.annotateCustomColors]
-            let c = self.current
-            if !list.contains(where: { $0.isClose(to: c) }) { list.append(c) }
-            Defaults[.annotateCustomColors] = Array(list.suffix(14))
-            self.reload()
-        }
-        customRow.addArrangedSubview(add)
-        root.addArrangedSubview(customRow)
-
-        // Opacity + pipette + system panel.
-        let opacitySlider = UI.slider(value: opacity, min: 0.1, max: 1, width: 120, tooltip: "Opacity") { [weak self] v in
-            guard let self else { return }
-            self.opacity = v
-            self.onPick(self.current.withAlpha(v))
-        }
-        let pipette = UI.symbolButton("eyedropper", tooltip: "Pick a color from the screen") { [weak self] in
-            guard let self else { return }
-            self.bridge.onColor = { [weak self] c in self?.onPick(c.withAlpha(self?.opacity ?? 1)) }
-            self.dismiss(nil)
-            self.bridge.sample()
-        }
-        let wheel = UI.symbolButton("paintpalette", tooltip: "Show Colors") { [weak self] in
-            guard let self else { return }
-            self.bridge.onColor = { [weak self] c in self?.onPick(c) }
-            self.bridge.showPanel(initial: self.current)
-        }
-        let bottom = NSStackView(views: [UI.label("Opacity"), opacitySlider, pipette, wheel])
-        bottom.spacing = 6
-        root.addArrangedSubview(bottom)
-        view = root
-    }
-
-    private func reload() { loadView() }
 }

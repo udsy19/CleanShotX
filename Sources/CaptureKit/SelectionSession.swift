@@ -71,8 +71,11 @@ final class SelectionSession {
     private(set) var aspect: AspectRatio
     /// Pixel source for the magnifier (frozen screens, or a silent snapshot).
     private(set) var pixels: FrozenScreens?
-    let crosshair = Defaults[.crosshairMode]
-    let magnifier = Defaults[.crosshairMode] && Defaults[.showMagnifier]
+    private let crosshairSetting = Defaults[.crosshairMode]
+    /// "To enable magnifier, you must enable Crosshair Mode first."
+    private let magnifierSetting = Defaults[.crosshairMode] && Defaults[.showMagnifier]
+    private var loadingPixels = false
+    private var screenObserver: NSObjectProtocol?
 
     private var spaceDown = false
     private var lastDragPoint: CGPoint = .zero
@@ -132,14 +135,24 @@ final class SelectionSession {
             key.makeFirstResponder(key.overlayView)
         }
         NSCursor.crosshair.set()
+        // A display added, removed or rearranged invalidates every panel frame: close the overlay.
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.cancel() }
+            }
         refresh()
-        if magnifier && pixels == nil { loadMagnifierPixels() }
+        if magnifierSetting { loadMagnifierPixels() }
     }
 
+    /// Snapshot used by the magnifier when the screen is not frozen (own windows are excluded).
     private func loadMagnifierPixels() {
+        guard pixels == nil, !loadingPixels else { return }
+        loadingPixels = true
         Task { [weak self] in
-            guard let shots = try? await CaptureEngine.captureAllScreens(includeWindows: []) else { return }
-            guard let self, !self.finished else { return }
+            let shots = try? await CaptureEngine.captureAllScreens(includeWindows: [])
+            guard let self else { return }
+            self.loadingPixels = false
+            guard let shots, !self.finished else { return }
             self.pixels = shots
             self.refresh()
         }
@@ -151,6 +164,8 @@ final class SelectionSession {
         guard !finished else { return }
         finished = true
         let mods = NSEvent.modifierFlags
+        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+        screenObserver = nil
         controls?.tearDown()
         for p in panels { p.tearDown() }
         // `finish` usually runs inside one of these panels' event dispatch: release them on the next turn.
@@ -183,15 +198,34 @@ final class SelectionSession {
 
     var snappingEnabled: Bool { !modifiers.contains(.command) }
 
+    /// Crosshair Mode, or ⌘ held temporarily (crosshair + magnifier).
+    var showsCrosshair: Bool { crosshairSetting || modifiers.contains(.command) }
+    var showsMagnifier: Bool { magnifierSetting || modifiers.contains(.command) }
+
+    var isRecordingPurpose: Bool { [.recording, .gifRecording, .studio].contains(config.purpose) }
+
+    /// The "W x H" badge follows the selection while it is drawn, moved or resized.
+    var showsDimensionBadge: Bool {
+        guard config.showsDimensions else { return false }
+        switch interaction {
+        case .creating, .moving, .resizing: return true
+        case .idle, .pending: return false
+        }
+    }
+
     var hintText: String? {
         guard showsHint, selection == nil, !isInteracting else { return nil }
         var parts: [String]
         switch mode {
         case .area:
-            parts = ["Drag to select capture area."]
-            if config.allowsWindowSelection { parts.append("Press Space to select a window.") }
+            switch config.purpose {
+            case .recording, .gifRecording, .studio: parts = ["Drag to record a part of the screen."]
+            case .scrolling: parts = ["Drag to capture the scrolling part of the screen."]
+            case .screenshot, .text: parts = ["Drag to select capture area."]
+            }
+            if config.allowsWindowSelection && isRecordingPurpose { parts.append("Press Space to select a window.") }
         case .window:
-            parts = ["Click a window to select it.", "Press Space to select an area."]
+            parts = ["Click a window to capture it.", "Press Space to select an area."]
         }
         if config.fullscreenShortcut { parts.append("Press Return for fullscreen.") }
         return parts.joined(separator: " ")
@@ -384,6 +418,7 @@ final class SelectionSession {
 
     func flagsChanged(_ event: NSEvent) {
         modifiers = event.modifierFlags
+        if showsMagnifier { loadMagnifierPixels() }
         if isInteracting, !isPending { updateDrag(to: lastDragPoint) }
         refresh()
     }

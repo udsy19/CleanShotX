@@ -45,14 +45,32 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private let canvas: CanvasView
     private let scrollView = NSScrollView()
     private let bridge = ColorPanelBridge()
-    private var propertiesBar: PropertiesBar!
+    private let stylePanel: ToolStylePanel
+    private let cropBar: CropBar
     private var sidebar: BackgroundSidebar!
     /// Scroll view leading edge: to the window edge, or to the background sidebar when it is shown.
     private var scrollLeadingToRoot: NSLayoutConstraint!
     private var scrollLeadingToSidebar: NSLayoutConstraint!
+    private var popover: NSPopover?
+
+    // Toolbar (CleanShot X 5.0, left → right): Crop, Add image, Background · tools · colour, style, lock · Save, Done.
+    private let cropChip = NSButton()
+    private let addChip = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let backgroundChip = NSButton()
     private let toolControl = NSSegmentedControl()
-    private let historyControl = NSSegmentedControl()
-    private var backgroundButton: NSButton!
+    private var colorWell: ColorWellButton!
+    private var styleButton: StyleButton!
+    private let lockButton = NSButton()
+    private let saveButton = NSButton()
+    private let doneButton = NSButton()
+    private let cancelCropButton = NSButton()
+    private let applyCropButton = NSButton()
+    private var toolGroup: NSStackView!
+    private var styleGroup: NSStackView!
+    private var actionGroup: NSStackView!
+    private var leadingGroup: NSStackView!
+
+    // Bottom bar
     private var zoomButton: NSPopUpButton!
     private var sizeLabel: NSTextField!
     private var dragHandle: DragHandleView!
@@ -60,6 +78,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private var didInitialZoom = false
 
     private static let objectsPasteboardType = NSPasteboard.PasteboardType("com.udsy.shotcraft.annotations")
+    private static let toolbarHeight: CGFloat = 52
+    private static let bottomBarHeight: CGFloat = 40
 
     init(state: CanvasState, origin: Origin, media: CapturedMedia?, projectURL: URL?, createdAt: Date = Date()) {
         self.session = EditorSession(state: state)
@@ -68,17 +88,20 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         self.projectURL = projectURL
         self.createdAt = createdAt
         self.canvas = CanvasView(session: session)
+        self.stylePanel = ToolStylePanel(session: session, canvas: canvas)
+        self.cropBar = CropBar(session: session, canvas: canvas)
         let window = EditorWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 680),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                   backing: .buffered, defer: false)
         super.init(window: window)
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 820, height: 480)
+        window.minSize = NSSize(width: 640, height: 420)
         window.collectionBehavior = [.fullScreenPrimary]
         window.tabbingMode = .disallowed
         window.keyHandler = { [weak self] e in self?.handleKeyEquivalent(e) ?? false }
         window.titleVisibility = .hidden
+        buildToolbarViews()
         buildToolbar(window)
         buildContent(window)
         session.observe { [weak self] change in self?.sessionChanged(change) }
@@ -87,8 +110,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             return u.path
         }
         updateTitle()
-        updateHistoryButtons()
         updateSizeLabel()
+        updateToolbarState()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -96,10 +119,126 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     // MARK: - Building
 
     private enum ItemID {
+        static let leading = NSToolbarItem.Identifier("annotate.leading")
         static let tools = NSToolbarItem.Identifier("annotate.tools")
-        static let add = NSToolbarItem.Identifier("annotate.add")
-        static let background = NSToolbarItem.Identifier("annotate.background")
-        static let history = NSToolbarItem.Identifier("annotate.history")
+        static let style = NSToolbarItem.Identifier("annotate.style")
+        static let actions = NSToolbarItem.Identifier("annotate.actions")
+    }
+
+    private func buildToolbarViews() {
+        func chip(_ b: NSButton, symbol: String, tooltip: String) {
+            b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)
+            b.imagePosition = .imageOnly
+            b.title = ""
+            b.bezelStyle = .texturedRounded
+            b.toolTip = tooltip
+            b.setAccessibilityLabel(tooltip)
+            b.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        }
+        chip(cropChip, symbol: AnnotateTool.crop.symbol, tooltip: "Crop & Resize (K)")
+        cropChip.setButtonType(.pushOnPushOff)
+        cropChip.onAction { [weak self] _ in
+            guard let self else { return }
+            if self.canvas.isCropping { self.canvas.cancelCrop() } else { self.canvas.startCrop() }
+            self.focusCanvas()
+        }
+
+        addChip.bezelStyle = .texturedRounded
+        addChip.toolTip = "Add an image"
+        (addChip.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        addChip.imagePosition = .imageOnly
+        let addMenu = NSMenu()
+        let title = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        title.image = NSImage(systemSymbolName: "photo.badge.plus", accessibilityDescription: "Add image")
+        addMenu.addItem(title)
+        addMenu.addItem(NSMenuItem(title: "Add New Screenshot", key: "i", modifiers: [.command, .shift]) { [weak self] in self?.addNewScreenshot() })
+        addMenu.addItem(NSMenuItem(title: "Add Screenshot From File…", key: "i") { [weak self] in self?.addImageFromFile() })
+        addMenu.addItem(NSMenuItem(title: "Paste From Clipboard", key: "", modifiers: []) { [weak self] in self?.addImageFromClipboard() })
+        addChip.menu = addMenu
+        addChip.widthAnchor.constraint(equalToConstant: 34).isActive = true
+
+        chip(backgroundChip, symbol: "photo.artframe", tooltip: "Background Tool (B)")
+        backgroundChip.setButtonType(.pushOnPushOff)
+        backgroundChip.onAction { [weak self] _ in self?.toggleBackgroundTool(); self?.focusCanvas() }
+
+        leadingGroup = NSStackView(views: [cropChip, addChip, backgroundChip])
+        leadingGroup.spacing = 6
+
+        let tools = AnnotateTool.toolbarTools
+        toolControl.segmentCount = tools.count
+        toolControl.trackingMode = .selectOne
+        toolControl.segmentStyle = .rounded
+        toolControl.selectedSegmentBezelColor = .controlAccentColor
+        for (i, t) in tools.enumerated() {
+            let img = NSImage(systemSymbolName: t.symbol, accessibilityDescription: t.title)
+            toolControl.setImage(img, forSegment: i)
+            toolControl.setImageScaling(.scaleProportionallyDown, forSegment: i)
+            toolControl.setToolTip("\(t.title) (\(String(t.key).uppercased()))", forSegment: i)
+            toolControl.setWidth(28, forSegment: i)
+        }
+        toolControl.onAction { [weak self] _ in
+            guard let self else { return }
+            let i = self.toolControl.selectedSegment
+            guard tools.indices.contains(i) else { return }
+            self.session.tool = tools[i]
+            self.focusCanvas()
+        }
+        cropBar.isHidden = true
+        toolGroup = NSStackView(views: [toolControl, cropBar])
+        toolGroup.spacing = 0
+
+        colorWell = ColorWellButton(color: .black) { [weak self] b in self?.showPalette(from: b) }
+        styleButton = StyleButton { [weak self] b in self?.showStylePanel(from: b) }
+        lockButton.setButtonType(.pushOnPushOff)
+        lockButton.bezelStyle = .texturedRounded
+        lockButton.imagePosition = .imageOnly
+        lockButton.title = ""
+        lockButton.toolTip = "Keep the tool active after drawing"
+        lockButton.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        Self.setLock(lockButton, on: Defaults[.annotateToolLocked])
+        lockButton.onAction { [weak self] s in
+            guard let self, let b = s as? NSButton else { return }
+            Defaults[.annotateToolLocked] = b.state == .on
+            Self.setLock(b, on: b.state == .on)
+            self.focusCanvas()
+        }
+        styleGroup = NSStackView(views: [colorWell, styleButton, lockButton])
+        styleGroup.spacing = 6
+
+        func textButton(_ b: NSButton, _ title: String, prominent: Bool, action: @escaping () -> Void) {
+            b.title = title
+            b.bezelStyle = .rounded
+            b.controlSize = .regular
+            if prominent { b.bezelColor = .controlAccentColor }
+            b.onAction { _ in action() }
+        }
+        let ask = Defaults[.annotateSaveBehavior] == .askForDestination
+        textButton(saveButton, ask ? "Save as…" : "Save", prominent: false) { [weak self] in self?.save() }
+        saveButton.toolTip = ask ? "Save to a location you choose (⇧⌘S for other formats)" : "Save to the export location (⇧⌘S: Save As…)"
+        textButton(doneButton, "Done", prominent: true) { [weak self] in self?.done() }
+        doneButton.keyEquivalent = "\r"
+        doneButton.keyEquivalentModifierMask = .command
+        doneButton.toolTip = "Apply changes and close (⌘S)"
+        textButton(cancelCropButton, "Cancel", prominent: false) { [weak self] in self?.canvas.cancelCrop() }
+        cancelCropButton.toolTip = "Cancel cropping (Esc)"
+        textButton(applyCropButton, "Crop", prominent: true) { [weak self] in self?.canvas.applyCrop() }
+        applyCropButton.toolTip = "Apply the crop (Return)"
+        cancelCropButton.isHidden = true
+        applyCropButton.isHidden = true
+        actionGroup = NSStackView(views: [saveButton, doneButton, cancelCropButton, applyCropButton])
+        actionGroup.spacing = 8
+    }
+
+    /// Toggle chips show their "on" state in the accent colour.
+    private static func setChip(_ b: NSButton, on: Bool) {
+        b.state = on ? .on : .off
+        b.contentTintColor = on ? .controlAccentColor : nil
+    }
+
+    /// Draw lock: closed padlock while the tool stays active after drawing.
+    private static func setLock(_ b: NSButton, on: Bool) {
+        setChip(b, on: on)
+        b.image = NSImage(systemSymbolName: on ? "lock.fill" : "lock.open", accessibilityDescription: on ? "Draw lock on" : "Draw lock off")
     }
 
     private func buildToolbar(_ window: NSWindow) {
@@ -112,7 +251,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ItemID.tools, ItemID.add, ItemID.background, .flexibleSpace, ItemID.history]
+        [ItemID.leading, ItemID.tools, ItemID.style, .flexibleSpace, ItemID.actions]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -122,68 +261,11 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         let item = NSToolbarItem(itemIdentifier: id)
         switch id {
-        case ItemID.tools:
-            let tools = AnnotateTool.allCases
-            toolControl.segmentCount = tools.count
-            toolControl.trackingMode = .selectOne
-            toolControl.segmentStyle = .separated
-            for (i, t) in tools.enumerated() {
-                let img = NSImage(systemSymbolName: t.symbol, accessibilityDescription: t.title)
-                    ?? NSImage(systemSymbolName: "questionmark", accessibilityDescription: t.title)!
-                toolControl.setImage(img, forSegment: i)
-                toolControl.setToolTip("\(t.title) (\(String(t.key).uppercased()))", forSegment: i)
-                toolControl.setWidth(30, forSegment: i)
-            }
-            toolControl.selectedSegment = tools.firstIndex(of: session.tool) ?? 0
-            toolControl.onAction { [weak self] _ in
-                guard let self else { return }
-                let t = AnnotateTool.allCases[self.toolControl.selectedSegment]
-                if t == .crop { self.canvas.startCrop() } else { self.session.tool = t }
-                self.window?.makeFirstResponder(self.canvas)
-            }
-            item.view = toolControl
-            item.label = "Tools"
-        case ItemID.add:
-            let b = NSPopUpButton(frame: .zero, pullsDown: true)
-            b.bezelStyle = .texturedRounded
-            b.toolTip = "Add an image"
-            let menu = NSMenu()
-            let title = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-            title.image = NSImage(systemSymbolName: "photo.badge.plus", accessibilityDescription: "Add image")
-            menu.addItem(title)
-            menu.addItem(NSMenuItem(title: "Add Screenshot From File…", key: "", modifiers: []) { [weak self] in self?.addImageFromFile() })
-            menu.addItem(NSMenuItem(title: "Paste From Clipboard", key: "", modifiers: []) { [weak self] in self?.addImageFromClipboard() })
-            menu.addItem(NSMenuItem(title: "Add New Screenshot", key: "", modifiers: []) { [weak self] in self?.addNewScreenshot() })
-            b.menu = menu
-            item.view = b
-            item.label = "Add Image"
-        case ItemID.background:
-            let b = NSButton(image: NSImage(systemSymbolName: "rectangle.inset.filled.and.person.filled", accessibilityDescription: "Background")
-                             ?? NSImage(systemSymbolName: "square.on.square", accessibilityDescription: "Background")!,
-                             target: nil, action: nil)
-            b.bezelStyle = .texturedRounded
-            b.setButtonType(.pushOnPushOff)
-            b.toolTip = "Background Tool (G)"
-            b.onAction { [weak self] _ in self?.toggleBackgroundTool() }
-            backgroundButton = b
-            item.view = b
-            item.label = "Background"
-        case ItemID.history:
-            historyControl.segmentCount = 2
-            historyControl.trackingMode = .momentary
-            historyControl.setImage(NSImage(systemSymbolName: "arrow.uturn.backward", accessibilityDescription: "Undo"), forSegment: 0)
-            historyControl.setImage(NSImage(systemSymbolName: "arrow.uturn.forward", accessibilityDescription: "Redo"), forSegment: 1)
-            historyControl.setToolTip("Undo (⌘Z)", forSegment: 0)
-            historyControl.setToolTip("Redo (⇧⌘Z)", forSegment: 1)
-            historyControl.onAction { [weak self] _ in
-                guard let self else { return }
-                self.endEditing()
-                if self.historyControl.selectedSegment == 0 { self.session.undo() } else { self.session.redo() }
-            }
-            item.view = historyControl
-            item.label = "Undo"
-        default:
-            return nil
+        case ItemID.leading: item.view = leadingGroup; item.label = "Image"
+        case ItemID.tools: item.view = toolGroup; item.label = "Tools"; item.visibilityPriority = .high
+        case ItemID.style: item.view = styleGroup; item.label = "Style"
+        case ItemID.actions: item.view = actionGroup; item.label = "Done"; item.visibilityPriority = .user
+        default: return nil
         }
         return item
     }
@@ -191,14 +273,6 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private func buildContent(_ window: NSWindow) {
         let root = NSView()
         window.contentView = root
-
-        propertiesBar = PropertiesBar(session: session, canvas: canvas, bridge: bridge)
-        let props = NSVisualEffectView()
-        props.material = .titlebar
-        props.blendingMode = .withinWindow
-        props.translatesAutoresizingMaskIntoConstraints = false
-        propertiesBar.translatesAutoresizingMaskIntoConstraints = false
-        props.addSubview(propertiesBar)
 
         sidebar = BackgroundSidebar(session: session, bridge: bridge)
         sidebar.screenProvider = { [weak window] in window?.screen ?? NSScreen.main }
@@ -215,7 +289,11 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.05
         scrollView.maxMagnification = 16
-        scrollView.backgroundColor = .underPageBackgroundColor
+        // Neutral canvas: very light grey in light mode, #1E1E1E in dark mode.
+        scrollView.backgroundColor = NSColor(name: "annotateCanvas") { a in
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.118, green: 0.118, blue: 0.118, alpha: 1)
+                                                               : NSColor(srgbRed: 0.953, green: 0.953, blue: 0.957, alpha: 1)
+        }
         scrollView.drawsBackground = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         clip.postsBoundsChangedNotifications = true
@@ -225,34 +303,21 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         canvas.onDropFiles = { [weak self] urls, p in self?.handleDrop(urls, at: p) }
         canvas.contextMenuProvider = { [weak self] in self?.contextMenu() }
         canvas.extraKeyHandler = { [weak self] ch in
-            if ch == "g" { self?.toggleBackgroundTool(); return true }
+            if ch == "b" { self?.toggleBackgroundTool(); return true }
             return false
         }
 
         let bottom = buildBottomBar()
-        let topLine = NSBox(); topLine.boxType = .separator; topLine.translatesAutoresizingMaskIntoConstraints = false
         let bottomLine = NSBox(); bottomLine.boxType = .separator; bottomLine.translatesAutoresizingMaskIntoConstraints = false
 
-        [props, topLine, sidebar, scrollView, bottomLine, bottom].forEach { root.addSubview($0) }
+        [sidebar, scrollView, bottomLine, bottom].forEach { root.addSubview($0) }
         scrollLeadingToRoot = scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor)
         scrollLeadingToSidebar = scrollView.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
         NSLayoutConstraint.activate([
-            props.topAnchor.constraint(equalTo: root.topAnchor),
-            props.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            props.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            props.heightAnchor.constraint(equalToConstant: 38),
-            propertiesBar.leadingAnchor.constraint(equalTo: props.leadingAnchor),
-            propertiesBar.trailingAnchor.constraint(equalTo: props.trailingAnchor),
-            propertiesBar.topAnchor.constraint(equalTo: props.topAnchor),
-            propertiesBar.bottomAnchor.constraint(equalTo: props.bottomAnchor),
-            topLine.topAnchor.constraint(equalTo: props.bottomAnchor),
-            topLine.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            topLine.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-
-            sidebar.topAnchor.constraint(equalTo: topLine.bottomAnchor),
+            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: bottomLine.topAnchor),
             sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topLine.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomLine.topAnchor),
             scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scrollLeadingToRoot,
@@ -263,12 +328,13 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             bottom.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             bottom.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            bottom.heightAnchor.constraint(equalToConstant: 46),
+            bottom.heightAnchor.constraint(equalToConstant: Self.bottomBarHeight),
             // Never let content hugging collapse the canvas (and the window with it).
             scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 240),
         ])
     }
 
+    /// Bottom bar (CleanShot 4.8+): zoom popup at the left, "Drag me" in the centre, Share / Pin / Copy / Upload at the right.
     private func buildBottomBar() -> NSView {
         let bar = NSVisualEffectView()
         bar.material = .titlebar
@@ -278,7 +344,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         zoomButton = NSPopUpButton(frame: .zero, pullsDown: true)
         zoomButton.bezelStyle = .texturedRounded
         zoomButton.controlSize = .small
-        zoomButton.toolTip = "Zoom"
+        zoomButton.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        zoomButton.toolTip = "Zoom (⌘+ / ⌘− / ⌘0 fit / ⌘1 actual size)"
         let zm = NSMenu()
         zm.addItem(NSMenuItem(title: "100%", action: nil, keyEquivalent: ""))
         zm.addItem(NSMenuItem(title: "Zoom In", key: "+") { [weak self] in self?.zoom(by: 1.25) })
@@ -290,80 +357,63 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             zm.addItem(NSMenuItem(title: "\(p)%", key: "", modifiers: []) { [weak self] in self?.setZoom(CGFloat(p) / 100) })
         }
         zoomButton.menu = zm
-        zoomButton.widthAnchor.constraint(equalToConstant: 76).isActive = true
+        zoomButton.widthAnchor.constraint(equalToConstant: 68).isActive = true
 
-        sizeLabel = UI.label("", size: 11)
+        sizeLabel = UI.label("", size: 11, color: .tertiaryLabelColor)
         sizeLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        sizeLabel.lineBreakMode = .byTruncatingTail
+        sizeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         dragHandle = DragHandleView()
+        dragHandle.translatesAutoresizingMaskIntoConstraints = false
         dragHandle.fileProvider = { [weak self] in self?.writeTemporaryFile() }
 
-        let print = UI.symbolButton("printer", tooltip: "Print… (⌘P)") { [weak self] in self?.printImage() }
-        let share = UI.symbolButton("square.and.arrow.up", tooltip: "Share") { }
-        share.onAction { [weak self, weak share] _ in if let share { self?.share(from: share) } }
-        let pin = UI.symbolButton("pin", tooltip: "Pin to the screen") { [weak self] in self?.pinAndClose() }
-        let upload = UI.symbolButton("icloud.and.arrow.up", tooltip: "Upload") { [weak self] in self?.uploadAndClose() }
-        let copy = UI.textButton("Copy", tooltip: "Copy to clipboard and close") { [weak self] in self?.copyAndClose() }
-
-        let save = NSSegmentedControl()
-        save.segmentCount = 2
-        save.trackingMode = .momentary
-        save.setLabel("Save", forSegment: 0)
-        save.setToolTip(Defaults[.annotateSaveBehavior] == .askForDestination ? "Save… " : "Save to the export location", forSegment: 0)
-        save.setImage(NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "More save options"), forSegment: 1)
-        save.setWidth(18, forSegment: 1)
-        let menu = saveMenu()
-        save.onAction { [weak self, weak save] _ in
-            guard let self, let save else { return }
-            if save.selectedSegment == 0 { self.save() }
-            else { menu.popUp(positioning: nil, at: NSPoint(x: save.bounds.maxX - 18, y: save.bounds.maxY + 4), in: save) }
+        func icon(_ symbol: String, _ tooltip: String, _ action: @escaping (NSButton) -> Void) -> NSButton {
+            let b = UI.symbolButton(symbol, tooltip: tooltip) {}
+            b.onAction { [weak b] _ in if let b { action(b) } }
+            b.widthAnchor.constraint(equalToConstant: 30).isActive = true
+            return b
         }
-
-        let done = UI.textButton("Done") { [weak self] in self?.done() }
-        done.keyEquivalent = "\r"
-        done.keyEquivalentModifierMask = .command
-        done.toolTip = "Apply changes and close (⌘S)"
-        done.bezelColor = .controlAccentColor
+        let share = icon("square.and.arrow.up", "Share") { [weak self] b in self?.share(from: b) }
+        let pin = icon("pin.fill", "Pin to the screen") { [weak self] _ in self?.pinAndClose() }
+        let copy = icon("doc.on.doc.fill", "Copy and close (⌥: copy without closing)") { [weak self] _ in
+            if NSApp.currentEvent?.modifierFlags.contains(.option) == true { self?.copyImage() } else { self?.copyAndClose() }
+        }
+        let upload = icon("icloud.and.arrow.up.fill", "Upload to the cloud") { [weak self] _ in self?.uploadAndClose() }
+        upload.isEnabled = Services.upload != nil
 
         let left = NSStackView(views: [zoomButton, sizeLabel])
         left.spacing = 10
-        let right = NSStackView(views: [dragHandle, UI.separator(), print, share, pin, upload, UI.separator(), copy, save, done])
+        let right = NSStackView(views: [share, pin, copy, upload])
         right.spacing = 8
         for s in [left, right] { s.translatesAutoresizingMaskIntoConstraints = false; bar.addSubview(s) }
+        bar.addSubview(dragHandle)
+        let centered = dragHandle.centerXAnchor.constraint(equalTo: bar.centerXAnchor)
+        centered.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            left.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
+            left.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 10),
             left.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            right.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -12),
+            right.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -10),
             right.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            right.leadingAnchor.constraint(greaterThanOrEqualTo: left.trailingAnchor, constant: 12),
+            dragHandle.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            centered,
+            dragHandle.leadingAnchor.constraint(greaterThanOrEqualTo: left.trailingAnchor, constant: 12),
+            right.leadingAnchor.constraint(greaterThanOrEqualTo: dragHandle.trailingAnchor, constant: 12),
         ])
         return bar
     }
 
-    private func saveMenu() -> NSMenu {
-        let m = NSMenu()
-        m.addItem(NSMenuItem(title: "Save As…", key: "S", modifiers: [.command, .shift]) { [weak self] in self?.saveAs() })
-        m.addItem(NSMenuItem(title: "Save Project…", key: "s", modifiers: [.command, .option]) { [weak self] in self?.saveProjectAs() })
-        m.addItem(.separator())
-        m.addItem(NSMenuItem(title: "Open Project…", key: "o") { Services.annotate?.openWithPanel() })
-        let recent = NSMenuItem(title: "Open Recent Project", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        sub.delegate = RecentProjectsMenuDelegate.shared
-        recent.submenu = sub
-        m.addItem(recent)
-        return m
-    }
-
     // MARK: - Showing
 
-    /// Sizes the window around the image (≤ 90 % of the screen) and zooms to fit.
+    /// Sizes the window around the image (≤ 90 % of the screen), zooms to fit and focuses the canvas.
     func present() {
         guard let window else { return }
         let screen = NSScreen.active.visibleFrame
         let out = canvas.frame.size
-        let chrome = CGSize(width: 0, height: 38 + 46 + 52)
-        let w = min(max(out.width + 40, 860), screen.width * 0.9)
-        let h = min(max(out.height + chrome.height + 30, 540), screen.height * 0.9)
+        let chrome = Self.toolbarHeight + Self.bottomBarHeight + 1
+        updateMinimumSize()
+        let w = min(max(out.width + 40, window.minSize.width, 860), screen.width * 0.9)
+        let h = min(max(out.height + chrome + 30, 540), screen.height * 0.9)
         window.setFrame(NSRect(x: screen.midX - w / 2, y: screen.midY - h / 2, width: w, height: h), display: false)
         window.level = Defaults[.annotateAlwaysOnTop] ? .floating : .normal
         if Defaults[.annotateRememberBackgroundTool] && Defaults[.annotateBackgroundToolOpen] { setBackgroundTool(visible: true, remember: false) }
@@ -372,7 +422,23 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         window.layoutIfNeeded()
         zoomToFit()
         didInitialZoom = true
-        window.makeFirstResponder(canvas)
+        focusCanvas()
+    }
+
+    /// Minimum width that keeps every toolbar item visible (normal and crop mode).
+    private func updateMinimumSize() {
+        guard let window else { return }
+        let tools = max(toolControl.fittingSize.width, cropBar.fittingSize.width)
+        let actions = max(saveButton.fittingSize.width + doneButton.fittingSize.width,
+                          cancelCropButton.fittingSize.width + applyCropButton.fittingSize.width) + 8
+        // Traffic lights + item spacing + flexible-space minimum.
+        let width = 86 + leadingGroup.fittingSize.width + tools + styleGroup.fittingSize.width + actions + 5 * 10 + 24
+        window.minSize = NSSize(width: max(640, ceil(width)), height: 420)
+    }
+
+    private func focusCanvas() {
+        guard canvas.editingID == nil else { return }
+        window?.makeFirstResponder(canvas)
     }
 
     // MARK: - Session changes
@@ -380,19 +446,81 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private func sessionChanged(_ change: EditorSession.Change) {
         switch change {
         case .tool:
-            toolControl.selectedSegment = AnnotateTool.allCases.firstIndex(of: session.tool) ?? 0
+            updateCropMode()
+            updateToolbarState()
+        case .selection, .style:
+            updateToolbarState()
         case .content:
-            updateHistoryButtons()
             updateTitle()
             updateSizeLabel()
-        default:
-            break
+            updateToolbarState()
         }
     }
 
-    private func updateHistoryButtons() {
-        historyControl.setEnabled(session.history.canUndo, forSegment: 0)
-        historyControl.setEnabled(session.history.canRedo, forSegment: 1)
+    /// Crop mode swaps the tool group for the crop bar and Save / Done for Cancel / Crop.
+    private func updateCropMode() {
+        let cropping = canvas.isCropping
+        guard cropBar.isHidden == cropping else { return }
+        popover?.close()
+        toolControl.isHidden = cropping
+        cropBar.isHidden = !cropping
+        styleGroup.arrangedSubviews.forEach { $0.isHidden = cropping }
+        saveButton.isHidden = cropping
+        doneButton.isHidden = cropping
+        cancelCropButton.isHidden = !cropping
+        applyCropButton.isHidden = !cropping
+        Self.setChip(cropChip, on: cropping)
+        if cropping { cropBar.reset() }
+    }
+
+    /// Selected tool, colour well and style-button preview for the current tool / selection.
+    private func updateToolbarState() {
+        if let i = AnnotateTool.toolbarTools.firstIndex(of: session.tool) { toolControl.selectedSegment = i } else { toolControl.selectedSegment = -1 }
+        let target = session.styleTarget
+        let sample = session.styleSample
+        let style = session.style(for: target)
+        let imagesOnly = !session.selection.isEmpty && session.selectedObjects.allSatisfy { $0.kind == .image }
+        let colorable: Set<AnnotateTool> = [.rectangle, .filledRectangle, .ellipse, .line, .arrow, .text, .pen, .highlighter, .counter]
+        colorWell.isEnabled = !imagesOnly && colorable.contains(target)
+        colorWell.color = sample?.color ?? style.color
+        styleButton.isEnabled = imagesOnly || (target != .select && target != .crop)
+        switch target {
+        case .rectangle, .ellipse, .line, .arrow, .pen:
+            styleButton.preview = .width(sample?.lineWidth ?? style.lineWidth)
+        case .highlighter where (sample?.highlightShape ?? style.highlightShape) == .freehand:
+            styleButton.preview = .width(sample?.lineWidth ?? style.lineWidth)
+        case .text:
+            styleButton.preview = .symbol("textformat")
+        default:
+            styleButton.preview = .symbol("slider.horizontal.3")
+        }
+        styleButton.toolTip = imagesOnly ? "Image style" : "\(target.title) style"
+    }
+
+    // MARK: - Popovers
+
+    private func showPopover(_ vc: NSViewController, from view: NSView) {
+        popover?.close()
+        let p = NSPopover()
+        p.behavior = .transient
+        p.contentViewController = vc
+        p.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+        popover = p
+    }
+
+    private func showPalette(from button: ColorWellButton) {
+        let vc = ColorPaletteController(current: button.color, bridge: bridge) { [weak self] c in
+            guard let self else { return }
+            self.session.restyle(coalesce: "color", style: { $0.color = c }, object: { $0.color = c })
+            self.canvas.refreshTextEditor()
+        }
+        vc.requestClose = { [weak self] in self?.popover?.close() }
+        showPopover(vc, from: button)
+    }
+
+    private func showStylePanel(from button: StyleButton) {
+        stylePanel.rebuild()
+        showPopover(stylePanel, from: button)
     }
 
     private var baseName: String {
@@ -458,9 +586,10 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private func setBackgroundTool(visible: Bool, remember: Bool) {
         if visible { sidebar.ensureBackground() }
         sidebar.isHidden = !visible
-        scrollLeadingToRoot.isActive = !visible
-        scrollLeadingToSidebar.isActive = visible
-        backgroundButton?.state = visible ? .on : .off
+        // Deactivate before activating so the two leading constraints never conflict.
+        if visible { scrollLeadingToRoot.isActive = false; scrollLeadingToSidebar.isActive = true }
+        else { scrollLeadingToSidebar.isActive = false; scrollLeadingToRoot.isActive = true }
+        Self.setChip(backgroundChip, on: visible)
         if remember && Defaults[.annotateRememberBackgroundTool] { Defaults[.annotateBackgroundToolOpen] = visible }
         window?.layoutIfNeeded()
         if didInitialZoom && visible { zoomToFit() }
@@ -505,6 +634,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         case "p": printImage()
         case "w": window?.performClose(nil)
         case "o": Services.annotate?.openWithPanel()
+        case "i": if shift { addNewScreenshot() } else { addImageFromFile() }
         case "+", "=": zoom(by: 1.25)
         case "-": zoom(by: 0.8)
         case "0": zoomToFit()
@@ -561,10 +691,28 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private func contextMenu() -> NSMenu? {
         let m = NSMenu()
         if session.selection.isEmpty {
+            let undo = NSMenuItem(title: "Undo", key: "z") { [weak self] in self?.session.undo() }
+            undo.isEnabled = session.history.canUndo
+            let redo = NSMenuItem(title: "Redo", key: "Z", modifiers: [.command, .shift]) { [weak self] in self?.session.redo() }
+            redo.isEnabled = session.history.canRedo
+            m.autoenablesItems = false
+            m.addItem(undo)
+            m.addItem(redo)
+            m.addItem(.separator())
             m.addItem(NSMenuItem(title: "Paste", key: "v") { [weak self] in self?.paste() })
             m.addItem(NSMenuItem(title: "Select All", key: "a") { [weak self] in self?.session.selectAll() })
-            m.addItem(.separator())
             m.addItem(NSMenuItem(title: "Copy Image", key: "c") { [weak self] in self?.copyImage() })
+            m.addItem(.separator())
+            m.addItem(NSMenuItem(title: "Save As…", key: "S", modifiers: [.command, .shift]) { [weak self] in self?.saveAs() })
+            m.addItem(NSMenuItem(title: "Save Project…", key: "s", modifiers: [.command, .option]) { [weak self] in self?.saveProjectAs() })
+            m.addItem(NSMenuItem(title: "Open Project…", key: "o") { Services.annotate?.openWithPanel() })
+            let recent = NSMenuItem(title: "Open Recent Project", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            sub.delegate = RecentProjectsMenuDelegate.shared
+            recent.submenu = sub
+            m.addItem(recent)
+            m.addItem(.separator())
+            m.addItem(NSMenuItem(title: "Print…", key: "p") { [weak self] in self?.printImage() })
             return m
         }
         m.addItem(NSMenuItem(title: "Copy Object to Clipboard", key: "c") { [weak self] in self?.copyObjects() })
@@ -689,10 +837,20 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         guard let image = flattened() else { return nil }
         let scale = session.state.scale
         if let m = media {
-            let format = ImageFormat(fileExtension: m.url.pathExtension) ?? Defaults[.screenshotFormat]
-            do { try ImageTools.write(image, to: m.url, format: format, scale: scale) } catch {
+            var url = m.url
+            let format: ImageFormat
+            if let f = ImageFormat(fileExtension: url.pathExtension) {
+                format = f
+            } else {
+                // A format we can't write (GIF, WebP, BMP…): never put PNG bytes behind that extension —
+                // save next to it in the default format instead.
+                format = Defaults[.screenshotFormat]
+                url = AppPaths.uniqueURL(url.deletingPathExtension().appendingPathExtension(format.fileExtension))
+            }
+            do { try ImageTools.write(image, to: url, format: format, scale: scale) } catch {
                 Alerts.error("Something went wrong saving your file.", error); return nil
             }
+            m.url = url
             m.pixelSize = CGSize(width: image.width, height: image.height)
             m.scale = scale
             saveSidecarProject(for: m)
@@ -905,6 +1063,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func windowWillClose(_ notification: Notification) {
+        popover?.close()
         NotificationCenter.default.removeObserver(self)
         bridge.detach()
         onClose?(self)

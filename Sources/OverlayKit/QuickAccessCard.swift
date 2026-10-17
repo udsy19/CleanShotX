@@ -5,15 +5,14 @@ import ShotcraftCore
 /// Container view of a card: forwards mouse/scroll/hover events to the card.
 final class QuickAccessCardView: NSView {
     weak var card: QuickAccessCard?
+    private var hoverArea: NSTrackingArea?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                                       owner: self, userInfo: nil))
+        installHoverTracking(on: self, existing: &hoverArea)
     }
 
     override func mouseEntered(with event: NSEvent) { card?.setHovered(true) }
@@ -25,39 +24,49 @@ final class QuickAccessCardView: NSView {
     override func scrollWheel(with event: NSEvent) { card?.scroll(event) }
 }
 
-/// One Quick Access Overlay card: a non-activating panel showing a capture with hover actions.
+/// One Quick Access Overlay card (ui-reference §4): a non-activating panel whose thumbnail fills a rounded card.
+/// Hover dims + frosts it and reveals Copy / Save pills in the centre and four corner buttons.
 @MainActor
 final class QuickAccessCard: NSObject, NSDraggingSource {
     let media: CapturedMedia
     let panel: OverlayPanel
     private let root = QuickAccessCardView()
     private let chrome = NSVisualEffectView()
-    private let thumb = PassthroughImageView()
+    private let thumb = ThumbnailView()
     private let hoverOverlay = PassthroughView()
-    private let durationBadge = NSTextField(labelWithString: "")
-    private let progressOverlay = NSVisualEffectView()
+    private let frost = PassthroughEffectView()
+    private let durationLabel = NSTextField(labelWithString: "")
+    private var secondaryPill: OverlayButton!
+    private var uploadButton: OverlayButton!
+    private let progressOverlay = PassthroughEffectView()
     private let progressRing = CircularProgressView()
     private let progressTick = PassthroughImageView()
     private let progressLabel = NSTextField(labelWithString: "")
-    private var uploadButton: OverlayButton?
     private var player: AVPlayer?
-    private var playerLayer: AVPlayerLayer?
     private var loopObserver: NSObjectProtocol?
 
     private(set) var isHovered = false
-    private(set) var isUploading = false
-    private var isDragging = false
-    private var isClosing = false
+    private enum UploadState { case idle, uploading, done }
+    private var uploadState = UploadState.idle
+    /// True while an upload of this media runs (or its done tick shows) — started from the card or anywhere else
+    /// (after-capture action, history, menu); driven by `CapturedMedia.uploadProgress`.
+    var isUploading: Bool { uploadState != .idle }
+    private var linkBeforeUpload: URL?
+    private var lastFraction = 0.0
+    private var uploadWatchdog: Timer?
+    private(set) var isDragging = false
+    private(set) var isClosing = false
     private var mouseDownPoint: NSPoint?
-    private var swipeOffset: CGFloat = 0
+    private var swipeOffset = CGSize.zero
     private var autoCloseWork: DispatchWorkItem?
+    private var showsTrash = false
 
-    /// Frame assigned by the last layout pass (nil = hidden because the stack is full).
+    /// Frame assigned by the last layout pass (nil = hidden because the stack is full or slid down).
     var targetFrame: CGRect?
 
     init(media: CapturedMedia) {
         self.media = media
-        panel = OverlayWindow.makePanel(NSRect(x: 0, y: 0, width: 200, height: 125), level: OverlayWindow.quickAccessLevel)
+        panel = OverlayWindow.makePanel(NSRect(x: 0, y: 0, width: 174, height: 124), level: OverlayWindow.quickAccessLevel)
         super.init()
         root.card = self
         buildUI()
@@ -69,149 +78,163 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
     // MARK: UI
 
     private func buildUI() {
+        let radius = OverlayStyle.cardCornerRadius
         root.wantsLayer = true
-        root.layer?.cornerRadius = 12
+        root.layer?.cornerRadius = radius
+        root.layer?.cornerCurve = .continuous
         root.layer?.masksToBounds = true
+        root.layer?.borderWidth = 1
+        root.layer?.borderColor = OverlayStyle.cardStroke.cgColor
 
+        // Glass behind the thumbnail (visible through transparent captures and letterboxed GIFs).
         chrome.material = .hudWindow
         chrome.blendingMode = .behindWindow
         chrome.state = .active
-        chrome.maskImage = .roundedMask(radius: 12)
+        chrome.maskImage = .roundedMask(radius: radius)
         chrome.autoresizingMask = [.width, .height]
         root.addSubview(chrome)
 
-        thumb.imageScaling = .scaleProportionallyUpOrDown
-        thumb.imageAlignment = .alignCenter
-        thumb.animates = true            // GIFs play
-        thumb.wantsLayer = true
         thumb.autoresizingMask = [.width, .height]
         root.addSubview(thumb)
-
-        durationBadge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
-        durationBadge.textColor = .white
-        durationBadge.wantsLayer = true
-        durationBadge.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
-        durationBadge.layer?.cornerRadius = 4
-        durationBadge.isHidden = !media.isVideoLike
-        durationBadge.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(durationBadge)
 
         buildHoverOverlay()
         buildProgressOverlay()
 
-        NSLayoutConstraint.activate([
-            durationBadge.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
-            durationBadge.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
-        ])
         root.setAccessibilityElement(true)
         root.setAccessibilityRole(.group)
         root.setAccessibilityLabel("Quick Access: \(media.url.lastPathComponent)")
     }
 
     private func buildHoverOverlay() {
-        hoverOverlay.wantsLayer = true
-        hoverOverlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.38).cgColor
         hoverOverlay.autoresizingMask = [.width, .height]
         hoverOverlay.alphaValue = 0
         root.addSubview(hoverOverlay)
 
+        // Dimmed, frosted thumbnail.
+        frost.material = .hudWindow
+        frost.blendingMode = .withinWindow
+        frost.state = .active
+        frost.appearance = NSAppearance(named: .darkAqua)
+        frost.wantsLayer = true
+        frost.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.2).cgColor
+        frost.autoresizingMask = [.width, .height]
+        hoverOverlay.addSubview(frost)
+
         let copy = OverlayButton(.pill("Copy"), tooltip: "Copy to clipboard (⌘C)") { [weak self] in self?.copy() }
-        let save = OverlayButton(.pill("Save"), tooltip: "Save (⌘S)") { [weak self] in self?.save() }
-        let center = NSStackView(views: [copy, save])
+        let secondary = OverlayButton(.pill("Save"), tooltip: "Save (⌘S)") { [weak self] in self?.saveOrTrash() }
+        secondaryPill = secondary
+        let center = NSStackView(views: [copy, secondary])
         center.orientation = .vertical
-        center.spacing = 8
+        center.spacing = 7
         center.translatesAutoresizingMaskIntoConstraints = false
         hoverOverlay.addSubview(center)
 
-        let close = OverlayButton(.icon("xmark"), tooltip: "Close (Esc)", diameter: 22) { [weak self] in self?.close(recordForRestore: true) }
+        let close = OverlayButton(.icon("xmark"), tooltip: "Close (⌘W)") { [weak self] in self?.close(recordForRestore: true) }
+        let topRight = media.isImage
+            ? OverlayButton(.icon("pin.fill"), tooltip: "Pin to the screen (⌘P)") { [weak self] in self?.pin() }
+            : OverlayButton(.icon("eye"), tooltip: "Open Quick Look (Space)") { [weak self] in self?.quickLook() }
         let edit = OverlayButton(.icon(media.isImage ? "pencil" : "scissors"), tooltip: MediaActions.editTitle(for: media)) { [weak self] in
             self?.edit()
         }
-        let quickLook = OverlayButton(.icon("eye"), tooltip: "Open Quick Look (Space)") { [weak self] in self?.quickLook() }
-        var topRight: [NSView] = [edit]
-        if media.isImage {
-            topRight.insert(OverlayButton(.icon("pin"), tooltip: "Pin to the screen (⌘P)") { [weak self] in self?.pin() }, at: 0)
-        }
-        let trStack = NSStackView(views: topRight)
-        trStack.spacing = 6
-        trStack.translatesAutoresizingMaskIntoConstraints = false
-        [close, quickLook, trStack].forEach(hoverOverlay.addSubview)
-
-        let upload = OverlayButton(.icon("icloud.and.arrow.up"), tooltip: "Upload (⌘U)") { [weak self] in self?.upload() }
-        hoverOverlay.addSubview(upload)
+        let upload = OverlayButton(.icon("icloud.and.arrow.up.fill"), tooltip: "Upload (⌘U)") { [weak self] in self?.upload() }
         uploadButton = upload
+        [close, topRight, edit, upload].forEach(hoverOverlay.addSubview)
         updateUploadButtonVisibility()
 
+        durationLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        durationLabel.textColor = .white
+        durationLabel.isHidden = !media.isVideoLike
+        durationLabel.translatesAutoresizingMaskIntoConstraints = false
+        hoverOverlay.addSubview(durationLabel)
+
+        let inset: CGFloat = 6
         NSLayoutConstraint.activate([
+            copy.widthAnchor.constraint(equalTo: secondary.widthAnchor),
             center.centerXAnchor.constraint(equalTo: hoverOverlay.centerXAnchor),
             center.centerYAnchor.constraint(equalTo: hoverOverlay.centerYAnchor),
-            close.leadingAnchor.constraint(equalTo: hoverOverlay.leadingAnchor, constant: 8),
-            close.topAnchor.constraint(equalTo: hoverOverlay.topAnchor, constant: 8),
-            trStack.trailingAnchor.constraint(equalTo: hoverOverlay.trailingAnchor, constant: -8),
-            trStack.topAnchor.constraint(equalTo: hoverOverlay.topAnchor, constant: 8),
-            quickLook.leadingAnchor.constraint(equalTo: hoverOverlay.leadingAnchor, constant: 8),
-            quickLook.bottomAnchor.constraint(equalTo: hoverOverlay.bottomAnchor, constant: -8),
-            upload.trailingAnchor.constraint(equalTo: hoverOverlay.trailingAnchor, constant: -8),
-            upload.bottomAnchor.constraint(equalTo: hoverOverlay.bottomAnchor, constant: -8),
+            close.leadingAnchor.constraint(equalTo: hoverOverlay.leadingAnchor, constant: inset),
+            close.topAnchor.constraint(equalTo: hoverOverlay.topAnchor, constant: inset),
+            topRight.trailingAnchor.constraint(equalTo: hoverOverlay.trailingAnchor, constant: -inset),
+            topRight.topAnchor.constraint(equalTo: hoverOverlay.topAnchor, constant: inset),
+            edit.leadingAnchor.constraint(equalTo: hoverOverlay.leadingAnchor, constant: inset),
+            edit.bottomAnchor.constraint(equalTo: hoverOverlay.bottomAnchor, constant: -inset),
+            upload.trailingAnchor.constraint(equalTo: hoverOverlay.trailingAnchor, constant: -inset),
+            upload.bottomAnchor.constraint(equalTo: hoverOverlay.bottomAnchor, constant: -inset),
+            durationLabel.centerXAnchor.constraint(equalTo: hoverOverlay.centerXAnchor),
+            durationLabel.centerYAnchor.constraint(equalTo: edit.centerYAnchor),
         ])
+        updateSecondaryPill()
     }
 
     private func buildProgressOverlay() {
         progressOverlay.material = .hudWindow
         progressOverlay.blendingMode = .withinWindow
         progressOverlay.state = .active
-        progressOverlay.appearance = NSAppearance(named: .vibrantDark)
+        progressOverlay.appearance = NSAppearance(named: .darkAqua)
         progressOverlay.autoresizingMask = [.width, .height]
         progressOverlay.isHidden = true
         root.addSubview(progressOverlay)
 
         progressRing.translatesAutoresizingMaskIntoConstraints = false
-        progressTick.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Done")?
+        progressTick.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Uploaded")?
             .withSymbolConfiguration(.init(pointSize: 30, weight: .semibold))
         progressTick.contentTintColor = .white
         progressTick.isHidden = true
         progressTick.translatesAutoresizingMaskIntoConstraints = false
-        progressLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        progressLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         progressLabel.textColor = .white
         progressLabel.alignment = .center
         progressLabel.translatesAutoresizingMaskIntoConstraints = false
         [progressRing, progressTick, progressLabel].forEach(progressOverlay.addSubview)
         NSLayoutConstraint.activate([
             progressRing.centerXAnchor.constraint(equalTo: progressOverlay.centerXAnchor),
-            progressRing.centerYAnchor.constraint(equalTo: progressOverlay.centerYAnchor, constant: -10),
-            progressRing.widthAnchor.constraint(equalToConstant: 36),
-            progressRing.heightAnchor.constraint(equalToConstant: 36),
+            progressRing.centerYAnchor.constraint(equalTo: progressOverlay.centerYAnchor),
+            progressRing.widthAnchor.constraint(equalToConstant: 40),
+            progressRing.heightAnchor.constraint(equalToConstant: 40),
             progressTick.centerXAnchor.constraint(equalTo: progressRing.centerXAnchor),
             progressTick.centerYAnchor.constraint(equalTo: progressRing.centerYAnchor),
-            progressLabel.topAnchor.constraint(equalTo: progressRing.bottomAnchor, constant: 8),
-            progressLabel.centerXAnchor.constraint(equalTo: progressOverlay.centerXAnchor),
-            progressLabel.leadingAnchor.constraint(greaterThanOrEqualTo: progressOverlay.leadingAnchor, constant: 6),
+            progressLabel.centerXAnchor.constraint(equalTo: progressRing.centerXAnchor),
+            progressLabel.centerYAnchor.constraint(equalTo: progressRing.centerYAnchor),
         ])
     }
 
     func updateUploadButtonVisibility() {
-        uploadButton?.isHidden = !Defaults[.quickAccessShowUploadButton] || isUploading
+        uploadButton.isHidden = !Defaults[.quickAccessShowUploadButton] || isUploading
     }
 
-    /// Reloads the thumbnail and video duration (after edits, saves or renames).
-    func reloadThumbnail() {
+    /// With the file already saved (e.g. an auto-save after-capture action), Save is pointless: Trash replaces it.
+    private func updateSecondaryPill() {
+        let trash = media.isSaved
+        guard trash != showsTrash else { return }
+        showsTrash = trash
+        secondaryPill.apply(trash ? .symbolPill("trash") : .pill("Save"), tooltip: trash ? "Move to Trash" : "Save (⌘S)")
+    }
+
+    /// Reloads the thumbnail, duration and buttons after edits, saves, renames or uploads.
+    func mediaDidChange() {
+        reloadThumbnail()
+        updateSecondaryPill()
+        if uploadState == .uploading, media.uploadedURL != nil, media.uploadedURL != linkBeforeUpload { uploadSucceeded() }
+    }
+
+    private func reloadThumbnail() {
         root.setAccessibilityLabel("Quick Access: \(media.url.lastPathComponent)")
-        if media.kind == .gif, let animated = NSImage(contentsOf: media.url) {
-            thumb.image = animated
+        let url = media.url
+        if media.kind == .gif {
+            thumb.setImage(NSImage(contentsOf: url), animated: true)
         } else {
-            let px = QuickAccessLayout.cardSize(for: media.pixelSize, scale: Defaults[.quickAccessSize]).width
-                * 2 * (NSScreen.active.backingScaleFactor)
-            let url = media.url
+            let size = QuickAccessLayout.cardSize(for: media.pixelSize, scale: Defaults[.quickAccessSize])
+            let px = max(size.width, size.height) * 1.5 * (panel.screen ?? NSScreen.active).backingScaleFactor
             Thumbnailer.thumbnail(for: url, kind: media.kind, maxPixel: px) { [weak self] img in
                 guard let self, self.media.url == url else { return }
-                self.thumb.image = img
+                self.thumb.setImage(img, animated: false)
             }
         }
         if media.isVideoLike && media.kind != .studioProject {
-            let asset = AVURLAsset(url: media.url)
+            let asset = AVURLAsset(url: url)
             Task { @MainActor [weak self] in
-                guard let d = try? await asset.load(.duration) else { return }
-                self?.durationBadge.stringValue = " \(OverlayFormat.duration(d.seconds)) "
+                guard let d = try? await asset.load(.duration), let self, self.media.url == url else { return }
+                self.durationLabel.stringValue = OverlayFormat.duration(d.seconds)
             }
         }
     }
@@ -224,12 +247,12 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
             hoverOverlay.animator().alphaValue = hovered && !isUploading ? 1 : 0
-            durationBadge.animator().alphaValue = hovered ? 0 : 1
         }
         if hovered {
             autoCloseWork?.cancel()
             HoverHotkeys.shared.activate(owner: self, hotkeyBindings())
             startHoverPlayback()
+            QuickAccessController.shared.cardWasHovered(self)
         } else {
             HoverHotkeys.shared.deactivate(owner: self)
             stopHoverPlayback()
@@ -237,11 +260,20 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         }
     }
 
+    /// Re-derives the hover state from the pointer. Tracking areas only fire on pointer movement, so a card that
+    /// moves under (or away from) a still pointer would otherwise stay "hovered" — keeping its global hotkeys
+    /// registered and its auto-close suspended.
+    func syncHoverWithPointer() {
+        guard !isClosing, !isDragging, NSEvent.pressedMouseButtons == 0 else { return }
+        let inside = panel.isVisible && panel.frame.contains(NSEvent.mouseLocation)
+        if inside != isHovered { setHovered(inside) }
+    }
+
     private func hotkeyBindings() -> [HoverHotkeys.Binding] {
         [
             .init(Keys.c, .command) { [weak self] in self?.copy() },
             .init(Keys.s, .command) { [weak self] in self?.save() },
-            .init(Keys.a, .command) { [weak self] in self?.edit() },
+            .init(Keys.e, .command) { [weak self] in self?.edit() },
             .init(Keys.p, .command) { [weak self] in self?.pin() },
             .init(Keys.u, .command) { [weak self] in self?.upload() },
             .init(Keys.w, .command) { [weak self] in self?.close(recordForRestore: true) },
@@ -251,38 +283,37 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
     }
 
     private func startHoverPlayback() {
-        guard media.kind == .video, player == nil else { return }
+        guard media.kind == .video, player == nil, !isUploading else { return }
         let p = AVPlayer(url: media.url)
         p.isMuted = true
         p.actionAtItemEnd = .none
-        let layer = AVPlayerLayer(player: p)
-        layer.videoGravity = .resizeAspect
-        layer.frame = thumb.bounds
-        thumb.layer?.addSublayer(layer)
         loopObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem,
                                                               queue: .main) { [weak p] _ in p?.seek(to: .zero); p?.play() }
         player = p
-        playerLayer = layer
+        thumb.attach(p)
         p.play()
     }
 
     private func stopHoverPlayback() {
         player?.pause()
-        playerLayer?.removeFromSuperlayer()
+        thumb.attach(nil)
         if let o = loopObserver { NotificationCenter.default.removeObserver(o) }
         loopObserver = nil
         player = nil
-        playerLayer = nil
     }
 
     // MARK: Auto close
 
     func scheduleAutoClose() {
         autoCloseWork?.cancel()
-        guard Defaults[.quickAccessAutoClose], !isHovered, !isUploading, !isClosing else { return }
+        guard Defaults[.quickAccessAutoClose], !isHovered, !isUploading, !isDragging, !isClosing else { return }
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.isHovered, !self.isUploading, !self.isDragging else { return }
+            guard let self, !self.isClosing else { return }
+            // Something started since scheduling: the state change that ends it reschedules.
+            guard !self.isHovered, !self.isUploading, !self.isDragging else { return }
             if let action = Defaults[.quickAccessAutoCloseAction] { MediaPipeline.perform(action, on: self.media) }
+            // An upload action keeps the card until it finishes (then "close after uploading" applies).
+            if self.isUploading { return }
             self.close(recordForRestore: true)
         }
         autoCloseWork = work
@@ -297,7 +328,11 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
     }
 
     func save(forceAsk: Bool = false) {
-        if MediaActions.save(media, forceAsk: forceAsk) { close(recordForRestore: true) }
+        if MediaActions.save(media, forceAsk: forceAsk || NSEvent.modifierFlags.contains(.option)) { close(recordForRestore: true) }
+    }
+
+    private func saveOrTrash() {
+        if showsTrash { MediaActions.moveToTrash(media) } else { save() }
     }
 
     func edit() {
@@ -316,54 +351,87 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
 
     func upload() {
         guard !isUploading else { return }
-        guard MediaActions.canUpload else { MediaActions.upload(media, progress: nil, completion: nil); return }
-        isUploading = true
+        let configured = Services.upload?.isConfigured ?? false
+        if configured { uploadStarted() }
+        // UploadKit explains a missing destination, shows errors, plays the sound and the "Link has been copied" HUD.
+        MediaActions.upload(media) { [weak self] result in
+            guard let self, self.uploadState == .uploading else { return }
+            if case .success = result { self.uploadSucceeded() } else { self.uploadEnded() }
+        }
+    }
+
+    // MARK: Upload progress (from this card or any other caller)
+
+    func uploadProgressed(_ fraction: Double) {
+        guard !isClosing, uploadState != .done else { return }
+        if uploadState == .idle { uploadStarted() }
+        lastFraction = fraction
+        progressRing.progress = fraction
+        progressLabel.stringValue = "\(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
+    }
+
+    private func uploadStarted() {
+        guard uploadState == .idle, !isClosing else { return }
+        uploadState = .uploading
+        linkBeforeUpload = media.uploadedURL
+        lastFraction = 0
         autoCloseWork?.cancel()
+        stopHoverPlayback()
         updateUploadButtonVisibility()
         hoverOverlay.alphaValue = 0
         progressRing.progress = 0
         progressRing.isHidden = false
+        progressLabel.stringValue = ""
+        progressLabel.isHidden = false
         progressTick.isHidden = true
-        progressLabel.stringValue = "Uploading…"
         progressOverlay.isHidden = false
-        MediaActions.upload(media, progress: { [weak self] p in
-            self?.progressRing.progress = p
-        }, completion: { [weak self] result in
-            self?.uploadFinished(result)
-        })
+        // Uploads started elsewhere report no failure to us: end the progress state once UploadKit goes idle.
+        uploadWatchdog?.invalidate()
+        let t = Timer(timeInterval: 0.75, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.uploadState == .uploading, !(Services.upload?.isUploading ?? false) else { return }
+                let newLink = self.media.uploadedURL.map { $0 != self.linkBeforeUpload } ?? false
+                if newLink || self.lastFraction >= 1 { self.uploadSucceeded() } else { self.uploadEnded() }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        uploadWatchdog = t
     }
 
-    private func uploadFinished(_ result: Result<URL, Error>) {
-        isUploading = false
-        updateUploadButtonVisibility()
-        switch result {
-        case .success:
-            progressRing.isHidden = true
-            progressTick.isHidden = false
-            progressLabel.stringValue = "Link has been copied"
-            Sound.play(.uploadDone)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                guard let self, !self.isClosing else { return }
-                if Defaults[.quickAccessCloseAfterUploading] {
-                    self.close(recordForRestore: true)
-                } else {
-                    self.progressOverlay.isHidden = true
-                    if self.isHovered { self.hoverOverlay.alphaValue = 1 }
-                    self.scheduleAutoClose()
-                }
-            }
-        case .failure(let error):
-            progressOverlay.isHidden = true
-            if isHovered { hoverOverlay.alphaValue = 1 }
-            if case UploadError.notConfigured = error {} else { Alerts.error("Upload failed.", error) }
-            scheduleAutoClose()
+    private func uploadSucceeded() {
+        guard uploadState == .uploading else { return }
+        uploadState = .done
+        uploadWatchdog?.invalidate()
+        uploadWatchdog = nil
+        progressRing.isHidden = true
+        progressLabel.isHidden = true
+        progressTick.isHidden = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, !self.isClosing else { return }
+            if Defaults[.quickAccessCloseAfterUploading] { self.close(recordForRestore: true) } else { self.uploadEnded() }
         }
+    }
+
+    /// Back to the normal card (after success without auto-close, failure or cancellation).
+    private func uploadEnded() {
+        uploadWatchdog?.invalidate()
+        uploadWatchdog = nil
+        uploadState = .idle
+        progressOverlay.isHidden = true
+        updateUploadButtonVisibility()
+        if isHovered {
+            hoverOverlay.alphaValue = 1
+            startHoverPlayback()
+        }
+        scheduleAutoClose()
     }
 
     func close(recordForRestore: Bool) {
         guard !isClosing else { return }
         isClosing = true
         autoCloseWork?.cancel()
+        uploadWatchdog?.invalidate()
+        uploadWatchdog = nil
         HoverHotkeys.shared.deactivate(owner: self)
         stopHoverPlayback()
         if QuickLookController.shared.currentURL == media.url { QuickLookController.shared.close() }
@@ -374,11 +442,11 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
 
     func mouseDown(_ event: NSEvent) {
         mouseDownPoint = event.locationInWindow
-        if event.clickCount == 2 { edit() }
+        if event.clickCount == 2 { mouseDownPoint = nil; edit() }
     }
 
     func mouseDragged(_ event: NSEvent) {
-        guard !isDragging, !isUploading, let start = mouseDownPoint else { return }
+        guard !isDragging, !isUploading, !isClosing, let start = mouseDownPoint else { return }
         let p = event.locationInWindow
         guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
         mouseDownPoint = nil
@@ -393,10 +461,10 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
         guard FileManager.default.fileExists(atPath: media.url.path) else { NSSound.beep(); return }
         let item = NSDraggingItem(pasteboardWriter: media.url as NSURL)
         let image = thumb.image ?? NSWorkspace.shared.icon(forFile: media.url.path)
-        let size = root.bounds.size
-        item.setDraggingFrame(NSRect(origin: .zero, size: size), contents: image)
+        item.setDraggingFrame(root.bounds, contents: image)
         isDragging = true
         autoCloseWork?.cancel()
+        HoverHotkeys.shared.deactivate(owner: self)
         let session = root.beginDraggingSession(with: [item], event: event, source: self)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
@@ -413,30 +481,49 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
 
     private func dragEnded(at point: NSPoint, operation: NSDragOperation) {
         isDragging = false
+        guard !isClosing else { return }      // closed meanwhile (Close All, trash, …): let its fade-out run
         panel.alphaValue = 1
+        let keep = NSEvent.modifierFlags.contains(.option)   // "hold ⌥ to keep it"
         let screen = panel.screen ?? NSScreen.active
         if operation != [] {
-            if Defaults[.quickAccessCloseAfterDragging] { close(recordForRestore: true); return }
+            if Defaults[.quickAccessCloseAfterDragging] && !keep { close(recordForRestore: true); return }
         } else if QuickAccessLayout.isAtEdge(point, of: screen.frame, side: Defaults[.quickAccessSide]) {
             close(recordForRestore: true); return   // flung to the screen edge → dismiss
         }
-        scheduleAutoClose()
+        // Re-derive hover: the drop may have ended anywhere.
+        if panel.frame.contains(NSEvent.mouseLocation) {
+            if isHovered { HoverHotkeys.shared.activate(owner: self, hotkeyBindings()) } else { setHovered(true) }
+        } else if isHovered {
+            setHovered(false)
+        } else {
+            scheduleAutoClose()
+        }
     }
 
-    /// Horizontal two-finger swipe toward the screen edge dismisses the card.
+    /// Two-finger swipe toward the screen edge dismisses the card; swiping down slides the whole stack away.
     func scroll(_ event: NSEvent) {
-        guard !isClosing, let target = targetFrame, abs(event.scrollingDeltaX) >= abs(event.scrollingDeltaY) || swipeOffset != 0 else { return }
+        guard !isClosing, !isDragging, let target = targetFrame else { return }
         let side = Defaults[.quickAccessSide]
-        let fingerDX = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX : -event.scrollingDeltaX
+        let inverted = event.isDirectionInvertedFromDevice
+        let fingerDX = inverted ? event.scrollingDeltaX : -event.scrollingDeltaX
+        let fingerDY = inverted ? event.scrollingDeltaY : -event.scrollingDeltaY   // > 0 = fingers move down
         switch event.phase {
         case .began, .changed:
-            swipeOffset += fingerDX
+            if swipeOffset == .zero && abs(fingerDY) > abs(fingerDX) {
+                swipeOffset.height += fingerDY       // vertical gesture: tracked, applied on release
+                return
+            }
+            if swipeOffset.height != 0 { swipeOffset.height += fingerDY; return }
+            swipeOffset.width += fingerDX
             // Only toward the edge (a little rubber band inward).
-            swipeOffset = side == .left ? min(swipeOffset, 12) : max(swipeOffset, -12)
-            panel.setFrameOrigin(NSPoint(x: target.minX + swipeOffset, y: target.minY))
+            swipeOffset.width = side == .left ? min(swipeOffset.width, 12) : max(swipeOffset.width, -12)
+            panel.setFrameOrigin(NSPoint(x: target.minX + swipeOffset.width, y: target.minY))
         case .ended, .cancelled:
-            let dismiss = abs(swipeOffset) > target.width * 0.35 && (side == .left ? swipeOffset < 0 : swipeOffset > 0)
-            swipeOffset = 0
+            let offset = swipeOffset
+            swipeOffset = .zero
+            if offset.height > 24 { QuickAccessController.shared.slideDown(); return }
+            guard offset.width != 0 else { return }
+            let dismiss = abs(offset.width) > target.width * 0.35 && (side == .left ? offset.width < 0 : offset.width > 0)
             if dismiss { close(recordForRestore: true) } else {
                 NSAnimationContext.runAnimationGroup { $0.duration = 0.2; panel.animator().setFrame(target, display: true) }
             }
@@ -450,24 +537,31 @@ final class QuickAccessCard: NSObject, NSDraggingSource {
     func showContextMenu(_ event: NSEvent, in view: NSView) {
         let m = NSMenu()
         m.autoenablesItems = false
-        m.addItem(ClosureMenuItem("Open", symbol: "arrow.up.forward.app") { [weak self] in if let self { MediaActions.open(self.media) } })
-        m.addItem(ClosureMenuItem("Show in Finder", symbol: "folder") { [weak self] in if let self { MediaActions.showInFinder(self.media) } })
-        m.addItem(ClosureMenuItem("Rename…", symbol: "pencil.line") { [weak self] in if let self { MediaActions.rename(self.media) } })
+        m.addItem(ClosureMenuItem(media.isImage ? "Open Annotation Tool…" : "Open Video Editor…", key: "e",
+                                  symbol: media.isImage ? "pencil" : "scissors") { [weak self] in self?.edit() })
+        if media.isImage { m.addItem(ClosureMenuItem("Pin to the Screen", key: "p", symbol: "pin") { [weak self] in self?.pin() }) }
         m.addItem(.separator())
+        let upload = ClosureMenuItem("Upload to Cloud", key: "u", symbol: "icloud.and.arrow.up") { [weak self] in self?.upload() }
+        upload.isEnabled = !isUploading
+        m.addItem(upload)
+        m.addItem(ClosureMenuItem("Quick Look", key: " ", modifiers: [], symbol: "eye") { [weak self] in self?.quickLook() })
+        m.addItem(.separator())
+        m.addItem(ClosureMenuItem("Show in Finder", symbol: "folder") { [weak self] in if let self { MediaActions.showInFinder(self.media) } })
+        m.addItem(MediaActions.openWithMenuItem(for: media))
         m.addItem(ClosureMenuItem("Copy", key: "c", symbol: "doc.on.doc") { [weak self] in self?.copy() })
         m.addItem(ClosureMenuItem("Save As…", key: "s", modifiers: [.command, .shift], symbol: "square.and.arrow.down") { [weak self] in
             self?.save(forceAsk: true)
         })
-        m.addItem(ClosureMenuItem(media.isImage ? "Annotate" : "Open Video Editor", key: "a", symbol: media.isImage ? "pencil" : "scissors") { [weak self] in
-            self?.edit()
-        })
-        let upload = ClosureMenuItem("Upload", key: "u", symbol: "icloud.and.arrow.up") { [weak self] in self?.upload() }
-        upload.isEnabled = !isUploading
-        m.addItem(upload)
-        if media.isImage { m.addItem(ClosureMenuItem("Pin to the Screen", key: "p", symbol: "pin") { [weak self] in self?.pin() }) }
-        m.addItem(.separator())
+        m.addItem(ClosureMenuItem("Rename…", symbol: "pencil.line") { [weak self] in if let self { MediaActions.rename(self.media) } })
+        m.addItem(NSSharingServicePicker(items: [media.url as NSURL]).standardShareMenuItem)
         m.addItem(ClosureMenuItem("Move to Trash", symbol: "trash") { [weak self] in if let self { MediaActions.moveToTrash(self.media) } })
-        m.addItem(ClosureMenuItem("Close", key: "w", symbol: "xmark") { [weak self] in self?.close(recordForRestore: true) })
+        m.addItem(.separator())
+        m.addItem(ClosureMenuItem("Temporarily Hide") { QuickAccessController.shared.slideDown() })
+        m.addItem(ClosureMenuItem("Close", key: "w") { [weak self] in self?.close(recordForRestore: true) })
+        if QuickAccessController.shared.cards.count > 1 {
+            m.addItem(ClosureMenuItem("Save All") { QuickAccessController.shared.saveAll() })
+            m.addItem(ClosureMenuItem("Close All…") { QuickAccessController.shared.closeAll() })
+        }
         NSMenu.popUpContextMenu(m, with: event, for: view)
     }
 }

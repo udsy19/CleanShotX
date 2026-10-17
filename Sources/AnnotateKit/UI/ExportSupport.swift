@@ -13,25 +13,46 @@ final class DragHandleView: NSView, NSDraggingSource {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        let icon = NSImageView(image: NSImage(systemSymbolName: "hand.draw", accessibilityDescription: nil) ?? NSImage())
-        icon.contentTintColor = .secondaryLabelColor
-        let label = UI.label("Drag me", size: 12, color: .secondaryLabelColor)
-        let stack = NSStackView(views: [icon, label])
-        stack.spacing = 4
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 10)
+        func grip() -> NSImageView {
+            let v = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: nil) ?? NSImage())
+            v.symbolConfiguration = .init(pointSize: 10, weight: .medium)
+            v.contentTintColor = .tertiaryLabelColor
+            return v
+        }
+        let label = UI.label("Drag me", size: 12, color: .labelColor)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        let stack = NSStackView(views: [grip(), label, grip()])
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 26),
+            widthAnchor.constraint(greaterThanOrEqualToConstant: 110),
         ])
-        wantsLayer = true
-        layer?.cornerRadius = 6
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
         toolTip = "Drag the annotated image into another app or Finder"
         setAccessibilityRole(.button)
         setAccessibilityLabel("Drag the annotated image")
+    }
+
+    /// Raised pill (white in light mode, control grey in dark mode).
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 0.5, dy: 1)
+        let pill = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowOffset = NSSize(width: 0, height: -0.5)
+        shadow.shadowBlurRadius = 1
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
+        shadow.set()
+        NSColor.controlColor.setFill()
+        pill.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.separatorColor.setStroke()
+        pill.lineWidth = 0.5
+        pill.stroke()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

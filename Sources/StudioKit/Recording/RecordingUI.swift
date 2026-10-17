@@ -23,25 +23,11 @@ final class StudioPanel: NSPanel {
 
 @MainActor
 enum PanelFactory {
-    /// Hosts a SwiftUI view in a rounded HUD-material panel.
-    static func panel<V: View>(_ view: V, cornerRadius: CGFloat = 14) -> StudioPanel {
+    /// Hosts a SwiftUI view (which draws its own background) in a transparent borderless panel.
+    static func panel<V: View>(_ view: V) -> StudioPanel {
         let host = NSHostingView(rootView: view)
-        host.translatesAutoresizingMaskIntoConstraints = false
-        let fx = NSVisualEffectView()
-        fx.material = .hudWindow
-        fx.blendingMode = .behindWindow
-        fx.state = .active
-        fx.wantsLayer = true
-        fx.layer?.cornerRadius = cornerRadius
-        fx.layer?.masksToBounds = true
-        fx.addSubview(host)
-        NSLayoutConstraint.activate([
-            host.leadingAnchor.constraint(equalTo: fx.leadingAnchor), host.trailingAnchor.constraint(equalTo: fx.trailingAnchor),
-            host.topAnchor.constraint(equalTo: fx.topAnchor), host.bottomAnchor.constraint(equalTo: fx.bottomAnchor),
-        ])
-        let size = host.fittingSize
-        let p = StudioPanel(contentRect: NSRect(origin: .zero, size: size))
-        p.contentView = fx
+        let p = StudioPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize))
+        p.contentView = host
         p.appearance = NSAppearance(named: .darkAqua)
         return p
     }
@@ -54,6 +40,30 @@ enum PanelFactory {
         if y < vis.minY + 8 { y = max(rect.minY + gap * 2, vis.minY + 8) }
         let x = min(max(rect.midX - size.width / 2, vis.minX + 8), vis.maxX - size.width - 8)
         panel.setFrameOrigin(NSPoint(x: x, y: min(y, vis.maxY - size.height - 8)))
+    }
+}
+
+/// Dark behind-window glass for SwiftUI blocks in transparent panels.
+struct GlassBackground: NSViewRepresentable {
+    var cornerRadius: CGFloat
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .hudWindow
+        v.blendingMode = .behindWindow
+        v.state = .active
+        v.wantsLayer = true
+        v.layer?.cornerRadius = cornerRadius
+        v.layer?.masksToBounds = true
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) { v.layer?.cornerRadius = cornerRadius }
+}
+
+extension View {
+    /// A dark-glass block with a 1 px inner highlight (recorder panel style).
+    func glassBlock(_ radius: CGFloat) -> some View {
+        background(GlassBackground(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Color.white.opacity(0.14)))
     }
 }
 
@@ -125,76 +135,91 @@ final class PreRecordOptions: ObservableObject {
     }
 }
 
+/// Pre-record panel (RecorderSettingsView, Studio flavour): a settings row of device toggles over a
+/// "Record in Studio Mode" pill. Active toggles are full white with a small tick; inactive ones are dimmed.
 struct PreRecordBar: View {
     @ObservedObject var options: PreRecordOptions
+    static let width: CGFloat = 227
 
     var body: some View {
-        HStack(spacing: 6) {
-            Button(action: options.onCancel) { Image(systemName: "xmark").frame(width: 26, height: 26) }
-                .buttonStyle(BarButtonStyle()).help("Cancel (Esc)")
-            Divider().frame(height: 22)
-            Menu {
-                Button { options.microphoneID = nil } label: { check(options.microphoneID == nil, "No Microphone") }
-                Divider()
-                ForEach(options.microphones) { m in
-                    Button { options.microphoneID = m.id } label: { check(options.microphoneID == m.id, m.name) }
+        VStack(spacing: 10) {
+            HStack(spacing: 0) {
+                cell(active: options.microphoneID != nil, help: options.microphones.first { $0.id == options.microphoneID }?.name ?? "Microphone off") {
+                    Menu {
+                        Button { options.microphoneID = nil } label: { check(options.microphoneID == nil, "No Microphone") }
+                        Divider()
+                        ForEach(options.microphones) { m in
+                            Button { options.microphoneID = m.id } label: { check(options.microphoneID == m.id, m.name) }
+                        }
+                    } label: { Image(systemName: "mic") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
                 }
-            } label: {
-                Image(systemName: options.microphoneID == nil ? "mic.slash.fill" : "mic.fill")
-            }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 34, height: 26)
-            .help(options.microphones.first { $0.id == options.microphoneID }?.name ?? "Microphone off")
-            Toggle(isOn: $options.systemAudio) { Image(systemName: options.systemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill") }
-                .toggleStyle(BarToggleStyle()).help("Record system audio")
-            Menu {
-                Button { options.cameraID = nil; options.onCameraChange(nil) } label: { check(options.cameraID == nil, "No Camera") }
-                Divider()
-                ForEach(options.cameras) { c in
-                    Button { options.cameraID = c.id; options.onCameraChange(c.id) } label: { check(options.cameraID == c.id, c.name) }
+                divider
+                cell(active: options.systemAudio, help: "Record system audio") {
+                    Button { options.systemAudio.toggle() } label: { Image(systemName: "speaker.wave.2") }.buttonStyle(.plain)
                 }
-            } label: {
-                Image(systemName: options.cameraID == nil ? "video.slash.fill" : "video.fill")
+                divider
+                cell(active: options.cameraID != nil, help: options.cameras.first { $0.id == options.cameraID }?.name ?? "Camera off") {
+                    Menu {
+                        Button { options.cameraID = nil; options.onCameraChange(nil) } label: { check(options.cameraID == nil, "No Camera") }
+                        Divider()
+                        ForEach(options.cameras) { c in
+                            Button { options.cameraID = c.id; options.onCameraChange(c.id) } label: { check(options.cameraID == c.id, c.name) }
+                        }
+                    } label: { Image(systemName: "video") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                }
+                divider
+                cell(active: options.keystrokes, help: "Capture keystrokes (requires Accessibility)") {
+                    Button { options.keystrokes.toggle() } label: { Image(systemName: "command.square") }.buttonStyle(.plain)
+                }
+                divider
+                cell(active: true, showsTick: false, help: "Cancel (Esc)") {
+                    Button(action: options.onCancel) { Image(systemName: "xmark") }.buttonStyle(.plain)
+                }
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 34, height: 26)
-            .help(options.cameras.first { $0.id == options.cameraID }?.name ?? "Record camera")
-            Toggle(isOn: $options.keystrokes) { Image(systemName: "keyboard") }
-                .toggleStyle(BarToggleStyle()).help("Capture keystrokes (requires Accessibility)")
-            Divider().frame(height: 22)
+            .frame(height: 50)
+            .glassBlock(16)
+
             Button(action: options.onStart) {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.red).frame(width: 9, height: 9)
-                    Text("Start Recording").fontWeight(.semibold)
+                HStack(spacing: 8) {
+                    Image(systemName: "movieclapper.fill").frame(width: 20)
+                    Text("Record in Studio Mode").font(.system(size: 13, weight: .medium))
+                    Spacer(minLength: 4)
+                    Text("↩").foregroundStyle(.white.opacity(0.5))
                 }
-                .padding(.horizontal, 12).frame(height: 28)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.14)))
+                .padding(.horizontal, 14)
+                .frame(height: 37)
+                .contentShape(Capsule())
             }
-            .buttonStyle(.plain).keyboardShortcut(.defaultAction).help("Start recording (Return)")
+            .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
+            .glassBlock(18.5)
+            .help("Start recording (Return)")
         }
-        .padding(.horizontal, 8).padding(.vertical, 7)
+        .frame(width: Self.width)
         .foregroundStyle(.white)
+        .padding(6)
+    }
+
+    private var divider: some View { Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1) }
+
+    private func cell<C: View>(active: Bool, showsTick: Bool = true, help: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(spacing: 3) {
+            content()
+                .font(.system(size: 16, weight: .regular))
+                .frame(width: 30, height: 22)
+            Image(systemName: "checkmark").font(.system(size: 7, weight: .bold))
+                .opacity(showsTick && active ? 1 : 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
+        .contentShape(Rectangle())
+        .help(help)
     }
 
     @ViewBuilder private func check(_ on: Bool, _ title: String) -> some View {
         if on { Label(title, systemImage: "checkmark") } else { Text(title) }
-    }
-}
-
-struct BarButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .contentShape(Rectangle())
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(configuration.isPressed ? 0.2 : 0.001)))
-    }
-}
-
-struct BarToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button { configuration.isOn.toggle() } label: {
-            configuration.label.frame(width: 30, height: 26)
-                .foregroundStyle(configuration.isOn ? Color.white : Color.white.opacity(0.45))
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(configuration.isOn ? 0.16 : 0.001)))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -210,38 +235,97 @@ final class RecordingControlsModel: ObservableObject {
     var onDelete: () -> Void = {}
 }
 
+/// Recording controls (RecorderControlsView): dark pill with stop + red timer, pause/resume, restart, delete
+/// and a drag grip, separated by hairlines. The whole pill drags the panel.
 struct RecordingControlsBar: View {
     @ObservedObject var model: RecordingControlsModel
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             Button(action: model.onStop) {
-                RoundedRectangle(cornerRadius: 3).fill(Color.red).frame(width: 12, height: 12).frame(width: 30, height: 28)
+                HStack(spacing: 6) {
+                    Image(systemName: "stop.circle").font(.system(size: 19, weight: .medium))
+                    Text(model.elapsed).font(.system(size: 15, weight: .semibold).monospacedDigit())
+                }
+                .foregroundStyle(Color(nsColor: .systemRed).opacity(model.paused ? 0.6 : 1))
+                .frame(minWidth: 80, maxHeight: .infinity)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(BarButtonStyle()).help("Stop Recording")
-            Text(model.elapsed).font(.system(size: 13, weight: .medium).monospacedDigit()).frame(minWidth: 44)
-                .foregroundStyle(model.paused ? Color.white.opacity(0.5) : .white)
-            Button(action: model.onPauseResume) {
-                Image(systemName: model.paused ? "play.fill" : "pause.fill").frame(width: 30, height: 28)
-            }
-            .buttonStyle(BarButtonStyle()).help(model.paused ? "Resume" : "Pause")
-            Button(action: model.onRestart) { Image(systemName: "arrow.counterclockwise").frame(width: 30, height: 28) }
-                .buttonStyle(BarButtonStyle()).help("Restart Recording")
-            Button(action: model.onDelete) { Image(systemName: "trash").frame(width: 30, height: 28) }
-                .buttonStyle(BarButtonStyle()).help("Delete Recording")
+            .buttonStyle(.plain).help("Stop Recording")
+            separator
+            icon(model.paused ? "play.circle" : "pause.circle", model.paused ? "Resume" : "Pause", model.onPauseResume)
+            separator
+            icon("arrow.counterclockwise", "Restart Recording", model.onRestart)
+            separator
+            icon("trash", "Delete Recording", model.onDelete)
+            separator
+            Image(systemName: "line.3.horizontal").font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5)).frame(width: 28).help("Drag to move")
         }
-        .padding(.horizontal, 6).padding(.vertical, 5)
+        .frame(height: 40)
         .foregroundStyle(.white)
+        .background(RoundedRectangle(cornerRadius: 20).fill(Color(white: 0.086).opacity(0.95)))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.white.opacity(0.12)))
+        .padding(4)
+    }
+
+    private var separator: some View { Rectangle().fill(Color.white.opacity(0.1)).frame(width: 1, height: 20) }
+
+    private func icon(_ symbol: String, _ help: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .regular)).frame(width: 40, height: 40).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(help)
     }
 }
 
 // MARK: - Countdown
 
 @MainActor
+final class CountdownModel: ObservableObject {
+    @Published var remaining = 3
+    var onCancel: () -> Void = {}
+}
+
+/// 80 pt black disc with the big digit and a ring that fills each second; hovering shows a cancel button.
+struct CountdownView: View {
+    @ObservedObject var model: CountdownModel
+    @State private var arc: CGFloat = 0
+    @State private var hover = false
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Color.black.opacity(0.9))
+            Circle().trim(from: 0, to: arc)
+                .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(4)
+            if hover {
+                Button(action: model.onCancel) { Image(systemName: "xmark").font(.system(size: 26, weight: .bold)) }
+                    .buttonStyle(.plain).help("Cancel (Esc)")
+            } else {
+                Text("\(model.remaining)").font(.system(size: 44, weight: .bold)).monospacedDigit()
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(width: 80, height: 80)
+        .onHover { hover = $0 }
+        .onAppear(perform: restartArc)
+        .onChange(of: model.remaining) { restartArc() }
+    }
+
+    private func restartArc() {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { arc = 0 }
+        DispatchQueue.main.async { withAnimation(.linear(duration: 1)) { arc = 1 } }
+    }
+}
+
+@MainActor
 final class CountdownWindow {
     private var panel: NSPanel?
     private var timer: Timer?
-    private var remaining = 0
-    private var label: NSTextField?
+    private let model = CountdownModel()
     private var completion: ((Bool) -> Void)?
     private var keyMonitor: Any?
     private var localKeyMonitor: Any?
@@ -249,26 +333,18 @@ final class CountdownWindow {
     func run(seconds: Int, over rect: CGRect, completion: @escaping (Bool) -> Void) {
         guard seconds > 0 else { completion(true); return }
         self.completion = completion
-        remaining = seconds
-        let size: CGFloat = 132
+        model.remaining = seconds
+        model.onCancel = { [weak self] in self?.finish(false) }
+        let size: CGFloat = 80
         let p = NSPanel(contentRect: NSRect(x: rect.midX - size / 2, y: rect.midY - size / 2, width: size, height: size),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.isOpaque = false; p.backgroundColor = .clear; p.level = .screenSaver; p.ignoresMouseEvents = true
+        p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true; p.level = .screenSaver
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: size, height: size))
-        fx.material = .hudWindow; fx.state = .active; fx.blendingMode = .behindWindow
-        fx.wantsLayer = true; fx.layer?.cornerRadius = size / 2; fx.layer?.masksToBounds = true
-        let l = NSTextField(labelWithString: "\(seconds)")
-        l.font = .systemFont(ofSize: 64, weight: .semibold)
-        l.textColor = .white
-        l.alignment = .center
-        l.frame = NSRect(x: 0, y: (size - 80) / 2, width: size, height: 80)
-        fx.addSubview(l)
-        p.contentView = fx
+        p.contentView = NSHostingView(rootView: CountdownView(model: model))
         p.appearance = NSAppearance(named: .darkAqua)
         p.orderFrontRegardless()
-        panel = p; label = l
+        panel = p
         Sound.play(.countdownTick)
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             if e.keyCode == 53 { MainActor.assumeIsolated { self?.finish(false) } }
@@ -284,9 +360,8 @@ final class CountdownWindow {
     }
 
     private func tick() {
-        remaining -= 1
-        if remaining <= 0 { finish(true); return }
-        label?.stringValue = "\(remaining)"
+        model.remaining -= 1
+        if model.remaining <= 0 { finish(true); return }
         Sound.play(.countdownTick)
     }
 
@@ -305,8 +380,8 @@ final class CountdownWindow {
 /// Live camera bubble shown while preparing/recording (excluded from the capture like all our windows).
 final class CameraBubbleWindow: NSPanel {
     init(session: AVCaptureSession, near rect: CGRect) {
-        let d: CGFloat = 150
-        super.init(contentRect: NSRect(x: rect.maxX - d - 20, y: rect.minY + 20, width: d, height: d),
+        let d: CGFloat = min(160, max(96, min(rect.width, rect.height) * 0.25))
+        super.init(contentRect: NSRect(x: rect.maxX - d - 16, y: rect.minY + 16, width: d, height: d),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false; backgroundColor = .clear; hasShadow = true
         level = .statusBar
@@ -320,8 +395,8 @@ final class CameraBubbleWindow: NSPanel {
         layer.frame = view.bounds
         layer.cornerRadius = d / 2
         layer.masksToBounds = true
-        layer.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
-        layer.borderWidth = 2
+        layer.borderColor = NSColor.white.cgColor
+        layer.borderWidth = 3
         if let c = layer.connection, c.isVideoMirroringSupported {
             c.automaticallyAdjustsVideoMirroring = false
             c.isVideoMirrored = true

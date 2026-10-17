@@ -38,6 +38,8 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
     private let hostClock = CMClockGetHostTimeClock()
     private var stream: SCStream?
     private var micSession: AVCaptureSession?
+    /// The microphone session's clock, fixed before the session starts delivering samples.
+    private var micClock: CMClock?
     private(set) var microphoneName: String?
 
     // Queue-confined.
@@ -47,6 +49,9 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
     private var micInput: AVAssetWriterInput?
     private var lastVideo: CMSampleBuffer?
     private var lastVideoTime = -1.0
+    /// Newest frame delivered before the clock started. ScreenCaptureKit only sends frames when the screen
+    /// changes, so this is what the first second(s) of a static screen look like.
+    private var pendingFirst: CMSampleBuffer?
     private var lastAudioEnd: [ObjectIdentifier: Double] = [:]
     private var accepting = true
     private(set) var videoFrames = 0
@@ -122,8 +127,9 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
         guard session.canAddOutput(out) else { throw RecorderError.microphone("Could not read the microphone.") }
         session.addOutput(out)
         session.commitConfiguration()
-        session.startRunning()
+        micClock = session.synchronizationClock ?? hostClock
         micSession = session
+        session.startRunning()
     }
 
     /// Starts capturing. Samples are only written once `clock` has been started.
@@ -170,18 +176,35 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sb: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard accepting, let micInput, let session = micSession else { return }
-        let host = CMSyncConvertTime(CMSampleBufferGetPresentationTimeStamp(sb), from: session.synchronizationClock ?? hostClock, to: hostClock).seconds
+        guard accepting, let micInput, let micClock else { return }
+        let host = CMSyncConvertTime(CMSampleBufferGetPresentationTimeStamp(sb), from: micClock, to: hostClock).seconds
         appendAudio(sb, to: micInput, hostTime: host)
     }
 
     private func appendVideo(_ sb: CMSampleBuffer) {
         let host = CMSampleBufferGetPresentationTimeStamp(sb).seconds
-        guard let t = clock.mediaTime(forHost: host), t > lastVideoTime, videoInput.isReadyForMoreMediaData,
-              let copy = retimed(sb, to: CMTime(seconds: t, preferredTimescale: 600_000)) else { return }
+        guard let t = clock.mediaTime(forHost: host) else {
+            if !clock.isStarted { pendingFirst = sb }
+            return
+        }
+        // The video must start at 0 (events.json and camera.mov do): hold the last pre-start frame until the
+        // first post-start one.
+        if videoFrames == 0, t > 0.0005 { appendPendingFirst() }
+        guard t > lastVideoTime else { return }
+        append(sb, at: t)
+    }
+
+    private func appendPendingFirst() {
+        guard let first = pendingFirst else { return }
+        pendingFirst = nil
+        append(first, at: 0)
+    }
+
+    private func append(_ sb: CMSampleBuffer, at t: Double) {
+        guard videoInput.isReadyForMoreMediaData, let copy = retimed(sb, to: CMTime(seconds: t, preferredTimescale: 600_000)) else { return }
         if videoInput.append(copy) {
             lastVideo = copy; lastVideoTime = t; videoFrames += 1
-        } else if writer.status == .failed {
+        } else if writer.status == .failed, accepting {
             accepting = false
             onFailure?(writer.error ?? RecorderError.writer("Error with processing video buffer."))
         }
@@ -214,6 +237,9 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             queue.async { [self] in
                 accepting = false
+                // Nothing changed on screen since the start: the pre-start frame is the whole video.
+                if videoFrames == 0, writer?.status == .writing { appendPendingFirst() }
+                pendingFirst = nil
                 guard let writer, writer.status == .writing, videoFrames > 0 else {
                     writer?.cancelWriting()
                     cont.resume(throwing: RecorderError.writer(writer?.error?.localizedDescription ?? "No frames were recorded."))
@@ -247,6 +273,7 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
                 accepting = false
                 writer?.cancelWriting()
                 lastVideo = nil
+                pendingFirst = nil
                 try? FileManager.default.removeItem(at: config.url)
                 cont.resume()
             }

@@ -49,6 +49,26 @@ final class EditorSession {
         notify(.style)
     }
 
+    /// The tool whose style the toolbar edits: the selection's kind if there is one, else the active tool.
+    var styleTarget: AnnotateTool {
+        if let first = selectedObjects.first, first.kind != .image { return AnnotateTool.forKind(first.kind) }
+        return tool
+    }
+
+    /// First selected object of the style target's kind; its values win over the tool's remembered style.
+    var styleSample: Annotation? {
+        let kind = styleTarget.kind
+        return selectedObjects.first { $0.kind == kind }
+    }
+
+    /// Changes the style target's remembered style and every selected object of that kind.
+    func restyle(coalesce: String? = nil, style: (inout ToolStyle) -> Void, object: @escaping (inout Annotation) -> Void) {
+        let target = styleTarget
+        updateStyle(for: target, style)
+        let kind = target.kind
+        modifySelection(coalesce: coalesce) { a in if a.kind == kind { object(&a) } }
+    }
+
     /// Fresh object for `tool` at `p`, carrying the tool's remembered style.
     func makeObject(for tool: AnnotateTool, at p: CGPoint) -> Annotation? {
         guard let kind = tool.kind else { return nil }
@@ -82,8 +102,14 @@ final class EditorSession {
 
     // MARK: Mutations
 
-    /// Undoable change.
+    /// Undoable change. During an interaction (drag, inline text editing) the change joins the interaction's
+    /// single undo step instead of recording its own, so the history stays in order.
     func apply(_ change: (inout CanvasState) -> Void) {
+        if isInteracting {
+            update(change)
+            selection = selection.filter { id in state.objects.contains { $0.id == id } }
+            return
+        }
         let before = Snapshot(state: state, selection: selection)
         change(&state)
         guard !state.isSameContent(as: before.state) else { return }
@@ -98,7 +124,7 @@ final class EditorSession {
     /// a short time (slider drags, repeated nudges).
     func applyCoalescing(_ key: String, _ change: (inout CanvasState) -> Void) {
         let now = Date()
-        if key == lastCoalesceKey, now.timeIntervalSince(lastCoalesceTime) < 0.8 {
+        if !isInteracting, key == lastCoalesceKey, now.timeIntervalSince(lastCoalesceTime) < 0.8 {
             change(&state)
             lastCoalesceTime = now
             isDirty = true
@@ -139,12 +165,12 @@ final class EditorSession {
     var isInteracting: Bool { interactionStart != nil }
 
     func undo() {
-        guard let s = history.undo(current: Snapshot(state: state, selection: selection)) else { NSSound.beep(); return }
+        guard !isInteracting, let s = history.undo(current: Snapshot(state: state, selection: selection)) else { NSSound.beep(); return }
         restore(s)
     }
 
     func redo() {
-        guard let s = history.redo(current: Snapshot(state: state, selection: selection)) else { NSSound.beep(); return }
+        guard !isInteracting, let s = history.redo(current: Snapshot(state: state, selection: selection)) else { NSSound.beep(); return }
         restore(s)
     }
 
@@ -288,7 +314,9 @@ final class EditorSession {
             objects = []
         }
         guard w != source.width || h != source.height || flatten else { return }
-        guard let ctx = ImageTools.context(width: w, height: h, colorSpace: source.colorSpace) else { return }
+        // Indexed / CMYK sources can't back an RGBA context; fall back to sRGB.
+        guard let ctx = ImageTools.context(width: w, height: h, colorSpace: source.colorSpace)
+                ?? ImageTools.context(width: w, height: h) else { return }
         ctx.interpolationQuality = .high
         ctx.draw(source, in: CGRect(x: 0, y: 0, width: w, height: h))
         guard let resized = ctx.makeImage() else { return }

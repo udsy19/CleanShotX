@@ -44,7 +44,11 @@ final class EffectCache {
             return nil
         }
         guard let o = out else { return nil }
-        return ciContext.createCGImage(o, from: extent, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        return render(o, extent: extent)
+    }
+
+    static func render(_ image: CIImage, extent: CGRect) -> CGImage? {
+        ciContext.createCGImage(image, from: extent, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
     }
 
     private static func pixellate(_ input: CIImage, block: CGFloat) -> CIImage? {
@@ -88,7 +92,13 @@ final class WallpaperCache {
     }
 
     func image(data: Data) -> CGImage? {
-        let key = "data-\(data.count)-\(data.prefix(64).hashValue)"
+        // Data's own hash only covers a short prefix (identical across JPEG headers), so sample the tail too.
+        var h = Hasher()
+        h.combine(data.count)
+        h.combine(data.prefix(256))
+        h.combine(data.suffix(256))
+        if data.count > 1024 { h.combine(data[data.startIndex + data.count / 2 ..< data.startIndex + data.count / 2 + 256]) }
+        let key = "data-\(h.finalize())"
         if let hit = cache[key] { return hit }
         guard let src = CGImageSourceCreateWithData(data as CFData, nil),
               let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
@@ -96,9 +106,37 @@ final class WallpaperCache {
         return img
     }
 
+    private var blurCache: (source: CGImage, result: CGImage)?
+
+    /// A heavily blurred, downscaled copy of `image` (the "Blurred wallpaper" background).
+    func blurred(_ image: CGImage) -> CGImage? {
+        if let c = blurCache, c.source === image { return c.result }
+        let longest = CGFloat(max(image.width, image.height))
+        let small = longest > 640 ? ImageTools.resized(image, factor: 640 / longest) : image
+        let input = CIImage(cgImage: small)
+        let sigma = Double(max(small.width, small.height)) * 0.04
+        let out = input.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: input.extent)
+        guard let result = EffectCache.render(out, extent: input.extent) else { return nil }
+        blurCache = (image, result)
+        return result
+    }
+
     /// JPEG thumbnail of a wallpaper for embedding in documents.
     static func embeddable(path: String) -> Data? {
         guard let img = WallpaperCache().image(path: path, maxPixel: 2400) else { return nil }
         return ImageTools.encode(img, format: .jpeg, quality: 0.85)
+    }
+
+    /// The image a background fill needs embedded so a project renders the same on another Mac
+    /// (custom images, the desktop wallpaper of `screen`, the blurred wallpaper). nil for generated fills.
+    @MainActor
+    static func embeddedData(for fill: BackgroundFill, screen: NSScreen?) -> Data? {
+        switch fill {
+        case .image(let path): return embeddable(path: path)
+        case .desktop, .blurred(.wallpaper):
+            guard let s = screen ?? NSScreen.main, let u = NSWorkspace.shared.desktopImageURL(for: s) else { return nil }
+            return embeddable(path: u.path)
+        default: return nil
+        }
     }
 }

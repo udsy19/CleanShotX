@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Carbon.HIToolbox
 import QuickLookThumbnailing
 import ShotcraftCore
@@ -8,9 +9,11 @@ import ShotcraftCore
 // MARK: - Window levels / behaviour
 
 enum OverlayWindow {
-    /// Pins float above normal windows; Quick Access cards float above pins.
+    /// Pins float above normal windows; Quick Access cards above pins; the history strip and Quick Look on top.
     static let pinLevel = NSWindow.Level.floating
     static let quickAccessLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 2)
+    static let historyLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 3)
+    static let quickLookLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 4)
     static let behavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
     /// Borderless, transparent, non-activating panel that never steals focus from the frontmost app.
@@ -24,7 +27,7 @@ enum OverlayWindow {
         p.collectionBehavior = behavior
         p.isReleasedWhenClosed = false
         p.hidesOnDeactivate = false
-        p.becomesKeyOnlyIfNeeded = true
+        p.becomesKeyOnlyIfNeeded = !canBecomeKey
         p.isMovable = false
         p.animationBehavior = .none
         return p
@@ -35,6 +38,17 @@ final class OverlayPanel: NSPanel {
     var allowsKey = false
     override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
+}
+
+/// Visual constants shared by cards and pins (ui-reference §0.1, §4, §6).
+enum OverlayStyle {
+    /// 12 pt before macOS 26; Tahoe's rounder overlays use ~16 pt.
+    static let cardCornerRadius: CGFloat =
+        ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 16 : 12
+    static let pinCornerRadius: CGFloat = 10
+    static let cardStroke = NSColor.white.withAlphaComponent(0.2)
+    /// Spring-like ease-out with a slight overshoot for slide-ins.
+    static let springTiming = CAMediaTimingFunction(controlPoints: 0.22, 1.12, 0.36, 1)
 }
 
 // MARK: - Temporary hotkeys while an overlay is hovered
@@ -78,18 +92,35 @@ final class HoverHotkeys {
     }
 }
 
+// MARK: - Hover tracking
+
+/// Adds one `.inVisibleRect` tracking area (it follows resizes by itself) without touching AppKit's own areas
+/// (tool tips, cursor rects).
+@MainActor
+func installHoverTracking(on view: NSView, existing: inout NSTrackingArea?) {
+    guard existing == nil else { return }
+    let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: view, userInfo: nil)
+    view.addTrackingArea(area)
+    existing = area
+}
+
 // MARK: - Buttons
 
-/// Rounded overlay button: either an SF Symbol in a circle or a text pill. Works on first click in an
-/// inactive app and highlights on hover.
+/// Overlay control: a light circular SF Symbol button (card / pin corners) or a light capsule pill
+/// (Copy / Save). Works on first click in an inactive app and highlights on hover.
 final class OverlayButton: NSButton {
-    enum Style { case icon(String), pill(String) }
-    private let style: Style
+    enum Style { case icon(String), pill(String), symbolPill(String) }
+    private var style: Style
+    private let diameter: CGFloat
+    private var hoverArea: NSTrackingArea?
     private var hovering = false { didSet { updateColors() } }
     var onClick: (() -> Void)?
 
-    init(_ style: Style, tooltip: String? = nil, diameter: CGFloat = 26, action: (() -> Void)? = nil) {
+    static let glyphColor = NSColor(white: 0.13, alpha: 1)
+
+    init(_ style: Style, tooltip: String? = nil, diameter: CGFloat = 20, action: (() -> Void)? = nil) {
         self.style = style
+        self.diameter = diameter
         self.onClick = action
         super.init(frame: .zero)
         isBordered = false
@@ -97,38 +128,53 @@ final class OverlayButton: NSButton {
         setButtonType(.momentaryChange)
         focusRingType = .none
         wantsLayer = true
-        toolTip = tooltip
         target = self
         self.action = #selector(clicked)
         translatesAutoresizingMaskIntoConstraints = false
         switch style {
-        case .icon(let symbol):
-            image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
-                .withSymbolConfiguration(.init(pointSize: diameter * 0.46, weight: .semibold))
+        case .icon:
             imagePosition = .imageOnly
             layer?.cornerRadius = diameter / 2
             NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: diameter),
                                          heightAnchor.constraint(equalToConstant: diameter)])
-        case .pill(let title):
-            self.title = title
-            font = .systemFont(ofSize: 13, weight: .semibold)
-            layer?.cornerRadius = 13
-            NSLayoutConstraint.activate([heightAnchor.constraint(equalToConstant: 26),
-                                         widthAnchor.constraint(greaterThanOrEqualToConstant: 76)])
+        case .pill, .symbolPill:
+            layer?.cornerRadius = 11
+            NSLayoutConstraint.activate([heightAnchor.constraint(equalToConstant: 22),
+                                         widthAnchor.constraint(greaterThanOrEqualToConstant: 48)])
         }
-        setAccessibilityLabel(tooltip ?? title)
-        updateColors()
+        apply(style, tooltip: tooltip)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// Swaps glyph/title in place (lock ↔ unlock, Save ↔ Trash) keeping the button's geometry.
+    func apply(_ style: Style, tooltip: String?) {
+        self.style = style
+        toolTip = tooltip
+        switch style {
+        case .icon(let symbol):
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
+                .withSymbolConfiguration(.init(pointSize: (diameter * 0.45).rounded(), weight: .bold))
+            setAccessibilityLabel(tooltip)
+        case .pill(let title):
+            image = nil
+            imagePosition = .noImage
+            setAccessibilityLabel(title)
+        case .symbolPill(let symbol):
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
+                .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
+            imagePosition = .imageOnly
+            setAccessibilityLabel(tooltip)
+        }
+        updateColors()
+        invalidateIntrinsicContentSize()
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                                       owner: self, userInfo: nil))
+        installHoverTracking(on: self, existing: &hoverArea)
     }
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
@@ -136,22 +182,23 @@ final class OverlayButton: NSButton {
     @objc private func clicked() { onClick?() }
 
     private func updateColors() {
+        contentTintColor = Self.glyphColor
         switch style {
         case .icon:
-            layer?.backgroundColor = NSColor.black.withAlphaComponent(hovering ? 0.75 : 0.55).cgColor
-            contentTintColor = .white
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.97 : 0.82).cgColor
         case .pill(let t):
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 1 : 0.88).cgColor
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.95 : 0.8).cgColor
             attributedTitle = NSAttributedString(string: t, attributes: [
-                .foregroundColor: NSColor.black.withAlphaComponent(0.85),
-                .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: Self.glyphColor, .font: NSFont.systemFont(ofSize: 13, weight: .medium),
             ])
+        case .symbolPill:
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.95 : 0.8).cgColor
         }
     }
 
     override var intrinsicContentSize: NSSize {
         var s = super.intrinsicContentSize
-        if case .pill = style { s.width += 24 }
+        if case .pill = style { s.width += 22 }
         return s
     }
 }
@@ -251,17 +298,14 @@ enum OverlayFormat {
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60)
                          : String(format: "%d:%02d", s / 60, s % 60)
     }
-
-    static func dimensions(_ size: CGSize) -> String {
-        "\(Int(size.width)) × \(Int(size.height))"
-    }
 }
 
 // MARK: - Key codes used by overlays
 
 enum Keys {
-    static let c = kVK_ANSI_C, s = kVK_ANSI_S, a = kVK_ANSI_A, p = kVK_ANSI_P, u = kVK_ANSI_U, w = kVK_ANSI_W
-    static let space = kVK_Space, escape = kVK_Escape
+    static let c = kVK_ANSI_C, s = kVK_ANSI_S, e = kVK_ANSI_E, p = kVK_ANSI_P, u = kVK_ANSI_U, w = kVK_ANSI_W
+    static let space = kVK_Space, escape = kVK_Escape, returnKey = kVK_Return, keypadEnter = kVK_ANSI_KeypadEnter
+    static let delete = kVK_Delete
     static let left = kVK_LeftArrow, right = kVK_RightArrow, up = kVK_UpArrow, down = kVK_DownArrow
 }
 
@@ -288,10 +332,83 @@ final class PassthroughImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// Blur/tint layer that never intercepts mouse events.
+final class PassthroughEffectView: NSVisualEffectView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Aspect-fill thumbnail (ui-reference §4: "the thumbnail fills the card"). Static images are drawn as layer
+/// contents; animated GIFs use an `NSImageView` so they keep playing; videos can attach a looping player layer.
+final class ThumbnailView: NSView {
+    private var staticImage: NSImage?
+    private let animatedView = NSImageView()
+    private var playerLayer: AVPlayerLayer?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        animatedView.imageScaling = .scaleProportionallyUpOrDown
+        animatedView.animates = true
+        animatedView.isHidden = true
+        animatedView.autoresizingMask = [.width, .height]
+        addSubview(animatedView)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var wantsUpdateLayer: Bool { true }
+
+    var image: NSImage? { staticImage ?? animatedView.image }
+
+    func setImage(_ image: NSImage?, animated: Bool) {
+        if animated {
+            staticImage = nil
+            animatedView.image = image
+            animatedView.frame = bounds
+            animatedView.isHidden = false
+        } else {
+            staticImage = image
+            animatedView.image = nil
+            animatedView.isHidden = true
+        }
+        needsDisplay = true
+    }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        layer.contentsGravity = .resizeAspectFill
+        layer.masksToBounds = true
+        guard let img = staticImage else { layer.contents = nil; return }
+        let scale = img.recommendedLayerContentsScale(window?.backingScaleFactor ?? 2)
+        layer.contents = img.layerContents(forContentsScale: scale)
+        layer.contentsScale = scale
+    }
+
+    /// Shows `player` on top of the poster frame (nil removes it).
+    func attach(_ player: AVPlayer?) {
+        playerLayer?.removeFromSuperlayer()
+        playerLayer = nil
+        guard let player, let layer else { return }
+        let pl = AVPlayerLayer(player: player)
+        pl.videoGravity = .resizeAspectFill
+        pl.frame = bounds
+        layer.addSublayer(pl)
+        playerLayer = pl
+    }
+
+    override func layout() {
+        super.layout()
+        playerLayer?.frame = bounds
+    }
+}
+
 /// Plain view that never intercepts mouse events.
 final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         // Let real controls inside (buttons) receive clicks; everything else falls through to the container.
+        // Faded-out chrome (alpha 0) is not clickable: hit-testing ignores alpha by default.
+        guard alphaValue > 0.01 else { return nil }
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
     }

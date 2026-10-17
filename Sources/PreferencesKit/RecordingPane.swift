@@ -34,87 +34,93 @@ struct RecordingPane: View {
     private static let fpsChoices = [24, 30, 50, 60]
     private static let gifFPSChoices = [5, 10, 15, 20, 25, 30]
     private static let gifWidthChoices = [0, 480, 640, 800, 1024, 1280, 1920]
+    private static let countdownChoices = [1, 2, 3, 5, 10]
 
     var body: some View {
         PaneForm(pane: .recording) {
-            Section("Video") {
-                Picker("Format", selection: $format) {
-                    ForEach(VideoFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
+            Section("General") {
+                Toggle("Show controls while recording", isOn: $showControls)
+                Toggle("Remember last selection", isOn: $rememberArea)
+                Toggle("Display recording time in menu bar", isOn: $showTime)
+                Toggle("Dim screen while recording", isOn: $dimScreen)
+                Toggle("Show countdown", isOn: $countdown)
+                Picker("Countdown", selection: $countdownSeconds) {
+                    ForEach(PickerChoices.including(countdownSeconds, in: Self.countdownChoices), id: \.self) {
+                        Text($0 == 1 ? "1 second" : "\($0) seconds").tag($0)
+                    }
                 }
-                .pickerStyle(.segmented)
-                Picker("Frame rate", selection: $fps) {
-                    ForEach(Self.fpsChoices, id: \.self) { Text("\($0) FPS").tag($0) }
-                }
-                Picker("Quality", selection: $quality) {
-                    ForEach(VideoQuality.allCases, id: \.self) { Text($0.displayName).tag($0) }
-                }
-                SettingToggle("Scale Retina videos to 1x", isOn: $scaleRetina,
-                              help: "Halves the resolution on Retina displays for much smaller files.")
+                .disabled(!countdown)
+                SettingToggle("“Do Not Disturb” while recording", isOn: $doNotDisturb,
+                              help: "Keeps notification banners out of your recordings.")
                 Toggle("Record in Studio Mode by default", isOn: $studioMode)
-                Toggle("Remember last recording area", isOn: $rememberArea)
             }
 
-            Section("GIF") {
-                Picker("Frame rate", selection: $gifFPS) {
-                    ForEach(Self.gifFPSChoices, id: \.self) { Text("\($0) FPS").tag($0) }
-                }
-                Picker("Maximum width", selection: $gifMaxWidth) {
-                    ForEach(Self.gifWidthChoices, id: \.self) { Text($0 == 0 ? "Original" : "\($0) px").tag($0) }
-                }
-            }
-
-            Section("Cursor & keyboard") {
+            Section("Cursor") {
                 Toggle("Show cursor", isOn: $showCursor)
                 Toggle("Hide cursor when not moving", isOn: $hideIdleCursor).disabled(!showCursor)
-                Toggle("Highlight clicks", isOn: $highlightClicks)
-                if highlightClicks {
-                    ColorPicker("Highlight color", selection: $clickColor.color, supportsOpacity: true)
-                }
-                Toggle(isOn: $showKeystrokes) {
-                    Text("Show Keystrokes")
-                    Text("Displays pressed key combinations on the recording.")
-                }
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        OptionsButton {
+                            ColorPicker("Highlight color", selection: $clickColor.color, supportsOpacity: true)
+                        }
+                        .disabled(!highlightClicks)
+                        Toggle("Highlight clicks", isOn: $highlightClicks)
+                            .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                    }
+                } label: { Text("Highlight clicks") }
+            }
+
+            Section("Keystrokes") {
+                SettingToggle("Show keystrokes", isOn: $showKeystrokes,
+                              help: "Displays pressed key combinations on the recording.")
                 if showKeystrokes && permissions.states[.accessibility] != .granted {
                     PermissionRow(kind: .accessibility, model: permissions)
                 }
             }
 
-            Section("While recording") {
-                Toggle("Show recording controls", isOn: $showControls)
-                Toggle("Display recording time in menu bar", isOn: $showTime)
-                Toggle("Dim screen while recording", isOn: $dimScreen)
-                Toggle(isOn: $countdown) {
-                    Text("Show countdown")
+            Section("Video") {
+                Picker("Format", selection: $format) {
+                    ForEach(VideoFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
                 }
-                if countdown {
-                    Stepper(value: $countdownSeconds, in: 1...10) {
-                        LabeledContent("Countdown", value: "\(countdownSeconds) s")
-                    }
+                Picker("Frame rate", selection: $fps) {
+                    ForEach(PickerChoices.including(fps, in: Self.fpsChoices), id: \.self) { Text("\($0) fps").tag($0) }
                 }
-                Toggle(isOn: $doNotDisturb) {
-                    Text("Turn on Do Not Disturb while recording")
-                    Text("Keeps notification banners out of your recordings.")
+                Picker(selection: $quality) {
+                    ForEach(VideoQuality.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                } label: {
+                    Text("Quality")
+                    Text("Lower quality reduces file size and upload time.")
                 }
+                Toggle("Scale Retina videos to 1x", isOn: $scaleRetina)
             }
 
-            Section("Audio") {
+            Section {
+                Toggle("Record audio in mono", isOn: $mono).disabled(!microphone && !systemAudio)
                 Toggle("Record microphone", isOn: $microphone)
                 if microphone {
                     DevicePicker(title: "Microphone", devices: devices.microphones, selection: $microphoneID)
                     if permissions.states[.microphone] != .granted { PermissionRow(kind: .microphone, model: permissions) }
                 }
-                Toggle(isOn: $systemAudio) {
-                    Text("Record computer audio")
-                    Text("Enable this option to record sound that comes from other applications.")
-                }
-                Toggle("Record audio in mono", isOn: $mono).disabled(!microphone && !systemAudio)
-            }
+                SettingToggle("Record system audio", isOn: $systemAudio,
+                              help: "Enable this option to record sound that comes from other applications.")
+            } header: { Text("Audio") }
 
             Section("Camera") {
                 Toggle("Record camera", isOn: $camera)
                 if camera {
                     DevicePicker(title: "Camera", devices: devices.cameras, selection: $cameraID)
                     if permissions.states[.camera] != .granted { PermissionRow(kind: .camera, model: permissions) }
+                }
+            }
+
+            Section("GIF") {
+                Picker("Frame rate", selection: $gifFPS) {
+                    ForEach(PickerChoices.including(gifFPS, in: Self.gifFPSChoices), id: \.self) { Text("\($0) fps").tag($0) }
+                }
+                Picker("Resolution", selection: $gifMaxWidth) {
+                    ForEach(PickerChoices.including(gifMaxWidth, in: Self.gifWidthChoices), id: \.self) {
+                        Text($0 == 0 ? "Original" : "\($0) × auto").tag($0)
+                    }
                 }
             }
         }

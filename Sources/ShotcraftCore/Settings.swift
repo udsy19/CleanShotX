@@ -197,7 +197,7 @@ public extension Defaults.Keys {
     static let gifMaxWidth = Key<Int>("gifMaxWidth", default: 1280)
     static let recordShowCursor = Key<Bool>("recordShowCursor", default: true)
     static let recordHighlightClicks = Key<Bool>("recordHighlightClicks", default: false)
-    static let clickHighlightColor = Key<RGBAColor>("clickHighlightColor", default: RGBAColor(r: 1, g: 0.8, b: 0, a: 0.6))
+    static let clickHighlightColor = Key<RGBAColor>("clickHighlightColor", default: RGBAColor(r: 0.04, g: 0.52, b: 1, a: 1))
     static let recordShowKeystrokes = Key<Bool>("recordShowKeystrokes", default: false)
     static let recordHideCursorWhenNotMoving = Key<Bool>("recordHideCursorWhenNotMoving", default: false)
     static let recordDimScreen = Key<Bool>("recordDimScreen", default: false)

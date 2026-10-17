@@ -173,12 +173,12 @@ enum CompositionBuilder {
         var params: [AVMutableAudioMixInputParameters] = []
         if let sys, !sys.segments.isEmpty {
             let p = AVMutableAudioMixInputParameters(track: sys)
-            p.setVolume(audio.muted ? 0 : Float(audio.systemVolume), at: .zero)
+            p.setVolume(audio.systemGain, at: .zero)
             params.append(p)
         }
         if let mic, !mic.segments.isEmpty {
             let p = AVMutableAudioMixInputParameters(track: mic)
-            p.setVolume(audio.muted ? 0 : Float(audio.microphoneVolume), at: .zero)
+            p.setVolume(audio.microphoneGain, at: .zero)
             params.append(p)
         }
         for t in [sys, mic].compactMap({ $0 }) where t.segments.isEmpty { comp.removeTrack(t) }

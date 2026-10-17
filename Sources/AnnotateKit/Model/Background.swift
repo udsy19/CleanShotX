@@ -12,8 +12,39 @@ public enum BackgroundFill: Codable, Equatable, Sendable {
     case desktop
     /// A user-chosen image file (path).
     case image(String)
+    /// A soft, heavily blurred backdrop ("Blurred" section).
+    case blurred(BlurredBackground)
 
     public var isNone: Bool { if case .none = self { return true } else { return false } }
+}
+
+public enum BlurredBackground: String, Codable, CaseIterable, Sendable {
+    /// The desktop wallpaper, blurred.
+    case wallpaper
+    /// Frosted light backdrop.
+    case light
+    /// Frosted grey backdrop.
+    case gray
+
+    public var title: String {
+        switch self {
+        case .wallpaper: "Blurred Wallpaper"
+        case .light: "Blurred Light"
+        case .gray: "Blurred Gray"
+        }
+    }
+
+    /// Soft multi-stop gradient used for the frosted variants (and as the wallpaper fallback).
+    var frost: GradientPreset {
+        switch self {
+        case .wallpaper, .light:
+            GradientPreset(id: "blur-light", name: title,
+                           colors: [GradientPreset.hex(0xF4F1FA), GradientPreset.hex(0xE3ECF7), GradientPreset.hex(0xF8EDEF)], angle: 135)
+        case .gray:
+            GradientPreset(id: "blur-gray", name: title,
+                           colors: [GradientPreset.hex(0x9EA3AB), GradientPreset.hex(0xC4C8CE), GradientPreset.hex(0x8D929A)], angle: 135)
+        }
+    }
 }
 
 public enum BackgroundAlignment: String, Codable, CaseIterable, Sendable {
@@ -116,7 +147,7 @@ public struct GradientPreset: Sendable, Identifiable {
         RGBAColor(r: Double((v >> 16) & 0xFF) / 255, g: Double((v >> 8) & 0xFF) / 255, b: Double(v & 0xFF) / 255)
     }
 
-    /// Original gradient set. The first 12 are shown by default, the rest behind "Show More".
+    /// Original gradient set (20). The first 10 are shown by default, the rest behind "Show more".
     public static let all: [GradientPreset] = [
         .init(id: "dawn", name: "Dawn", colors: [hex(0xFF9A8B), hex(0xFF6A88), hex(0xFF99AC)], angle: 45),
         .init(id: "lagoon", name: "Lagoon", colors: [hex(0x43CBFF), hex(0x9708CC)], angle: 135),
@@ -136,24 +167,26 @@ public struct GradientPreset: Sendable, Identifiable {
         .init(id: "lavender", name: "Lavender", colors: [hex(0xE0C3FC), hex(0x8EC5FC)], angle: 45),
         .init(id: "forest", name: "Forest", colors: [hex(0x134E5E), hex(0x71B280)], angle: 135),
         .init(id: "flamingo", name: "Flamingo", colors: [hex(0xFF5F6D), hex(0xFFC371)], angle: 120),
-        .init(id: "midnight", name: "Midnight", colors: [hex(0x141E30), hex(0x243B55)], angle: 90),
-        .init(id: "mint", name: "Mint", colors: [hex(0xD4FC79), hex(0x96E6A1)], angle: 135),
         .init(id: "cosmic", name: "Cosmic", colors: [hex(0xFF00CC), hex(0x333399)], angle: 135),
-        .init(id: "sand", name: "Sand", colors: [hex(0xE6DADA), hex(0x274046)], angle: 160),
         .init(id: "sky", name: "Sky", colors: [hex(0x56CCF2), hex(0x2F80ED)], angle: 90),
-        .init(id: "rose", name: "Rose Gold", colors: [hex(0xF4C4F3), hex(0xFC67FA)], angle: 45),
     ]
-    public static let defaultVisibleCount = 12
+    public static let defaultVisibleCount = 10
 
     public static func named(_ id: String) -> GradientPreset? { all.first { $0.id == id } }
 }
 
-/// A few solid background colours offered next to the gradients.
+/// "Plain color" rows: saturated colours, then their pastel versions (each row is followed by a special tile).
 public enum BackgroundColors {
-    public static let all: [RGBAColor] = [
-        .white, RGBAColor(r: 0.95, g: 0.95, b: 0.96), RGBAColor(r: 0.11, g: 0.11, b: 0.12), .black,
-        GradientPreset.hex(0x4F7CFF), GradientPreset.hex(0xFF6B6B), GradientPreset.hex(0xFFC145), GradientPreset.hex(0x3DDC97),
+    public static let saturated: [RGBAColor] = [
+        .black, .white, GradientPreset.hex(0xFF3B30), GradientPreset.hex(0xFF9500),
+        GradientPreset.hex(0xFFCC00), GradientPreset.hex(0x34C759), GradientPreset.hex(0x007AFF), GradientPreset.hex(0x8E5CF5),
     ]
+    public static let pastel: [RGBAColor] = [
+        GradientPreset.hex(0x8E8E93), GradientPreset.hex(0xF2F2F7), GradientPreset.hex(0xFFB3AE), GradientPreset.hex(0xFFD49E),
+        GradientPreset.hex(0xFFEBA0), GradientPreset.hex(0xB5EBC3), GradientPreset.hex(0xA8CFFF), GradientPreset.hex(0xD5C4FB),
+    ]
+    /// Fully transparent fill: padding, corners and shadow without a backdrop.
+    public static let transparent = RGBAColor.clear
 }
 
 // MARK: - Layout

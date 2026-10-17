@@ -3,45 +3,70 @@ import ShotcraftCore
 
 // MARK: - Countdown (CountDownOverlay)
 
-/// Big translucent countdown centered in the area. Click skips, Esc cancels.
+/// Black 80-pt disc centred in the area with a big white digit and a progress arc. Click starts now,
+/// hovering reveals a cancel button, Esc cancels, Return starts.
 @MainActor
 final class CountdownOverlay {
     private let panel: RecorderPanel
     private let label = NSTextField(labelWithString: "")
     private let ring = CAShapeLayer()
+    private let cancelButton = NSButton()
     private var remaining: Int
     private var timer: Timer?
     private var completion: ((Bool) -> Void)?
     private var keyMonitor: Any?
 
+    private static let disc: CGFloat = 80
+    private static let side: CGFloat = 112   // room for the hover cancel button
+
     init(area: CGRect, seconds: Int) {
         remaining = max(1, seconds)
-        let side: CGFloat = 150
-        let frame = NSRect(x: area.midX - side / 2, y: area.midY - side / 2, width: side, height: side)
+        let side = Self.side, disc = Self.disc
+        let frame = NSRect(x: (area.midX - side / 2).rounded(), y: (area.midY - side / 2).rounded(), width: side, height: side)
         panel = RecorderPanel(frame: frame, level: RecorderLevel.controls, clickThrough: false)
         panel.allowsKey = true
-        let fx = ClickView(frame: NSRect(origin: .zero, size: frame.size))
-        fx.material = .hudWindow
-        fx.blendingMode = .behindWindow
-        fx.state = .active
-        fx.appearance = NSAppearance(named: .vibrantDark)
-        fx.wantsLayer = true
-        fx.layer?.cornerRadius = side / 2
-        fx.layer?.masksToBounds = true
-        fx.onClick = { [weak self] in self?.finish(true) }
-        label.font = .monospacedDigitSystemFont(ofSize: 72, weight: .semibold)
+        let content = CountdownView(frame: NSRect(origin: .zero, size: frame.size))
+        let circle = NSView(frame: NSRect(x: (side - disc) / 2, y: (side - disc) / 2, width: disc, height: disc))
+        circle.wantsLayer = true
+        circle.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.9).cgColor
+        circle.layer?.cornerRadius = disc / 2
+        circle.toolTip = "Click to start recording now"
+        label.font = .systemFont(ofSize: 44, weight: .bold)
         label.textColor = .white
         label.alignment = .center
-        label.frame = NSRect(x: 0, y: (side - 88) / 2, width: side, height: 88)
-        fx.addSubview(label)
-        ring.path = CGPath(ellipseIn: fx.bounds.insetBy(dx: 6, dy: 6), transform: nil)
+        label.frame = NSRect(x: 0, y: (disc - 54) / 2, width: disc, height: 54)
+        circle.addSubview(label)
+        // Progress arc clockwise from 12 o'clock just inside the rim.
+        let arc = NSBezierPath()
+        arc.appendArc(withCenter: NSPoint(x: disc / 2, y: disc / 2), radius: disc / 2 - 5, startAngle: 90, endAngle: -270, clockwise: true)
+        ring.path = arc.cgPath
         ring.fillColor = nil
-        ring.strokeColor = NSColor.white.withAlphaComponent(0.8).cgColor
-        ring.lineWidth = 4
+        ring.strokeColor = NSColor.white.withAlphaComponent(0.9).cgColor
+        ring.lineWidth = 3
         ring.lineCap = .round
-        fx.layer?.addSublayer(ring)
-        fx.toolTip = "Click to start recording now"
-        panel.contentView = fx
+        ring.strokeEnd = 0
+        circle.layer?.addSublayer(ring)
+        content.addSubview(circle)
+
+        cancelButton.isBordered = false
+        cancelButton.bezelStyle = .regularSquare
+        cancelButton.image = symbol("xmark.circle.fill", size: 20, weight: .semibold)
+        cancelButton.contentTintColor = .white
+        cancelButton.toolTip = "Cancel Recording"
+        cancelButton.setAccessibilityLabel("Cancel Recording")
+        cancelButton.frame = NSRect(x: circle.frame.maxX - 16, y: circle.frame.maxY - 16, width: 26, height: 26)
+        cancelButton.wantsLayer = true
+        cancelButton.layer?.shadowOpacity = 0.5
+        cancelButton.layer?.shadowRadius = 3
+        cancelButton.isHidden = true
+        content.addSubview(cancelButton)
+        panel.contentView = content
+
+        content.onClick = { [weak self] in self?.finish(true) }
+        content.onHover = { [weak self] inside in self?.cancelButton.isHidden = !inside }
+        cancelButton.target = content
+        cancelButton.action = #selector(CountdownView.cancelClicked)
+        content.onCancel = { [weak self] in self?.finish(false) }
     }
 
     func run(completion: @escaping (_ start: Bool) -> Void) {
@@ -69,7 +94,9 @@ final class CountdownOverlay {
         label.stringValue = "\(remaining)"
         Sound.play(.countdownTick)
         let anim = CABasicAnimation(keyPath: "strokeEnd")
-        anim.fromValue = 1; anim.toValue = 0; anim.duration = 1
+        anim.fromValue = 0; anim.toValue = 1; anim.duration = 1
+        anim.fillMode = .forwards
+        anim.isRemovedOnCompletion = false
         ring.add(anim, forKey: "tick")
     }
 
@@ -86,21 +113,43 @@ final class CountdownOverlay {
     func cancel() { finish(false) }
 }
 
-private final class ClickView: NSVisualEffectView {
+private final class CountdownView: NSView {
     var onClick: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onClick?() }
+    var onCancel: (() -> Void)?
+    var onHover: ((Bool) -> Void)?
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Only the disc and the cancel button are clickable; the transparent margin isn't.
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
+    }
+
+    override func mouseDown(with event: NSEvent) { onClick?() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
+    @objc func cancelClicked() { onCancel?() }
 }
 
 // MARK: - Controls (RecorderControlsView)
 
-/// Floating Stop / Pause / Restart / Delete bar shown while recording. Excluded from the capture.
+/// Dark pill shown while recording: red stop + timer (with a mic level meter) | pause/resume | restart |
+/// delete | drag grip. Excluded from the capture.
 @MainActor
 final class RecordingControlsPanel: NSObject {
     let panel: RecorderPanel
-    private let stopButton = NSButton()
     private let pauseButton = NSButton()
     private let timeLabel = NSTextField(labelWithString: "0:00")
+    private let meter = CALayer()
+    private let meterWidth: CGFloat = 38
     private let actions: Actions
 
     struct Actions {
@@ -110,60 +159,88 @@ final class RecordingControlsPanel: NSObject {
         var delete: () -> Void
     }
 
-    init(area: CGRect, screen: NSScreen, actions: Actions) {
+    private static let height: CGFloat = 40
+    private static let stopWidth: CGFloat = 80
+    private static let iconWidth: CGFloat = 40
+    private static let gripWidth: CGFloat = 22
+
+    init(area: CGRect, screen: NSScreen, showsMeter: Bool, actions: Actions) {
         self.actions = actions
         panel = RecorderPanel(frame: .zero, level: RecorderLevel.controls, clickThrough: false)
         panel.isMovableByWindowBackground = true
         panel.hasShadow = true
         super.init()
 
-        let fx = NSVisualEffectView()
-        fx.material = .hudWindow
-        fx.blendingMode = .behindWindow
-        fx.state = .active
-        fx.wantsLayer = true
-        fx.layer?.cornerRadius = 12
-        fx.layer?.masksToBounds = true
+        let h = Self.height
+        let width = Self.stopWidth + Self.iconWidth * 3 + Self.gripWidth + 4
+        let pill = NSView(frame: NSRect(x: 0, y: 0, width: width, height: h))
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = NSColor(white: 0x16 / 255.0, alpha: 0.95).cgColor
+        pill.layer?.cornerRadius = h / 2
+        pill.layer?.cornerCurve = .continuous
+        pill.layer?.borderWidth = 1
+        pill.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        pill.appearance = NSAppearance(named: .darkAqua)
 
-        stopButton.bezelStyle = .regularSquare
-        stopButton.isBordered = false
-        stopButton.image = symbol("stop.circle.fill", size: 18)
-        stopButton.contentTintColor = .systemRed
-        stopButton.target = self
-        stopButton.action = #selector(stopClicked)
-        stopButton.toolTip = "Stop Recording"
-        timeLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-        timeLabel.textColor = .labelColor
-        let stopStack = NSStackView(views: [stopButton, timeLabel])
-        stopStack.spacing = 4
+        var x: CGFloat = 0
+        func separator() {
+            pill.addSubview(RecorderStyle.line(NSRect(x: x, y: 10, width: 1, height: h - 20)).tinted(alpha: 0.1))
+            x += 1
+        }
 
-        configure(pauseButton, "pause.fill", "Pause Recording", #selector(pauseClicked))
+        // 1. Stop + timer.
+        let stop = NSButton()
+        configure(stop, "stop.circle", "Stop Recording", #selector(stopClicked), tint: .systemRed)
+        stop.frame = NSRect(x: 8, y: 0, width: 28, height: h)
+        timeLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        timeLabel.textColor = .systemRed
+        timeLabel.frame = NSRect(x: 37, y: showsMeter ? 13 : 10, width: Self.stopWidth - 39, height: 19)
+        pill.addSubview(stop)
+        pill.addSubview(timeLabel)
+        if showsMeter {
+            let track = CALayer()
+            track.frame = CGRect(x: 38, y: 8, width: meterWidth, height: 2)
+            track.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
+            track.cornerRadius = 1
+            meter.frame = CGRect(x: 38, y: 8, width: 0, height: 2)
+            meter.backgroundColor = NSColor.systemGreen.cgColor
+            meter.cornerRadius = 1
+            pill.layer?.addSublayer(track)
+            pill.layer?.addSublayer(meter)
+        }
+        x = Self.stopWidth
+        separator()
+
+        // 2–4. Pause / restart / delete.
         let restart = NSButton(), trash = NSButton()
+        configure(pauseButton, "pause.circle", "Pause Recording", #selector(pauseClicked))
         configure(restart, "arrow.counterclockwise", "Restart Recording", #selector(restartClicked))
         configure(trash, "trash", "Delete Recording", #selector(trashClicked))
+        for (i, b) in [pauseButton, restart, trash].enumerated() {
+            b.frame = NSRect(x: x, y: 0, width: Self.iconWidth, height: h)
+            pill.addSubview(b)
+            x += Self.iconWidth
+            if i < 2 { separator() }
+        }
+        separator()
 
-        let sep = NSBox(); sep.boxType = .separator
-        let stack = NSStackView(views: [stopStack, sep, pauseButton, restart, trash])
-        stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        fx.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: fx.leadingAnchor), stack.trailingAnchor.constraint(equalTo: fx.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: fx.topAnchor), stack.bottomAnchor.constraint(equalTo: fx.bottomAnchor),
-            sep.heightAnchor.constraint(equalToConstant: 18),
-        ])
-        timeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        let size = stack.fittingSize
-        panel.contentView = fx
-        panel.setFrame(Self.placement(for: size, area: area, screen: screen), display: false)
+        // 5. Drag grip (the whole background drags too).
+        let grip = NSImageView(image: symbol("line.3.horizontal", size: 12, weight: .semibold))
+        grip.contentTintColor = NSColor.white.withAlphaComponent(0.45)
+        grip.frame = NSRect(x: x, y: 0, width: width - x - 4, height: h)
+        grip.toolTip = "Drag to move"
+        pill.addSubview(grip)
+
+        panel.contentView = pill
+        panel.setFrame(Self.placement(for: pill.frame.size, area: area, screen: screen), display: false)
     }
 
-    private func configure(_ b: NSButton, _ icon: String, _ tip: String, _ sel: Selector) {
+    private func configure(_ b: NSButton, _ icon: String, _ tip: String, _ sel: Selector, tint: NSColor = .white) {
         b.bezelStyle = .regularSquare
         b.isBordered = false
-        b.image = symbol(icon, size: 15)
-        b.contentTintColor = .labelColor
+        b.image = symbol(icon, size: 17, weight: .regular)
+        b.imagePosition = .imageOnly
+        b.contentTintColor = tint
         b.toolTip = tip
         b.target = self
         b.action = sel
@@ -189,15 +266,31 @@ final class RecordingControlsPanel: NSObject {
 
     func update(elapsed: String, paused: Bool) {
         timeLabel.stringValue = elapsed
-        pauseButton.image = symbol(paused ? "play.fill" : "pause.fill", size: 15)
+        pauseButton.image = symbol(paused ? "play.circle" : "pause.circle", size: 17, weight: .regular)
         pauseButton.toolTip = paused ? "Resume Recording" : "Pause Recording"
-        timeLabel.textColor = paused ? .secondaryLabelColor : .labelColor
+        pauseButton.setAccessibilityLabel(pauseButton.toolTip)
+        timeLabel.textColor = paused ? NSColor.white.withAlphaComponent(0.6) : .systemRed
+    }
+
+    /// Microphone level 0…1.
+    func setLevel(_ level: CGFloat) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        meter.frame.size.width = meterWidth * max(0, min(1, level))
+        meter.backgroundColor = (level > 0.85 ? NSColor.systemOrange : NSColor.systemGreen).cgColor
+        CATransaction.commit()
     }
 
     @objc private func stopClicked() { actions.stop() }
     @objc private func pauseClicked() { actions.togglePause() }
     @objc private func restartClicked() { actions.restart() }
     @objc private func trashClicked() { actions.delete() }
+}
+
+private extension NSView {
+    func tinted(alpha: CGFloat) -> NSView {
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(alpha).cgColor
+        return self
+    }
 }
 
 // MARK: - GIF processing popup (GIFProcessingPopup)
@@ -214,9 +307,7 @@ final class GIFProcessingPopup: NSObject {
         panel = RecorderPanel(frame: .zero, level: RecorderLevel.controls, clickThrough: false)
         panel.hasShadow = true
         super.init()
-        let fx = NSVisualEffectView()
-        fx.material = .hudWindow; fx.blendingMode = .behindWindow; fx.state = .active
-        fx.wantsLayer = true; fx.layer?.cornerRadius = 12; fx.layer?.masksToBounds = true
+        let fx = RecorderStyle.glass(cornerRadius: 14)
         let title = NSTextField(labelWithString: "Creating GIF…")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         bar.isIndeterminate = false
@@ -228,7 +319,9 @@ final class GIFProcessingPopup: NSObject {
         cancel.controlSize = .small
         let column = NSStackView(views: [title, bar])
         column.orientation = .vertical; column.alignment = .leading; column.spacing = 6
-        let row = NSStackView(views: [NSImageView(image: symbol("photo.stack", size: 22)), column, cancel])
+        let icon = NSImageView(image: symbol("photo.stack", size: 22))
+        icon.contentTintColor = .white
+        let row = NSStackView(views: [icon, column, cancel])
         row.spacing = 12
         row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         row.translatesAutoresizingMaskIntoConstraints = false

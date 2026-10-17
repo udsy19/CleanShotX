@@ -70,6 +70,31 @@ func registerTextKitTests() {
     SelfTest.cases.append(("TextKit.stitchVertical", { stitchCase(axis: .vertical) }))
     SelfTest.cases.append(("TextKit.stitchHorizontal", { stitchCase(axis: .horizontal) }))
 
+    SelfTest.cases.append(("TextKit.stitchEdgeCases", {
+        // Tiny area (40 px along the axis, no header/footer) scrolled in small steps still stitches exactly.
+        let content = TextKitFixture.content(length: 160, breadth: 40, seed: 3)
+        let tiny = ScrollStitcher(axis: .vertical)
+        for s in [0, 0, 8, 16, 16, 30, 44, 60, 80, 100, 120] {
+            _ = tiny.add(TextKitFixture.window(content, start: s, length: 40, header: nil, footer: nil, axis: .vertical))
+        }
+        let expected = TextKitFixture.image(content.px, length: 160, breadth: 40, axis: .vertical)
+        if let r = tiny.render() {
+            check(TextKitFixture.pixels(r) == TextKitFixture.pixels(expected), "tiny area stitched exactly (\(r.width)×\(r.height))")
+        } else { check(false, "tiny area renders") }
+
+        // Blank / uniform frames never count as movement; a frame of another size is rejected, not stitched.
+        let blank = TextKitFixture.Buffer(length: 120, breadth: 80, px: [UInt8](repeating: 255, count: 120 * 80 * 4))
+        var grey = blank; for i in stride(from: 0, to: grey.px.count, by: 4) { grey.px[i] = 200; grey.px[i + 1] = 200; grey.px[i + 2] = 200 }
+        let flat = ScrollStitcher(axis: .vertical)
+        let img = { (b: TextKitFixture.Buffer) in TextKitFixture.image(b.px, length: b.length, breadth: b.breadth, axis: .vertical) }
+        check(flat.add(img(blank)) == .started, "first blank frame")
+        check(flat.add(img(blank)) == .identical, "identical blank frames")
+        check(flat.add(img(grey)) == .identical, "uniform colour change is not a scroll")
+        check(flat.add(TextKitFixture.window(content, start: 0, length: 40, header: nil, footer: nil, axis: .vertical)) == .noOverlap,
+              "frame of a different size rejected")
+        check(flat.render().map { $0.width == 80 && $0.height == 120 } ?? false, "first frame kept as the result")
+    }))
+
     SelfTest.cases.append(("TextKit.offsetDetection", {
         let content = TextKitFixture.content(length: 600, breadth: 160, seed: 7)
         func frame(_ start: Int, jitter: Bool = false) -> ScrollFrame {

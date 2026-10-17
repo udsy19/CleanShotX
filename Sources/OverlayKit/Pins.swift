@@ -80,22 +80,24 @@ final class PinController: PinServicing {
 
 final class PinContentView: NSView {
     weak var pin: PinOverlay?
+    private var hoverArea: NSTrackingArea?
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        installHoverTracking(on: self, existing: &hoverArea)
     }
     override func mouseEntered(with event: NSEvent) { pin?.setHovered(true) }
     override func mouseExited(with event: NSEvent) { pin?.setHovered(false) }
     override func mouseDown(with event: NSEvent) { pin?.mouseDown(event) }
     override func rightMouseDown(with event: NSEvent) { pin?.showContextMenu(event, in: self) }
+    /// Middle-click closes the pin.
+    override func otherMouseDown(with event: NSEvent) { if event.buttonNumber == 2 { pin?.close() } }
     override func scrollWheel(with event: NSEvent) { pin?.scroll(event) }
     override func magnify(with event: NSEvent) { pin?.magnify(event) }
 }
 
-/// Drag handle that drags the pinned image out as a file (`FODragButton`).
+/// "Drag me" handle at the bottom centre that drags the pinned image out as a file (`FODragButton`).
 final class PinDragHandle: NSVisualEffectView, NSDraggingSource {
     var fileURL: () -> URL? = { nil }
     var dragImage: () -> NSImage? = { nil }
@@ -108,14 +110,20 @@ final class PinDragHandle: NSVisualEffectView, NSDraggingSource {
         state = .active
         appearance = NSAppearance(named: .vibrantDark)
         wantsLayer = true
-        layer?.cornerRadius = 13
-        let icon = PassthroughImageView(image: NSImage(systemSymbolName: "arrow.up.doc", accessibilityDescription: "Drag file")!
-            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))!)
-        icon.contentTintColor = .white
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(icon)
-        NSLayoutConstraint.activate([icon.centerXAnchor.constraint(equalTo: centerXAnchor), icon.centerYAnchor.constraint(equalTo: centerYAnchor)])
+        layer?.cornerRadius = 11
+        layer?.cornerCurve = .continuous
+        let label = NSTextField(labelWithString: "Drag me")
+        label.font = .systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: centerXAnchor), label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 22), widthAnchor.constraint(equalTo: label.widthAnchor, constant: 22),
+        ])
         toolTip = "Drag to copy the image to another app"
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Drag me")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -164,6 +172,7 @@ final class PinOverlay: NSObject {
     private var showBorder = false
     private var isLocked = false
     private var isHovered = false
+    private var isClosing = false
     private var lockedHoverActive = false
 
     private var imageSize: CGSize { image.size.width > 0 ? image.size : CGSize(width: 200, height: 200) }
@@ -191,7 +200,7 @@ final class PinOverlay: NSObject {
         content.addSubview(imageView)
 
         closeButton = OverlayButton(.icon("xmark"), tooltip: "Close (Esc)", diameter: 22) { [weak self] in self?.close() }
-        lockButton = OverlayButton(.icon("lock.open"), tooltip: "Lock (click-through)", diameter: 22) { [weak self] in self?.setLocked(true) }
+        lockButton = OverlayButton(.icon("lock.open.fill"), tooltip: "Lock (click-through)", diameter: 22) { [weak self] in self?.setLocked(true) }
         dragHandle.translatesAutoresizingMaskIntoConstraints = false
         dragHandle.fileURL = { [weak self] in self?.fileForDragging() }
         dragHandle.dragImage = { [weak self] in self?.image }
@@ -209,15 +218,14 @@ final class PinOverlay: NSObject {
             content.addSubview(v)
             if v !== zoomLabel { v.alphaValue = 0 }
         }
+        let inset: CGFloat = 8
         NSLayoutConstraint.activate([
-            closeButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
-            closeButton.topAnchor.constraint(equalTo: content.topAnchor, constant: 6),
-            lockButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
-            lockButton.topAnchor.constraint(equalTo: content.topAnchor, constant: 6),
-            dragHandle.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
-            dragHandle.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -6),
-            dragHandle.widthAnchor.constraint(equalToConstant: 26),
-            dragHandle.heightAnchor.constraint(equalToConstant: 26),
+            closeButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            closeButton.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
+            lockButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
+            lockButton.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
+            dragHandle.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            dragHandle.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -inset),
             zoomLabel.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             zoomLabel.centerYAnchor.constraint(equalTo: content.centerYAnchor),
             zoomLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 54),
@@ -228,7 +236,8 @@ final class PinOverlay: NSObject {
     }
 
     private func applyChrome() {
-        content.layer?.cornerRadius = roundedCorners ? 8 : 0
+        content.layer?.cornerRadius = roundedCorners ? OverlayStyle.pinCornerRadius : 0
+        content.layer?.cornerCurve = .continuous
         content.layer?.borderWidth = showBorder ? 1 : 0
         content.layer?.borderColor = NSColor.separatorColor.cgColor
         panel.hasShadow = showShadow
@@ -264,7 +273,7 @@ final class PinOverlay: NSObject {
     // MARK: Hover / keyboard
 
     func setHovered(_ hovered: Bool) {
-        guard hovered != isHovered else { return }
+        guard hovered != isHovered, !isClosing else { return }
         isHovered = hovered
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
@@ -277,7 +286,7 @@ final class PinOverlay: NSObject {
         var b: [HoverHotkeys.Binding] = [
             .init(Keys.c, .command) { [weak self] in self?.copy() },
             .init(Keys.s, .command) { [weak self] in self?.save(forceAsk: false) },
-            .init(Keys.a, .command) { [weak self] in self?.annotate() },
+            .init(Keys.e, .command) { [weak self] in self?.annotate() },
             .init(Keys.w, .command) { [weak self] in self?.close() },
             .init(Keys.escape) { [weak self] in self?.close() },
         ]
@@ -363,6 +372,8 @@ final class PinOverlay: NSObject {
             lockedHoverActive = false
             unlockPanel?.orderOut(nil)
             applyChrome()
+            // No mouseEntered arrives for a pointer that is already inside: show the chrome now.
+            if panel.isVisible && panel.frame.contains(NSEvent.mouseLocation) { setHovered(true) }
         }
     }
 
@@ -375,7 +386,7 @@ final class PinOverlay: NSObject {
         if inside {
             let up = unlockPanel ?? makeUnlockPanel()
             let f = panel.frame
-            up.setFrame(NSRect(x: f.maxX - 34, y: f.maxY - 34, width: 28, height: 28), display: true)
+            up.setFrame(NSRect(x: f.maxX - 33, y: f.maxY - 33, width: 28, height: 28), display: true)
             if up.parent == nil { panel.addChildWindow(up, ordered: .above) }
             up.orderFrontRegardless()
         } else {
@@ -391,7 +402,7 @@ final class PinOverlay: NSObject {
         let p = OverlayWindow.makePanel(NSRect(x: 0, y: 0, width: 28, height: 28), level: OverlayWindow.pinLevel)
         p.hasShadow = false
         let v = NSView()
-        let b = OverlayButton(.icon("lock.fill"), tooltip: "Unlock", diameter: 24) { [weak self] in self?.setLocked(false) }
+        let b = OverlayButton(.icon("lock.fill"), tooltip: "Unlock", diameter: 22) { [weak self] in self?.setLocked(false) }
         v.addSubview(b)
         NSLayoutConstraint.activate([b.centerXAnchor.constraint(equalTo: v.centerXAnchor), b.centerYAnchor.constraint(equalTo: v.centerYAnchor)])
         p.contentView = v
@@ -446,7 +457,10 @@ final class PinOverlay: NSObject {
     }
 
     func close() {
+        guard !isClosing else { return }
+        isClosing = true
         setLocked(false)
+        zoomHideWork?.cancel()
         HoverHotkeys.shared.deactivate(owner: self)
         if let up = unlockPanel { panel.removeChildWindow(up); up.orderOut(nil) }
         if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
@@ -460,15 +474,17 @@ final class PinOverlay: NSObject {
 
     func showContextMenu(_ event: NSEvent, in view: NSView) {
         let m = NSMenu()
-        m.addItem(ClosureMenuItem("Copy", key: "c", symbol: "doc.on.doc") { [weak self] in self?.copy() })
-        m.addItem(ClosureMenuItem("Save As…", key: "s", modifiers: [.command, .shift], symbol: "square.and.arrow.down") { [weak self] in
-            self?.save(forceAsk: true)
-        })
-        m.addItem(ClosureMenuItem("Annotate", key: "a", symbol: "pencil") { [weak self] in self?.annotate() })
+        m.addItem(ClosureMenuItem("Copy to Clipboard", key: "c", symbol: "doc.on.doc") { [weak self] in self?.copy() })
+        m.addItem(ClosureMenuItem("Save", key: "s", symbol: "square.and.arrow.down") { [weak self] in self?.save(forceAsk: false) })
+        m.addItem(ClosureMenuItem("Save As…", key: "s", modifiers: [.command, .shift]) { [weak self] in self?.save(forceAsk: true) })
         if Services.text != nil {
-            m.addItem(ClosureMenuItem("Copy Text", symbol: "text.viewfinder") { [weak self] in
+            m.addItem(ClosureMenuItem("Capture Text", symbol: "text.viewfinder") { [weak self] in
                 if let cg = self?.media?.cgImage ?? self?.image.cgImage { MediaActions.copyText(from: cg) }
             })
+        }
+        m.addItem(ClosureMenuItem("Open Annotation Tool…", key: "e", symbol: "pencil") { [weak self] in self?.annotate() })
+        if let media {
+            m.addItem(ClosureMenuItem("Upload to Cloud", symbol: "icloud.and.arrow.up") { MediaActions.upload(media) })
         }
         m.addItem(.separator())
 

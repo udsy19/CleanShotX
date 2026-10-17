@@ -77,8 +77,10 @@ final class TimelineScrollView: NSScrollView {
     }
 }
 
-/// The timeline (FLTimeline): ruler, clip track with thumbnails, zoom track, camera full-screen track, playhead.
-/// x positions are output-timeline seconds; zoom/camera segments live in source time and are mapped through clips.
+
+/// The timeline (FLTimeline): ruler, zoom track, clip track with thumbnails, cut marks, camera full-screen track,
+/// playhead. x positions are output-timeline seconds; zoom/camera segments live in source time and are mapped
+/// through the clips.
 @MainActor
 final class TimelineView: NSView {
     enum Lane { case zoom, camera }
@@ -87,26 +89,37 @@ final class TimelineView: NSView {
     private weak var player: PlayerController?
     var thumbnails: ThumbnailProvider?
     private(set) var geometry = TimelineGeometry(pixelsPerSecond: 60)
+    /// Called whenever the scale (points per second) changes, e.g. to sync the zoom slider.
+    var onScaleChange: ((Double) -> Void)?
     private var cancellables: Set<AnyCancellable> = []
     private let playheadView = PlayheadView()
     private var hoverX: CGFloat?
+    private var lastHoverPoint: NSPoint?
     private var dragCounter = 0
 
     // Layout (flipped, top-left origin).
-    let rulerHeight: CGFloat = 24
-    private var clipRect: (y: CGFloat, h: CGFloat) { (32, 60) }
-    private var zoomRect: (y: CGFloat, h: CGFloat) { (100, 30) }
-    private var cameraRect: (y: CGFloat, h: CGFloat) { (138, 24) }
-    var contentHeight: CGFloat { model.hasCamera ? 172 : 140 }
+    static let rulerHeight: CGFloat = 24
+    private static let zoomLane = (y: CGFloat(30), h: CGFloat(28))
+    private static let clipLane = (y: CGFloat(64), h: CGFloat(56))
+    private static let cutRow = (y: CGFloat(122), h: CGFloat(16))
+    private static let cameraLane = (y: CGFloat(142), h: CGFloat(24))
+    var contentHeight: CGFloat { model.hasCamera ? 174 : 146 }
+
+    private static let scissorsCursor: NSCursor = {
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold).applying(.init(paletteColors: [.white]))
+        guard let img = NSImage(systemSymbolName: "scissors", accessibilityDescription: "Cut")?.withSymbolConfiguration(config) else { return .crosshair }
+        return NSCursor(image: img, hotSpot: NSPoint(x: img.size.width / 2, y: img.size.height / 2))
+    }()
 
     init(model: EditorModel, player: PlayerController) {
         self.model = model
         self.player = player
-        super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 172))
+        super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 174))
         wantsLayer = true
         addSubview(playheadView)
         model.$project.receive(on: DispatchQueue.main).sink { [weak self] _ in MainActor.assumeIsolated { self?.contentChanged() } }.store(in: &cancellables)
         model.$selection.receive(on: DispatchQueue.main).sink { [weak self] _ in MainActor.assumeIsolated { self?.needsDisplay = true } }.store(in: &cancellables)
+        model.$tool.receive(on: DispatchQueue.main).sink { [weak self] _ in MainActor.assumeIsolated { self?.needsDisplay = true } }.store(in: &cancellables)
         model.$playhead.receive(on: DispatchQueue.main).sink { [weak self] _ in MainActor.assumeIsolated { self?.playheadMoved() } }.store(in: &cancellables)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -137,21 +150,27 @@ final class TimelineView: NSView {
         enclosingScrollView?.contentView.scroll(to: .zero)
         needsDisplay = true
         playheadMoved()
+        onScaleChange?(geometry.pixelsPerSecond)
     }
 
     /// Multiplies the scale keeping the time under `anchorX` (document coords) in place; nil anchors on the playhead.
     func zoom(by factor: Double, anchorX: CGFloat? = nil) {
+        setScale(geometry.pixelsPerSecond * factor, anchorX: anchorX)
+    }
+
+    func setScale(_ pixelsPerSecond: Double, anchorX: CGFloat? = nil) {
         guard let clip = enclosingScrollView?.contentView else { return }
         let anchor = anchorX ?? CGFloat(geometry.x(for: model.playhead))
         let anchorTime = geometry.time(for: Double(anchor))
         let screenOffset = anchor - clip.bounds.origin.x
-        geometry.pixelsPerSecond = TimelineGeometry.clampScale(geometry.pixelsPerSecond * factor)
+        geometry.pixelsPerSecond = TimelineGeometry.clampScale(pixelsPerSecond)
         updateWidth()
         let newX = CGFloat(geometry.x(for: anchorTime)) - screenOffset
         clip.scroll(to: NSPoint(x: min(max(0, newX), max(0, frame.width - clip.bounds.width)), y: 0))
         enclosingScrollView?.reflectScrolledClipView(clip)
         needsDisplay = true
         playheadMoved()
+        onScaleChange?(geometry.pixelsPerSecond)
     }
 
     override func magnify(with event: NSEvent) {
@@ -183,7 +202,7 @@ final class TimelineView: NSView {
     }
 
     private func laneRect(_ lane: Lane) -> NSRect {
-        let r = lane == .zoom ? zoomRect : cameraRect
+        let r = lane == .zoom ? Self.zoomLane : Self.cameraLane
         return NSRect(x: 0, y: r.y, width: bounds.width, height: r.h)
     }
 
@@ -193,59 +212,63 @@ final class TimelineView: NSView {
         return NSRect(x: x0, y: l.minY, width: max(2, x1 - x0), height: l.height)
     }
 
+    private func segments(_ lane: Lane) -> [(id: UUID, start: Double, end: Double, title: String)] {
+        switch lane {
+        case .zoom:
+            return model.project.zooms.compactMap { z in outputRange(z).map { (z.id, $0.0, $0.1, "Zoom \(percent(z.level))") } }
+        case .camera:
+            return model.project.cameraFullscreen.compactMap { s in outputRange(s).map { (s.id, $0.0, $0.1, "Camera Full Screen") } }
+        }
+    }
+
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.underPageBackgroundColor.setFill()
+        StudioTheme.window.setFill()
         dirtyRect.fill()
         drawRuler(dirtyRect)
-        drawClips(dirtyRect)
         drawLane(.zoom)
+        drawClips(dirtyRect)
+        drawCuts()
         if model.hasCamera { drawLane(.camera) }
         if let hx = hoverX {
-            NSColor.secondaryLabelColor.withAlphaComponent(0.5).setFill()
-            NSRect(x: hx - 0.5, y: rulerHeight, width: 1, height: bounds.height - rulerHeight).fill()
+            if model.tool == .cut, let p = lastHoverPoint, p.y >= Self.clipLane.y, p.y <= Self.clipLane.y + Self.clipLane.h {
+                NSColor.white.setFill()
+                NSRect(x: hx - 0.75, y: Self.clipLane.y - 2, width: 1.5, height: Self.clipLane.h + 4).fill()
+            } else {
+                NSColor.white.withAlphaComponent(0.35).setFill()
+                NSRect(x: hx - 0.5, y: Self.rulerHeight, width: 1, height: bounds.height - Self.rulerHeight).fill()
+            }
         }
         thumbnails?.flush()
     }
 
     private func drawRuler(_ dirty: NSRect) {
         let step = geometry.rulerStep
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
                                                     .foregroundColor: NSColor.secondaryLabelColor]
-        let t0 = max(0, (geometry.time(for: Double(dirty.minX) - 40) / step).rounded(.down) * step)
-        let t1 = min(model.duration, geometry.time(for: Double(dirty.maxX) + 40))
+        let t0 = max(0, (geometry.time(for: Double(dirty.minX) - 60) / step).rounded(.down) * step)
+        let t1 = min(model.duration, geometry.time(for: Double(dirty.maxX) + 60))
         var t = t0
-        NSColor.tertiaryLabelColor.setFill()
         while t <= t1 + 1e-9 {
-            let x = CGFloat(geometry.x(for: t))
-            NSRect(x: x, y: rulerHeight - 8, width: 1, height: 8).fill()
-            let minor = CGFloat(geometry.x(for: t + step / 2))
-            if t + step / 2 <= model.duration { NSRect(x: minor, y: rulerHeight - 4, width: 1, height: 4).fill() }
-            (TimeFormat.string(t, tenths: step < 1) as NSString).draw(at: NSPoint(x: x + 3, y: 3), withAttributes: attrs)
+            let x = CGFloat(geometry.x(for: t)).rounded() + 0.5
+            NSColor.white.withAlphaComponent(0.05).setFill()
+            NSRect(x: x - 0.5, y: Self.rulerHeight - 6, width: 1, height: bounds.height - Self.rulerHeight + 6).fill()
+            let label = step < 1 ? TimeFormat.string(t) : TimeFormat.clock(t)
+            (label as NSString).draw(at: NSPoint(x: x + 4, y: 4), withAttributes: attrs)
             t += step
-        }
-        // Cut marks where the source jumps between clips.
-        let clips = model.project.clips
-        let starts = model.timeline.outputStarts
-        for i in 1..<max(clips.count, 1) where abs(clips[i].start - clips[i - 1].end) > 0.01 {
-            let x = CGFloat(geometry.x(for: starts[i]))
-            let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [.systemOrange]))
-            if let img = NSImage(systemSymbolName: "scissors", accessibilityDescription: "Cut")?.withSymbolConfiguration(config) {
-                img.draw(in: NSRect(x: x - 6, y: rulerHeight - 14, width: 12, height: 12))
-            }
         }
     }
 
     private func drawClips(_ dirty: NSRect) {
         let starts = model.timeline.outputStarts
-        let (y, h) = clipRect
+        let (y, h) = Self.clipLane
         for (i, clip) in model.project.clips.enumerated() {
             let x0 = CGFloat(geometry.x(for: starts[i])), w = CGFloat(geometry.width(for: clip.duration))
-            let r = NSRect(x: x0 + 1, y: y, width: max(2, w - 2), height: h)
+            let r = NSRect(x: x0 + 2, y: y, width: max(2, w - 4), height: h)
             guard r.intersects(dirty) else { continue }
             let path = NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8)
-            NSColor(white: 0.12, alpha: 1).setFill()
+            StudioTheme.track.setFill()
             path.fill()
             NSGraphicsContext.saveGraphicsState()
             path.addClip()
@@ -270,12 +293,12 @@ final class TimelineView: NSView {
             }
             NSGraphicsContext.restoreGraphicsState()
             let selected = model.selection == .clip(clip.id)
-            let border = NSBezierPath(roundedRect: r.insetBy(dx: selected ? 1.25 : 0.5, dy: selected ? 1.25 : 0.5), xRadius: 8, yRadius: 8)
-            border.lineWidth = selected ? 2.5 : 1
-            (selected ? NSColor.controlAccentColor : NSColor.white.withAlphaComponent(0.15)).setStroke()
+            let border = NSBezierPath(roundedRect: r.insetBy(dx: selected ? 1 : 0.5, dy: selected ? 1 : 0.5), xRadius: 8, yRadius: 8)
+            border.lineWidth = selected ? 2 : 1
+            (selected ? NSColor.controlAccentColor : NSColor.white.withAlphaComponent(0.1)).setStroke()
             border.stroke()
             // Trim handles.
-            if selected || (hoverX.map { $0 >= r.minX && $0 <= r.maxX } ?? false) {
+            if model.tool == .selection, selected || (hoverX.map { $0 >= r.minX && $0 <= r.maxX } ?? false) {
                 NSColor.white.withAlphaComponent(0.85).setFill()
                 NSBezierPath(roundedRect: NSRect(x: r.minX + 3, y: r.midY - 10, width: 3, height: 20), xRadius: 1.5, yRadius: 1.5).fill()
                 NSBezierPath(roundedRect: NSRect(x: r.maxX - 6, y: r.midY - 10, width: 3, height: 20), xRadius: 1.5, yRadius: 1.5).fill()
@@ -283,51 +306,66 @@ final class TimelineView: NSView {
         }
     }
 
+    /// Grey scissors badges under the clip track at every cut; a removed range shows "✂ 4s".
+    private func drawCuts() {
+        let clips = model.project.clips
+        guard !clips.isEmpty else { return }
+        let starts = model.timeline.outputStarts
+        var cuts: [(x: Double, removed: Double)] = []
+        if clips[0].start > 0.01 { cuts.append((starts[0], clips[0].start)) }
+        for i in 1..<clips.count { cuts.append((starts[i], max(0, clips[i].start - clips[i - 1].end))) }
+        if let last = clips.last, model.project.recording.duration - last.end > 0.01 {
+            cuts.append((model.duration, model.project.recording.duration - last.end))
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: 8, weight: .bold).applying(.init(paletteColors: [.white]))
+        let scissors = NSImage(systemSymbolName: "scissors", accessibilityDescription: "Cut")?.withSymbolConfiguration(config)
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor.white]
+        let (y, h) = Self.cutRow
+        for cut in cuts {
+            let x = CGFloat(geometry.x(for: cut.x))
+            let text = cut.removed >= 0.5 ? "\(Int(cut.removed.rounded()))s" as NSString : nil
+            let textW = text.map { $0.size(withAttributes: attrs).width + 4 } ?? 0
+            let badge = NSRect(x: x - (h + textW) / 2, y: y, width: h + textW, height: h)
+            NSColor(white: 0.32, alpha: 1).setFill()
+            NSBezierPath(roundedRect: badge, xRadius: h / 2, yRadius: h / 2).fill()
+            scissors?.draw(in: NSRect(x: badge.minX + 3, y: y + 3, width: h - 6, height: h - 6))
+            text?.draw(at: NSPoint(x: badge.minX + h - 1, y: y + 1), withAttributes: attrs)
+        }
+    }
+
     private func drawLane(_ lane: Lane) {
         let l = laneRect(lane)
         let track = NSRect(x: CGFloat(geometry.x(for: 0)), y: l.minY, width: CGFloat(geometry.width(for: model.duration)), height: l.height)
-        NSColor.quaternaryLabelColor.withAlphaComponent(0.25).setFill()
+        StudioTheme.track.setFill()
         NSBezierPath(roundedRect: track, xRadius: 6, yRadius: 6).fill()
 
-        let color: NSColor = lane == .zoom ? .systemPurple : .systemTeal
-        let items: [(UUID, Double, Double, String)]
-        switch lane {
-        case .zoom:
-            items = model.project.zooms.compactMap { z in
-                outputRange(z).map { (z.id, $0.0, $0.1, String(format: "%.1f×", z.level) + (z.mode == .followCursor ? "  ⌖" : "")) }
-            }
-        case .camera:
-            items = model.project.cameraFullscreen.compactMap { s in outputRange(s).map { (s.id, $0.0, $0.1, "Full Screen") } }
-        }
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white]
-        for (id, a, b, text) in items {
-            let r = segmentRect(start: a, end: b, lane: lane).insetBy(dx: 1, dy: 2)
-            let selected = model.selection == (lane == .zoom ? .zoom(id) : .camera(id))
-            let p = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
-            color.withAlphaComponent(selected ? 1 : 0.75).setFill()
-            p.fill()
-            if selected { NSColor.white.setStroke(); p.lineWidth = 2; p.stroke() }
-            let s = text as NSString
+        let items = segments(lane)
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white]
+        for item in items {
+            let r = segmentRect(start: item.start, end: item.end, lane: lane).insetBy(dx: 1, dy: 2)
+            let selected = model.selection == (lane == .zoom ? .zoom(item.id) : .camera(item.id))
+            (selected ? NSColor.controlAccentColor : StudioTheme.segment).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            let s = item.title as NSString
             let size = s.size(withAttributes: attrs)
-            if size.width + 10 < r.width {
+            if size.width + 12 < r.width {
                 s.draw(at: NSPoint(x: r.minX + 8, y: r.midY - size.height / 2), withAttributes: attrs)
             }
         }
-        // Hover ghost / hint on empty lane space.
-        if let hx = hoverX, let hover = lastHoverPoint, l.contains(hover), !items.contains(where: { segmentRect(start: $0.1, end: $0.2, lane: lane).contains(hover) }) {
+        // Hover ghost on empty lane space, or the hint when the lane is empty.
+        if model.tool == .selection, let hx = hoverX, let hover = lastHoverPoint, l.contains(hover),
+           !items.contains(where: { segmentRect(start: $0.start, end: $0.end, lane: lane).contains(hover) }) {
             let ghost = NSRect(x: hx, y: l.minY + 2, width: CGFloat(geometry.width(for: 2)), height: l.height - 4)
             let gp = NSBezierPath(roundedRect: ghost, xRadius: 6, yRadius: 6)
-            color.withAlphaComponent(0.25).setFill(); gp.fill()
-            let dash = gp; dash.setLineDash([4, 3], count: 2, phase: 0); dash.lineWidth = 1
-            color.setStroke(); dash.stroke()
-            let plus = "+" as NSString
-            plus.draw(at: NSPoint(x: ghost.minX + 6, y: ghost.midY - 8), withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color])
+            StudioTheme.segment.withAlphaComponent(0.5).setFill(); gp.fill()
+            ("+" as NSString).draw(at: NSPoint(x: ghost.minX + 7, y: ghost.midY - 8),
+                                   withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.white])
         } else if items.isEmpty {
-            let hint = (lane == .zoom ? "Click or drag to add zoom" : "Click or drag to show the camera full screen") as NSString
+            let hint = (lane == .zoom ? "+  Click or drag to add zoom" : "+  Click or drag to show the camera full screen") as NSString
             let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor]
             let sz = hint.size(withAttributes: a)
             let vis = enclosingScrollView?.contentView.bounds ?? bounds
-            hint.draw(at: NSPoint(x: vis.minX + 24, y: l.midY - sz.height / 2), withAttributes: a)
+            hint.draw(at: NSPoint(x: max(track.minX, vis.minX) + 10, y: l.midY - sz.height / 2), withAttributes: a)
         }
     }
 
@@ -340,29 +378,28 @@ final class TimelineView: NSView {
     }
 
     private func hit(_ p: NSPoint) -> Hit {
-        if p.y < rulerHeight + 4 { return .ruler }
-        let (cy, ch) = clipRect
+        if p.y < Self.rulerHeight + 2 { return .ruler }
+        let (cy, ch) = Self.clipLane
         if p.y >= cy && p.y <= cy + ch {
             let starts = model.timeline.outputStarts
             for (i, c) in model.project.clips.enumerated() {
                 let x0 = CGFloat(geometry.x(for: starts[i])), x1 = CGFloat(geometry.x(for: starts[i] + c.duration))
                 guard p.x >= x0 - 4 && p.x <= x1 + 4 else { continue }
-                if abs(p.x - x0) <= 7 && x1 - x0 > 20 { return .clipLeft(c.id) }
-                if abs(p.x - x1) <= 7 && x1 - x0 > 20 { return .clipRight(c.id) }
+                if model.tool == .selection {
+                    if abs(p.x - x0) <= 7 && x1 - x0 > 20 { return .clipLeft(c.id) }
+                    if abs(p.x - x1) <= 7 && x1 - x0 > 20 { return .clipRight(c.id) }
+                }
                 if p.x >= x0 && p.x <= x1 { return .clip(c.id) }
             }
             return .empty
         }
         for lane in model.hasCamera ? [Lane.zoom, .camera] : [.zoom] where laneRect(lane).contains(p) {
-            let segs: [(UUID, Double, Double)] = lane == .zoom
-                ? model.project.zooms.compactMap { z in outputRange(z).map { (z.id, $0.0, $0.1) } }
-                : model.project.cameraFullscreen.compactMap { s in outputRange(s).map { (s.id, $0.0, $0.1) } }
-            for (id, a, b) in segs {
-                let r = segmentRect(start: a, end: b, lane: lane)
+            for seg in segments(lane) {
+                let r = segmentRect(start: seg.start, end: seg.end, lane: lane)
                 guard p.x >= r.minX - 4 && p.x <= r.maxX + 4 else { continue }
-                if abs(p.x - r.minX) <= 6 && r.width > 16 { return .segLeft(lane, id) }
-                if abs(p.x - r.maxX) <= 6 && r.width > 16 { return .segRight(lane, id) }
-                if r.contains(p) { return .segment(lane, id) }
+                if abs(p.x - r.minX) <= 6 && r.width > 16 { return .segLeft(lane, seg.id) }
+                if abs(p.x - r.maxX) <= 6 && r.width > 16 { return .segRight(lane, seg.id) }
+                if r.contains(p) { return .segment(lane, seg.id) }
             }
             return .lane(lane)
         }
@@ -371,7 +408,6 @@ final class TimelineView: NSView {
 
     // MARK: Mouse
 
-    private var lastHoverPoint: NSPoint?
     private var trackingArea: NSTrackingArea?
 
     override func updateTrackingAreas() {
@@ -386,11 +422,18 @@ final class TimelineView: NSView {
         let p = convert(event.locationInWindow, from: nil)
         hoverX = p.x >= CGFloat(geometry.x(for: 0)) && p.x <= CGFloat(geometry.x(for: model.duration)) ? p.x : nil
         lastHoverPoint = p
+        updateCursor(at: p)
+        needsDisplay = true
+    }
+
+    override func cursorUpdate(with event: NSEvent) { updateCursor(at: convert(event.locationInWindow, from: nil)) }
+
+    private func updateCursor(at p: NSPoint) {
         switch hit(p) {
+        case .clip where model.tool == .cut: Self.scissorsCursor.set()
         case .clipLeft, .clipRight, .segLeft, .segRight: NSCursor.resizeLeftRight.set()
         default: NSCursor.arrow.set()
         }
-        needsDisplay = true
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -428,7 +471,12 @@ final class TimelineView: NSView {
             player?.pause()
             player?.seek(toOutput: time(at: p.x))
         case .clip(let id):
-            drag = .clipClick(id)
+            if model.tool == .cut {
+                model.splitClip(atOutput: time(at: p.x))
+                drag = nil
+            } else {
+                drag = .clipClick(id)
+            }
         case .clipLeft(let id):
             model.selection = .clip(id)
             drag = .trimLeft(id, origin: model.project.clips.first { $0.id == id }?.start ?? 0)
@@ -437,9 +485,7 @@ final class TimelineView: NSView {
             drag = .trimRight(id, origin: model.project.clips.first { $0.id == id }?.end ?? 0)
         case .segment(let lane, let id):
             model.selection = lane == .zoom ? .zoom(id) : .camera(id)
-            let start = lane == .zoom ? model.project.zooms.first { $0.id == id }.flatMap { outputRange($0)?.0 }
-                                      : model.project.cameraFullscreen.first { $0.id == id }.flatMap { outputRange($0)?.0 }
-            drag = .move(lane, id, outStart: start ?? 0)
+            drag = .move(lane, id, outStart: segments(lane).first { $0.id == id }?.start ?? 0)
         case .segLeft(let lane, let id):
             model.selection = lane == .zoom ? .zoom(id) : .camera(id)
             drag = .resizeLeft(lane, id)
@@ -520,21 +566,41 @@ final class TimelineView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let p = convert(event.locationInWindow, from: nil)
         let menu = NSMenu()
-        func item(_ title: String, _ action: @escaping () -> Void) {
+        func item(_ title: String, in m: NSMenu? = nil, on: Bool = false, _ action: @escaping () -> Void) {
             let i = ClosureMenuItem(title: title, action: action)
-            menu.addItem(i)
+            i.state = on ? .on : .off
+            (m ?? menu).addItem(i)
         }
         switch hit(p) {
         case .clip(let id), .clipLeft(let id), .clipRight(let id):
             model.selection = .clip(id)
+            let t = time(at: p.x)
+            item("Split Clip Here") { [weak self] in self?.model.splitClip(atOutput: t) }
             item("Split Clip at Playhead") { [weak self] in self?.model.splitClipAtPlayhead() }
+            menu.addItem(.separator())
             item("Delete Clip") { [weak self] in self?.model.deleteClip(id) }
         case .segment(.zoom, let id), .segLeft(.zoom, let id), .segRight(.zoom, let id):
             model.selection = .zoom(id)
-            item("Split Zoom at Playhead") { [weak self] in self?.model.splitZoomAtPlayhead() }
+            guard let z = model.project.zooms.first(where: { $0.id == id }) else { return nil }
+            let levels = NSMenu()
+            for level in [1.25, 1.5, 1.75, 2, 2.5, 3, 4] {
+                item(percent(level), in: levels, on: abs(z.level - level) < 0.001) { [weak self] in self?.model.setZoom(id, level: level) }
+            }
+            let levelItem = NSMenuItem(title: "Zoom Level", action: nil, keyEquivalent: ""); levelItem.submenu = levels
+            menu.addItem(levelItem)
             item("Apply Zoom Level to All") { [weak self] in self?.model.applyZoomLevelToAll() }
+            let modes = NSMenu()
+            for mode in [ZoomMode.followCursor, .manual] {
+                item(mode.title, in: modes, on: z.mode == mode) { [weak self] in self?.model.setZoom(id, mode: mode) }
+            }
+            let modeItem = NSMenuItem(title: "Zoom Mode", action: nil, keyEquivalent: ""); modeItem.submenu = modes
+            if model.events.cursor.isEmpty { modeItem.isEnabled = false }
+            menu.addItem(modeItem)
             menu.addItem(.separator())
-            item("Delete Zoom") { [weak self] in self?.model.deleteSelection() }
+            item("Split Zoom at Playhead") { [weak self] in self?.model.splitZoomAtPlayhead() }
+            item("Duplicate") { [weak self] in self?.model.duplicateZoom(id) }
+            item("Remove") { [weak self] in self?.model.deleteSelection() }
+            menu.addItem(.separator())
             item("Remove All Zooms") { [weak self] in self?.model.removeAllZooms() }
         case .lane(.zoom):
             let t = time(at: p.x)
@@ -542,7 +608,7 @@ final class TimelineView: NSView {
             if !model.project.zooms.isEmpty { item("Remove All Zooms") { [weak self] in self?.model.removeAllZooms() } }
         case .segment(.camera, let id), .segLeft(.camera, let id), .segRight(.camera, let id):
             model.selection = .camera(id)
-            item("Delete Full Screen Segment") { [weak self] in self?.model.deleteSelection() }
+            item("Remove Full Screen Segment") { [weak self] in self?.model.deleteSelection() }
         default:
             return nil
         }
@@ -550,30 +616,24 @@ final class TimelineView: NSView {
     }
 }
 
-/// Playhead line + knob, a separate layer so playback doesn't redraw the whole timeline.
+/// Playhead: 1 pt red line with a rounded red pin head above the ruler. A separate view so playback doesn't
+/// redraw the whole timeline.
 final class PlayheadView: NSView {
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func draw(_ dirtyRect: NSRect) {
         NSColor.systemRed.setFill()
-        NSRect(x: bounds.midX - 1, y: 6, width: 2, height: bounds.height - 6).fill()
-        let knob = NSBezierPath()
-        knob.move(to: NSPoint(x: bounds.midX - 6, y: 2))
-        knob.line(to: NSPoint(x: bounds.midX + 6, y: 2))
-        knob.line(to: NSPoint(x: bounds.midX + 6, y: 12))
-        knob.line(to: NSPoint(x: bounds.midX, y: 18))
-        knob.line(to: NSPoint(x: bounds.midX - 6, y: 12))
-        knob.close()
-        knob.fill()
+        NSRect(x: bounds.midX - 0.5, y: 8, width: 1, height: bounds.height - 8).fill()
+        NSBezierPath(roundedRect: NSRect(x: bounds.midX - 4.5, y: 0, width: 9, height: 13), xRadius: 4.5, yRadius: 4.5).fill()
     }
 }
 
 /// NSMenuItem that runs a closure.
 final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
-    init(title: String, keyEquivalent: String = "", action: @escaping () -> Void) {
+    init(title: String, action: @escaping () -> Void) {
         handler = action
-        super.init(title: title, action: #selector(run), keyEquivalent: keyEquivalent)
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
         target = self
     }
     required init(coder: NSCoder) { fatalError() }

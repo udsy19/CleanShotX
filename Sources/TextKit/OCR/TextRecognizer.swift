@@ -119,11 +119,6 @@ public enum TextRecognizer {
     }
 
     /// Recognized text in reading order, followed by barcode/QR payloads that aren't already part of the text.
-    public static func recognizeText(in image: CGImage, keepLineBreaks: Bool, configuration: Configuration) throws -> String {
-        let result = try recognize(in: image, configuration: configuration)
-        return compose(text: TextAssembler.assemble(result.lines, keepLineBreaks: keepLineBreaks), barcodes: result.barcodes)
-    }
-
     static func compose(text: String, barcodes: [String]) -> String {
         let extra = barcodes.filter { !text.contains($0) }
         return ([text] + extra).filter { !$0.isEmpty }.joined(separator: "\n")

@@ -14,6 +14,50 @@ func registerPreferencesKitTests() {
         check(PreferencesPane(identifier: nil) == nil && PreferencesPane(identifier: "") == nil, "empty → nil")
         check(PreferencesPane(identifier: "bogus") == nil, "unknown → nil")
         check(PreferencesPane.allCases.allSatisfy { PreferencesPane(identifier: $0.rawValue) == $0 }, "every id round-trips")
+        check(PreferencesPane.sidebarPanes.first == .general && PreferencesPane.sidebarPanes.last == .advanced
+              && !PreferencesPane.sidebarPanes.contains(.about), "5.0 sidebar order, About pinned apart")
+        check(PreferencesPane.recording.title == "Screen Recording", "recording title")
+    }))
+
+    SelfTest.cases.append(("Prefs.pickerChoices", {
+        check(PickerChoices.including(5, in: [3, 5, 10]) == [3, 5, 10], "present value keeps list")
+        check(PickerChoices.including(7, in: [3, 5, 10]) == [3, 5, 7, 10], "inserted in order")
+        check(PickerChoices.including(45, in: [1, 30, 90, 0]) == [1, 30, 45, 90, 0], "0 (forever) stays last")
+        check(PickerChoices.including(1000, in: [0, 800, 1280]) == [0, 800, 1000, 1280], "0 (original) stays first")
+        check(PickerChoices.including(5000, in: [0, 800]) == [0, 800, 5000], "largest appended")
+    }))
+
+    SelfTest.cases.append(("Prefs.validation", {
+        check(SettingsValidation.urlProblem("") == nil && SettingsValidation.urlProblem("  ") == nil, "empty is fine")
+        check(SettingsValidation.urlProblem("https://s3.example.com") == nil, "https ok")
+        check(SettingsValidation.urlProblem("http://localhost:9000/up") == nil, "http with port ok")
+        check(SettingsValidation.urlProblem("ftp://x.com") != nil, "non-http scheme rejected")
+        check(SettingsValidation.urlProblem("example.com/upload") != nil, "missing scheme rejected")
+        check(SettingsValidation.urlProblem("https://") != nil, "missing host rejected")
+        check(SettingsValidation.historyChoice(enabled: false, days: 30) == -1, "disabled history → -1")
+        check(SettingsValidation.historyChoice(enabled: true, days: 0) == 0, "forever")
+        check(SettingsValidation.historyChoice(enabled: true, days: 7) == 7, "days")
+    }))
+
+    SelfTest.cases.append(("Prefs.windowBackground", {
+        let suite = UserDefaults(suiteName: "shotcraft.selftest.prefs.bg")!
+        suite.removePersistentDomain(forName: "shotcraft.selftest.prefs.bg")
+        Defaults.store = suite
+        defer { Defaults.store = .standard; suite.removePersistentDomain(forName: "shotcraft.selftest.prefs.bg") }
+        check(WindowBackgroundMapping.style(for: .desktop) == .desktopWallpaper, "desktop")
+        check(WindowBackgroundMapping.style(for: .custom) == .customWallpaper, "custom")
+        check(WindowBackgroundMapping.style(for: .color) == .color, "color")
+        Defaults[.windowBackgroundStyle] = .transparent
+        Defaults[.wallpaperSource] = .custom
+        WindowBackgroundMapping.syncAfterWallpaperChange()
+        check(Defaults[.windowBackgroundStyle] == .transparent, "transparent isn't changed by wallpaper edits")
+        WindowBackgroundMapping.applyWallpaper()
+        check(Defaults[.windowBackgroundStyle] == .customWallpaper, "with wallpaper follows the source")
+        let red = RGBAColor(r: 1, g: 0, b: 0)
+        Defaults[.wallpaperColor] = red
+        Defaults[.wallpaperSource] = .color
+        WindowBackgroundMapping.syncAfterWallpaperChange()
+        check(Defaults[.windowBackgroundStyle] == .color && Defaults[.windowBackgroundColor] == red, "plain color copied")
     }))
 
     SelfTest.cases.append(("Prefs.afterCaptureRule", {
@@ -24,6 +68,9 @@ func registerPreferencesKitTests() {
         check(AfterCaptureRules.toggling(.pin, on: false, in: one) == one, "removing an absent action is a no-op")
         check(!AfterCaptureRules.screenshotChoices.contains(.openVideoEditor), "video editor isn't a screenshot action")
         check(!AfterCaptureRules.recordingChoices.contains(.annotate), "annotate isn't a recording action")
+        check(Set(AfterCaptureRules.tableRows) == Set(AfterCaptureRules.screenshotChoices + AfterCaptureRules.recordingChoices)
+              && AfterCaptureRules.tableRows.count == Set(AfterCaptureRules.tableRows).count, "table covers every action once")
+        check(AfterCaptureRules.title(for: .upload) == "Upload & copy link", "upload row names our destinations")
     }))
 
     SelfTest.cases.append(("Prefs.shortcutPlanner", {
@@ -54,7 +101,10 @@ func registerPreferencesKitTests() {
         check(ShortcutPlanner.filter(AppAction.allCases, query: "  ").count == AppAction.allCases.count, "blank query keeps all")
         check(ShortcutPlanner.filter(AppAction.allCases, query: "capture area copy") == [.captureAreaAndCopy], "multi-word search")
         let groups = ShortcutPlanner.grouped(AppAction.allCases)
-        check(groups.first?.group == "Screenshots" && groups.map(\.actions.count).reduce(0, +) == AppAction.allCases.count, "grouping")
+        check(groups.map(\.group) == ShortcutGroup.allCases, "every group used, in pane order")
+        check(groups.first?.actions.first == .allInOne, "General group starts with All-In-One")
+        check(groups.map(\.actions.count).reduce(0, +) == AppAction.allCases.count, "grouping covers every action")
+        check(ShortcutPlanner.filter(AppAction.allCases, query: "ocr") == [.captureText], "search by group title")
     }))
 
     SelfTest.cases.append(("Prefs.systemHotkeys", {
@@ -90,9 +140,14 @@ func registerPreferencesKitTests() {
         let dict = HeaderRow.dictionary(from: rows + [HeaderRow(name: "  ", value: "x"), HeaderRow(name: " c ", value: "3")])
         check(dict == ["A": "1", "b": "2", "c": "3"], "blank names dropped, names trimmed")
 
-        check(OCRLanguageCatalog.toggling("en-US", on: false, in: ["en-US"]) == ["en-US"], "last language can't be removed")
-        check(OCRLanguageCatalog.toggling("de-DE", on: true, in: ["fr-FR", "en-US"]) == ["en-US", "fr-FR", "de-DE"], "catalog order")
-        check(Set(OCRLanguageCatalog.codes).count == OCRLanguageCatalog.codes.count, "unique language codes")
+        let available = ["en-US", "fr-FR", "de-DE"]
+        check(OCRLanguageSelection.toggling("en-US", on: false, in: ["en-US"], available: available) == ["en-US"],
+              "last language can't be removed")
+        check(OCRLanguageSelection.toggling("de-DE", on: true, in: ["fr-FR", "en-US"], available: available)
+              == ["en-US", "fr-FR", "de-DE"], "recognizer order")
+        check(OCRLanguageSelection.toggling("en-US", on: true, in: ["xx-XX"], available: available) == ["en-US", "xx-XX"],
+              "unknown stored codes kept after known ones")
+        check(OCRLanguageSelection.toggling("xx-XX", on: true, in: ["xx-XX"], available: []) == ["xx-XX"], "no duplicates")
     }))
 
     SelfTest.cases.append(("Prefs.restoreDefaults", {

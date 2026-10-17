@@ -95,10 +95,18 @@ final class InputTracker: @unchecked Sendable {
 
     private func append(_ s: CursorSample) { lock.lock(); events.cursor.append(s); lock.unlock() }
 
-    private func currentPoint() -> NPoint { normalize(cg: CGEvent(source: nil)?.location ?? .zero) }
+    /// Media time of an event. `NSEvent.timestamp` and the host clock both count mach time since boot, so the
+    /// event's own time is used (exact even when the monitor runs late); fall back to "now" if they disagree.
+    private func mediaTime(of e: NSEvent) -> Double? {
+        let now = RecordingClock.hostNow()
+        return clock.mediaTime(forHost: abs(now - e.timestamp) < 1 ? e.timestamp : now)
+    }
+
+    /// Where the event happened (falls back to the current pointer location).
+    private func point(of e: NSEvent) -> NPoint { normalize(cg: e.cgEvent?.location ?? CGEvent(source: nil)?.location ?? .zero) }
 
     private func handleMouse(_ e: NSEvent) {
-        guard let t = clock.mediaTime(forHost: RecordingClock.hostNow()) else { return }
+        guard let t = mediaTime(of: e) else { return }
         let down: Bool
         let button: MouseButton
         switch e.type {
@@ -109,18 +117,18 @@ final class InputTracker: @unchecked Sendable {
         case .otherMouseDown: down = true; button = .other
         default: down = false; button = .other
         }
-        let ev = ClickEvent(t: t, p: currentPoint(), button: button, down: down)
+        let ev = ClickEvent(t: t, p: point(of: e), button: button, down: down)
         lock.lock(); events.clicks.append(ev); lock.unlock()
     }
 
     private func handleScroll(_ e: NSEvent) {
-        guard let t = clock.mediaTime(forHost: RecordingClock.hostNow()), e.scrollingDeltaX != 0 || e.scrollingDeltaY != 0 else { return }
-        let ev = ScrollEvent(t: t, p: currentPoint(), dx: Double(e.scrollingDeltaX), dy: Double(e.scrollingDeltaY))
+        guard let t = mediaTime(of: e), e.scrollingDeltaX != 0 || e.scrollingDeltaY != 0 else { return }
+        let ev = ScrollEvent(t: t, p: point(of: e), dx: Double(e.scrollingDeltaX), dy: Double(e.scrollingDeltaY))
         lock.lock(); events.scrolls.append(ev); lock.unlock()
     }
 
     private func handleKey(_ e: NSEvent) {
-        guard !e.isARepeat, let t = clock.mediaTime(forHost: RecordingClock.hostNow()) else { return }
+        guard !e.isARepeat, let t = mediaTime(of: e) else { return }
         let mods = e.modifierFlags.intersection(.deviceIndependentFlagsMask).rawValue
         let ev = KeyEvent(t: t, keyCode: e.keyCode, modifiers: mods, characters: e.charactersIgnoringModifiers ?? "")
         lock.lock(); events.keys.append(ev); lock.unlock()

@@ -64,9 +64,10 @@ final class RecordingService: RecordingServicing {
     func stopRecording() {
         switch phase {
         case .recording(let session): session.stop()
-        case .countdown(_, let overlay):
-            // Without an overlay the stream is already starting; it can be stopped once it runs.
+        case .countdown(let session, let overlay):
+            // A running countdown is cancelled; a stream that is still starting stops as soon as it runs.
             overlay?.cancel()
+            session.requestStop()
         case .setup(let overlay):
             overlay.close()
             phase = .idle
@@ -79,15 +80,25 @@ final class RecordingService: RecordingServicing {
     private func showSetup(_ kind: RecordingKind, area: CGRect, screen: NSScreen) {
         let overlay = RecorderSetupOverlay(kind: kind, area: area, screen: screen)
         phase = .setup(overlay)
-        overlay.show { [weak self, weak overlay] start in
+        overlay.show { [weak self, weak overlay] result in
             guard let self, let overlay else { return }
             let finalArea = overlay.area
-            let camera = start ? overlay.takeCamera() : nil
-            overlay.close()
-            guard start else { self.phase = .idle; return }
-            if Defaults[.rememberLastRecordingArea] { Defaults[.lastRecordingArea] = CodableRect(finalArea) }
-            self.prepareMicrophone(overlay.kind) {
-                self.beginCountdown(overlay.kind, area: finalArea, screen: screen, camera: camera)
+            switch result {
+            case .cancel:
+                overlay.close()
+                self.phase = .idle
+            case .studio:
+                overlay.close()
+                self.phase = .idle
+                if Defaults[.rememberLastRecordingArea] { Defaults[.lastRecordingArea] = CodableRect(finalArea) }
+                Services.studio?.startStudioRecording(rect: finalArea)
+            case .record(let kind):
+                let camera = overlay.takeCamera()
+                overlay.close()
+                if Defaults[.rememberLastRecordingArea] { Defaults[.lastRecordingArea] = CodableRect(finalArea) }
+                self.prepareMicrophone(kind) {
+                    self.beginCountdown(kind, area: finalArea, screen: screen, camera: camera)
+                }
             }
         }
     }
@@ -119,7 +130,8 @@ final class RecordingService: RecordingServicing {
         Task { @MainActor in
             do {
                 try await session.start()
-                phase = .recording(session)
+                // A stop requested while starting has already moved the session to `finishing`.
+                if !session.didStop, case .countdown(let s, _) = phase, s === session { phase = .recording(session) }
             } catch {
                 session.discard()
                 Alerts.error("An error occurred while starting screen recording.", error)

@@ -8,12 +8,14 @@ import ShotcraftCore
 /// Closing the window at any step counts as completing onboarding.
 @MainActor
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
+    static let size = NSSize(width: 580, height: 560)
+
     private let window: NSWindow
     private let onClose: () -> Void
 
     init(onClose: @escaping () -> Void) {
         self.onClose = onClose
-        window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+        window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.size),
                           styleMask: [.titled, .closable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         super.init()
@@ -23,8 +25,10 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.title = "Welcome to Shotcraft"
         window.delegate = self
-        window.contentViewController = NSHostingController(rootView: OnboardingView { [weak self] in self?.window.close() })
-        window.setContentSize(NSSize(width: 620, height: 520))
+        let hosting = NSHostingController(rootView: OnboardingView { [weak self] in self?.window.close() })
+        hosting.sizingOptions = []   // fixed-size window; slides never resize it
+        window.contentViewController = hosting
+        window.setContentSize(Self.size)
         window.center()
     }
 
@@ -43,7 +47,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 // MARK: - Steps
 
 enum OnboardingStep: Int, CaseIterable {
-    case welcome, screenRecording, shortcuts, desktopIcons, launchAtLogin, afterCapture, finish
+    case welcome, screenRecording, shortcuts, desktopIcons, launchAtLogin, workflow, finish
 }
 
 enum ShortcutChoice: CaseIterable, Identifiable {
@@ -62,13 +66,13 @@ enum ShortcutChoice: CaseIterable, Identifiable {
         switch self {
         case .systemDefaults: "⇧⌘3 Capture Fullscreen · ⇧⌘4 Capture Area · ⇧⌘5 All-In-One"
         case .allInOneOnly: "Like macOS's screenshot toolbar; ⇧⌘3 and ⇧⌘4 keep working as before."
-        case .keepShotcraft: "⌥⇧3 Capture Fullscreen · ⌥⇧4 Capture Area · ⌥⇧5 All-In-One — no conflicts with macOS."
+        case .keepShotcraft: "⌥⇧3 Fullscreen · ⌥⇧4 Area · ⌥⇧5 All-In-One — no conflicts with macOS."
         }
     }
 
     var symbol: String {
         switch self {
-        case .systemDefaults: "command.square.fill"
+        case .systemDefaults: "command"
         case .allInOneOnly: "square.dashed.inset.filled"
         case .keepShotcraft: "option"
         }
@@ -87,7 +91,13 @@ enum ShortcutChoice: CaseIterable, Identifiable {
 
 struct OnboardingView: View {
     let close: () -> Void
-    @State private var step: OnboardingStep = .welcome
+    @State private var step: OnboardingStep
+
+    /// `start` lets previews and snapshot checks open a specific slide.
+    init(start: OnboardingStep = .welcome, close: @escaping () -> Void) {
+        self.close = close
+        _step = State(initialValue: start)
+    }
     @State private var shortcutChoice: ShortcutChoice = .keepShotcraft
     @StateObject private var permissions = PermissionsModel()
     @StateObject private var system = SystemHotkeysModel()
@@ -101,20 +111,23 @@ struct OnboardingView: View {
                                             removal: .move(edge: .leading).combined(with: .opacity)))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 48)
-            .padding(.top, 36)
+            .padding(.horizontal, 40)
+            .padding(.top, 44)
             .clipped()
 
             Divider()
             bottomBar
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
-                .background(.bar)
         }
-        .frame(width: 620, height: 520)
+        .frame(width: OnboardingWindowController.size.width, height: OnboardingWindowController.size.height)
         .background(VisualEffectBackground())
-        .onAppear { permissions.startMonitoring(); system.poll(true) }
+        // The title bar is transparent; without this its safe-area inset pushes the bottom bar out of the window.
+        .ignoresSafeArea()
+        .onAppear { permissions.startMonitoring() }
         .onDisappear { permissions.stopMonitoring(); system.poll(false) }
+        // Only the shortcuts slide shows the macOS shortcut state; poll it while that slide is visible.
+        .onChange(of: step) { _, new in system.poll(new == .shortcuts) }
     }
 
     // MARK: Content
@@ -122,15 +135,19 @@ struct OnboardingView: View {
     @ViewBuilder private var content: some View {
         switch step {
         case .welcome:
-            StepLayout(symbol: "camera.aperture", tint: .accentColor, title: "Welcome to Shotcraft",
+            StepLayout(title: "Welcome to Shotcraft",
                        message: "Let's walk you through a quick configuration. It takes less than a minute, and you can change everything later in Settings.") {
-                EmptyView()
+                AppIconImage(size: 96)
+            } accessory: {
+                FeatureSummary()
             }
         case .screenRecording:
             let granted = permissions.states[.screenRecording] == .granted
-            StepLayout(symbol: granted ? "checkmark.shield.fill" : "rectangle.dashed.badge.record",
-                       tint: granted ? .green : .orange, title: "Allow Screen Recording",
+            StepLayout(title: "Allow Screen Recording",
                        message: "Shotcraft needs Screen Recording permission to take screenshots and record your screen. Nothing leaves your Mac unless you upload it.") {
+                IconTile(symbol: granted ? "checkmark" : "rectangle.dashed.badge.record",
+                         tint: granted ? PreferencesPane.quickAccess.tint : PreferencesPane.recording.tint, size: 72)
+            } accessory: {
                 VStack(spacing: 10) {
                     if granted {
                         Label("Permission granted", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.headline)
@@ -145,8 +162,10 @@ struct OnboardingView: View {
                 }
             }
         case .shortcuts:
-            StepLayout(symbol: "command", tint: .accentColor, title: "Set as default screenshot tool?",
+            StepLayout(title: "Set as default screenshot tool?",
                        message: "Choose how you'd like to trigger captures. You can change any shortcut later.") {
+                KeycapsIllustration(keys: shortcutChoice == .keepShotcraft ? ["⌥", "⇧", "4"] : ["⇧", "⌘", "4"])
+            } accessory: {
                 VStack(spacing: 8) {
                     ForEach(ShortcutChoice.allCases) { choice in
                         ChoiceCard(choice: choice, selected: shortcutChoice == choice) { shortcutChoice = choice }
@@ -154,35 +173,46 @@ struct OnboardingView: View {
                     if shortcutChoice != .keepShotcraft && system.systemShortcutsEnabled {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Turn off the macOS screenshot shortcuts in Keyboard Shortcuts → Screenshots, or macOS will keep handling them.")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("It looks like you haven't disabled Screenshots shortcuts in macOS.")
                                     .font(.callout).fixedSize(horizontal: false, vertical: true)
                                 Button("Open Keyboard Shortcuts…") { system.openKeyboardSettings() }.buttonStyle(.link)
                             }
+                            Spacer(minLength: 0)
                         }
-                        .padding(.top, 4)
                     }
                 }
             }
         case .desktopIcons:
-            StepLayout(symbol: "menubar.dock.rectangle", tint: .teal, title: "Hide desktop icons while capturing?",
+            StepLayout(title: "Hide desktop icons while capturing?",
                        message: "Would you like to have your desktop icons hidden automatically whenever you take a screenshot or record your screen?") {
+                DesktopIllustration()
+            } accessory: {
                 DesktopIconsSwitch()
             }
         case .launchAtLogin:
-            StepLayout(symbol: "power", tint: .green, title: "Launch at login?",
+            StepLayout(title: "Launch at login?",
                        message: "Would you like to have Shotcraft ready every time you log in, so your shortcuts always work?") {
+                MenuBarIllustration(highlight: false)
+            } accessory: {
                 EmptyView()
             }
-        case .afterCapture:
-            StepLayout(symbol: "sparkles.rectangle.stack", tint: .purple, title: "After capturing",
+        case .workflow:
+            StepLayout(title: "Tweak your workflow",
                        message: "Decide what should happen after taking a screenshot or recording a video. You can adjust all the settings and set your own later.") {
+                IconTile(symbol: "slider.horizontal.3", tint: PreferencesPane.advanced.tint, size: 64)
+            } accessory: {
                 OnboardingAfterCapture()
             }
         case .finish:
-            StepLayout(symbol: nil, tint: .accentColor, title: "Shotcraft is ready to use!",
-                       message: "Find Shotcraft in the menu bar at the top of your screen. Click the icon to capture, record, open history or change settings.") {
-                MenuBarIllustration()
+            StepLayout(title: "Shotcraft is ready to use!",
+                       message: "You can access the app through the menu bar icon or by using the defined keyboard shortcuts.") {
+                AppIconImage(size: 88)
+            } accessory: {
+                VStack(spacing: 4) {
+                    MenuBarIllustration(highlight: true)
+                    ShortcutTips()
+                }
             }
         }
     }
@@ -190,16 +220,15 @@ struct OnboardingView: View {
     // MARK: Bottom bar
 
     private var bottomBar: some View {
-        HStack {
-            if step != .welcome && step != .finish {
-                Button("Back") { go(-1) }
-            }
-            Spacer()
+        ZStack {
             PageDots(count: OnboardingStep.allCases.count, index: step.rawValue)
-            Spacer()
             HStack {
+                if step != .welcome && step != .finish {
+                    Button("Back") { go(-1) }
+                }
+                Spacer()
                 secondaryButton
-                primaryButton
+                primaryButton.buttonStyle(.borderedProminent)
             }
         }
         .controlSize(.large)
@@ -246,34 +275,86 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Pieces
+// MARK: - Slide layout (ONBasicView: image, 22 pt title, 13 pt body)
 
-private struct StepLayout<Accessory: View>: View {
-    let symbol: String?
-    let tint: Color
+private struct StepLayout<Illustration: View, Accessory: View>: View {
     let title: String
     let message: String
+    @ViewBuilder var illustration: Illustration
     @ViewBuilder var accessory: Accessory
 
     var body: some View {
-        VStack(spacing: 16) {
-            if let symbol {
-                Image(systemName: symbol)
-                    .font(.system(size: 54, weight: .regular))
-                    .foregroundStyle(tint.gradient)
-                    .frame(height: 70)
-            }
-            Text(title).font(.largeTitle.bold()).multilineTextAlignment(.center)
+        VStack(spacing: 12) {
+            illustration
+                .frame(height: 100)
+            Text(title)
+                .font(.system(size: 22, weight: .bold))
+                .multilineTextAlignment(.center)
             Text(message)
-                .font(.title3)
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 460)
-            accessory.padding(.top, 6)
+                .frame(maxWidth: 420)
+            accessory.padding(.top, 8)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct AppIconImage: View {
+    let size: CGFloat
+    var body: some View {
+        Image(nsImage: NSApp.applicationIconImage ?? NSImage())
+            .resizable().interpolation(.high)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Welcome slide: what Shotcraft does, as a 2 × 3 grid of feature tiles.
+private struct FeatureSummary: View {
+    private struct Feature: Identifiable {
+        let symbol: String
+        let tint: Color
+        let title: String
+        let detail: String
+        var id: String { title }
+    }
+
+    private let features = [
+        Feature(symbol: "camera.fill", tint: PreferencesPane.screenshots.tint, title: "Screenshots",
+                detail: "Area, window, scrolling"),
+        Feature(symbol: "video.fill", tint: PreferencesPane.recording.tint, title: "Screen Recording",
+                detail: "Video and GIF"),
+        Feature(symbol: "pencil", tint: PreferencesPane.annotate.tint, title: "Annotate",
+                detail: "Arrows, text, blur"),
+        Feature(symbol: "text.viewfinder", tint: PreferencesPane.advanced.tint, title: "Capture Text",
+                detail: "Copy text from screen"),
+        Feature(symbol: "rectangle.and.hand.point.up.left.fill", tint: PreferencesPane.quickAccess.tint,
+                title: "Quick Access", detail: "Drag, copy, pin, save"),
+        Feature(symbol: "cloud.fill", tint: PreferencesPane.upload.tint, title: "Upload",
+                detail: "Share links to captures"),
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 10) {
+            ForEach(features) { f in
+                HStack(spacing: 10) {
+                    IconTile(symbol: f.symbol, tint: f.tint, size: 32)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(f.title).font(.system(size: 13, weight: .semibold))
+                        Text(f.detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.04)))
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .frame(maxWidth: 470)
     }
 }
 
@@ -285,16 +366,17 @@ private struct ChoiceCard: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: choice.symbol).font(.title2).frame(width: 30).foregroundStyle(.tint)
+                Image(systemName: choice.symbol).font(.title3).frame(width: 26).foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(choice.title).font(.headline)
-                    Text(choice.detail).font(.callout).foregroundStyle(.secondary)
+                    Text(choice.title).font(.system(size: 13, weight: .semibold))
+                    Text(choice.detail).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .font(.title3).foregroundStyle(selected ? Color.accentColor : Color.secondary)
             }
-            .padding(10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .background(RoundedRectangle(cornerRadius: 10)
                 .fill(selected ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.04)))
@@ -310,6 +392,8 @@ private struct ChoiceCard: View {
 private struct OnboardingAfterCapture: View {
     @Default(.afterScreenshotActions) private var screenshot
     @Default(.afterRecordingActions) private var recording
+    /// Bumped when a change is refused, so the checkbox snaps back.
+    @State private var revision = 0
     private let choices: [AfterCaptureAction] = [.showQuickAccess, .copyToClipboard, .save]
 
     var body: some View {
@@ -318,12 +402,13 @@ private struct OnboardingAfterCapture: View {
                 Toggle(action.displayName, isOn: binding(action)).toggleStyle(.checkbox)
             }
         }
-        .font(.title3)
+        .id(revision)
     }
 
     private func binding(_ action: AfterCaptureAction) -> Binding<Bool> {
         Binding(get: { screenshot.contains(action) }, set: { on in
             guard let s = AfterCaptureRules.toggling(action, on: on, in: screenshot) else {
+                revision += 1
                 NSSound.beep()
                 HUD.show(AfterCaptureRules.atLeastOneTitle, symbol: "exclamationmark.triangle.fill")
                 return
@@ -339,7 +424,32 @@ private struct DesktopIconsSwitch: View {
     var body: some View {
         Toggle("Hide desktop icons while capturing", isOn: $hide)
             .toggleStyle(.switch)
-            .controlSize(.large)
+    }
+}
+
+/// The shortcuts in effect for the most common captures (reflects the choice made on the shortcuts slide).
+private struct ShortcutTips: View {
+    @Default(.shortcuts) private var stored
+    private let actions: [AppAction] = [.allInOne, .captureArea, .captureFullscreen, .recordScreen, .captureText]
+
+    var body: some View {
+        let effective = ShortcutPlanner.effective(stored)
+        VStack(spacing: 0) {
+            ForEach(actions.filter { effective[$0] != nil }, id: \.self) { action in
+                HStack {
+                    Text(action.title).font(.system(size: 13))
+                    Spacer()
+                    Text(effective[action]?.displayString ?? "")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.07)))
+                }
+                .padding(.vertical, 5)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.04)))
+        .frame(maxWidth: 380)
     }
 }
 
@@ -358,8 +468,56 @@ private struct PageDots: View {
     }
 }
 
-/// A miniature menu bar pointing at the Shotcraft status item.
+// MARK: - Illustrations
+
+/// Keyboard keys for the shortcuts slide.
+private struct KeycapsIllustration: View {
+    let keys: [String]
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
+                Text(key)
+                    .font(.system(size: 26, weight: .medium, design: .rounded))
+                    .frame(width: 56, height: 56)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.15)))
+                    .shadow(color: .black.opacity(0.15), radius: 0, y: 2)
+            }
+        }
+        .animation(.snappy, value: keys)
+        .accessibilityLabel("Keyboard shortcut \(keys.joined())")
+    }
+}
+
+/// A miniature desktop whose icons fade out while the switch is on.
+private struct DesktopIllustration: View {
+    @Default(.hideDesktopIconsWhileCapturing) private var hide
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(LinearGradient(colors: [Color(red: 0.36, green: 0.55, blue: 0.98), Color(red: 0.72, green: 0.42, blue: 0.95)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            VStack(spacing: 6) {
+                ForEach(["folder.fill", "doc.fill", "photo.fill"], id: \.self) { symbol in
+                    Image(systemName: symbol).font(.system(size: 16)).foregroundStyle(.white)
+                }
+            }
+            .padding(10)
+            .opacity(hide ? 0 : 1)
+            .scaleEffect(hide ? 0.8 : 1)
+        }
+        .frame(width: 160, height: 96)
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+        .animation(.snappy, value: hide)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A miniature menu bar with the Shotcraft status item; `highlight` points an arrow at it.
 private struct MenuBarIllustration: View {
+    let highlight: Bool
+
     var body: some View {
         HStack(spacing: 14) {
             Spacer()
@@ -370,7 +528,9 @@ private struct MenuBarIllustration: View {
                 .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.25)))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.accentColor, lineWidth: 1.5))
                 .overlay(alignment: .bottom) {
-                    Image(systemName: "arrow.up").font(.title2.bold()).foregroundStyle(.tint).offset(y: 34)
+                    if highlight {
+                        Image(systemName: "arrow.up").font(.title2.bold()).foregroundStyle(.tint).offset(y: 34)
+                    }
                 }
             Image(systemName: "switch.2")
             Text(Date.now.formatted(date: .omitted, time: .shortened)).monospacedDigit()
@@ -380,7 +540,7 @@ private struct MenuBarIllustration: View {
         .frame(width: 380, height: 30)
         .background(RoundedRectangle(cornerRadius: 8).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-        .padding(.bottom, 40)
+        .padding(.bottom, highlight ? 40 : 0)
         .accessibilityLabel("The Shotcraft icon in the menu bar")
     }
 }

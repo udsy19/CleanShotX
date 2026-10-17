@@ -48,17 +48,28 @@ global color picker. Evidence comes from `docs/re/raw/classes-digest.md` (class 
 * Window selection (`CSWindowFilter`, `windowNameLabel`): the front-most on-screen window under the cursor
   is highlighted; a click without drag selects it (returns its `CGWindowID` and frame). **Space** (or W in
   All-In-One, "Capture Window (Space/W)") toggles area ↔ window mode.
-* Dimension badge shows `W × H` (points) and the pixel size on Retina screens.
+* Look (ui-reference §2): black 38% curtain (also before any drag); centred light instruction pill (white
+  ~88%, 15 pt, 32 pt tall) with purpose-specific text ("Drag to select capture area.", "Drag to record a part
+  of the screen. Press Space to select a window.", "Drag to capture the scrolling part of the screen.");
+  1 pt white selection border with a faint dark outer stroke; white edge-midpoint pills (14×4) and corner
+  squares as handles; white L-shaped corner brackets for recording/GIF/Studio selections.
+* Dimension badge: dark-grey pill `rgba(60,60,67,0.85)`, white 11 pt "W x H" (points), above the selection's
+  top-left corner (inside when there is no room); shown while drawing, moving or resizing.
+* Window mode: hovered window undimmed, no tint; dark `#1C1C1E` 90% pill with the app name centred on it.
 * Adjustable contexts (All-In-One, recording/GIF/Studio/scrolling selections): after mouse-up the selection
   stays with 8 resize handles; drag inside to move, drag a handle to resize (Shift keeps ratio, Option from
   center), arrow keys nudge 1 pt (Shift = 10 pt), Option+arrow resizes, Return / double-click confirms,
   Esc cancels. A confirm bar ("Record ↩", "Capture ↩"…) is shown under the selection.
-* Crosshair mode (`_crosshairMode`): horizontal + vertical guide lines through the cursor across the screen.
-  Magnifier (`_showMagnifier`, "To enable magnifier, you must enable Crosshair Mode first.") — a `Loupe` with a
-  zoomed pixel grid (`pixelCount` 15, `pixelZoom` 8), center-pixel box, screen coordinates and hex color.
+* Crosshair mode (`_crosshairMode`): 1 px black-50% guide lines with a light halo across the screen, and the
+  X / Y coordinates as two right-aligned lines just below-right of the cursor.
+  Magnifier (`_showMagnifier`, "To enable magnifier, you must enable Crosshair Mode first.") — a 66 pt rounded
+  `Loupe` (`pixelCount` 11, `pixelZoom` 6, 1.5 pt dark border) 12 pt below-right of the cursor (flips at screen
+  edges) with a darker band through the centre row/column; coordinates are drawn just above it.
+  Holding ⌘ temporarily shows crosshair + magnifier (and disables snapping).
 * Snapping (`SnappingController`): selection edges snap to on-screen window edges and display edges within
   8 pt while creating, moving and resizing.
-* Selection may span displays; it is clamped to the union of all screen frames.
+* Selection may span displays; it is clamped to the union of all screen frames. A display configuration
+  change while the overlay is up cancels it.
 
 ## 3. Capture modes
 
@@ -73,12 +84,18 @@ global color picker. Evidence comes from `docs/re/raw/classes-digest.md` (class 
   transparent ↔ background. Non-transparent backgrounds add a synthetic soft shadow when the system shadow
   is not captured.
 * **Self-Timer** – select an area/window, or press Return / F for the active screen ("This works in
-  Fullscreen or Self-Timer modes only."). A countdown (`selfTimerSeconds`) with big digits, tick sound and a
-  Cancel button is shown; the area is outlined; Esc cancels. Then capture live.
-* **All-In-One** (`OneOverlay`) – adjustable overlay with size control (W×H fields, ratio menu: Freeform,
-  1:1, 4:3, 3:2, 16:9, 16:10, 9:16 and point sizes 640×480 … 2560×1440, fullscreen toggle) and a toolbar:
-  Capture Area (A/↩), Capture Fullscreen (F), Capture Window (Space/W), Scrolling Capture (S), Capture Text
-  (O), Record Screen (R), Record GIF (G), Self-Timer (T), Close (Esc). Remembers the area
+  Fullscreen or Self-Timer modes only."). A countdown (`selfTimerSeconds`, ui-reference §7.3): 80 pt black
+  disc with a bold 44 pt digit and a white progress arc, centred on the outlined area; a tick sound every
+  second; hovering turns the digit into a cancel cross; Esc cancels. Then capture live.
+* **All-In-One** (`OneOverlay`) – adjustable overlay with two dark glass bars (radius 14, 52 pt tall) centred
+  14 pt below the selection (flipping above / inside when there is no room). Mode bar: vertical icon-over-label
+  cells (58×44, 70% white, white-12% plate on hover) Area `viewfinder` (A/↩), Fullscreen `display` (F), Window
+  `macwindow` (Space/W), Scrolling `arrow.down.to.line.compact` (S), Timer `timer` (T) | OCR `textformat` (O) |
+  Recording `video` (R); G (Record GIF) works as a hidden accelerator, Esc closes. Size bar, 10 pt to the right:
+  W x H fields (dark rounded plates, 15 pt monospaced digits) | ratio button `crop` + `chevron.down` (accent
+  when a ratio is locked) opening the ratio menu (Freeform, 1:1, 4:3, 3:2, 16:9, 16:10, 9:16 and point sizes
+  640×480 … 2560×1440). Recording/scrolling/Studio selections use the same size bar plus a fullscreen toggle,
+  next to a confirm bar (Cancel / Record…). Remembers the area
   (`lastOneOverlayArea`, `_rememberOneOverlayArea`) when `rememberLastSelection` is on, and the last ratio
   (`oneOverlayLastSelectedRatio`).
 * All screenshots are handed to `MediaPipeline.didCaptureImage(raw, scale:, mode:, actions:)` (which plays

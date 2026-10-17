@@ -252,4 +252,55 @@ func registerAnnotateKitTests() {
         check(RecentProjects.updated(["/a", "/b", "/c"], adding: "/b", limit: 3) == ["/b", "/a", "/c"], "recent projects de-duplicate")
         check(RecentProjects.updated(["/a", "/b", "/c"], adding: "/d", limit: 3) == ["/d", "/a", "/b"], "recent projects are capped")
     }))
+
+    SelfTest.cases.append(("Annotate.ToolbarParity", {
+        let tools = AnnotateTool.toolbarTools
+        check(!tools.contains(.crop) && tools.first == .select && tools.last == .highlighter, "segmented tools exclude Crop and run Move → Highlighter")
+        check(tools == [.select, .rectangle, .filledRectangle, .ellipse, .line, .arrow, .text, .pixelate, .spotlight, .counter, .pen, .highlighter],
+              "tool order matches CleanShot X 5.0")
+        let keys = AnnotateTool.allCases.map(\.key)
+        check(Set(keys).count == keys.count, "single-key shortcuts are unique")
+        check(AnnotateTool.forKey("k") == .crop && AnnotateTool.forKey("c") == .counter && AnnotateTool.forKey("p") == .pixelate &&
+              AnnotateTool.forKey("h") == .spotlight && AnnotateTool.forKey("d") == .pen && AnnotateTool.forKey("m") == .highlighter &&
+              AnnotateTool.forKey("e") == .ellipse, "CleanShot shortcuts")
+        check(AnnotateTool.forKey("b") == nil, "B is left for the Background tool")
+        check(ColorPalette.presets.count == 10 && ColorPalette.presets.first?.name == "Black" && ColorPalette.presets.last?.name == "White",
+              "ten default colours, black first, white last")
+        check(GradientPreset.all.count == 20 && GradientPreset.defaultVisibleCount == 10, "20 gradients, 10 shown collapsed")
+        check(Set(GradientPreset.all.map(\.id)).count == GradientPreset.all.count, "gradient ids are unique")
+        check(BackgroundColors.saturated.count == 8 && BackgroundColors.pastel.count == 8, "plain colour rows (plus a special tile each)")
+    }))
+
+    SelfTest.cases.append(("Annotate.BackgroundFills", {
+        var s = CanvasState(image: testImage(20, 10), scale: 1)
+        s.background.padding = 10
+        s.background.shadow = 0
+        s.background.cornerRadius = 0
+        for kind in BlurredBackground.allCases {
+            s.background.fill = .blurred(kind)
+            guard let img = AnnotateComposer.render(s) else { check(false, "\(kind) renders"); continue }
+            check(img.width == 40 && img.height == 30, "\(kind) blurred fill keeps the padded size")
+            check(alpha(at: 0, 0, in: img) == 255, "\(kind) blurred fill is opaque")
+        }
+        s.background.fill = .color(BackgroundColors.transparent)
+        if let img = AnnotateComposer.render(s) {
+            check(img.width == 40 && alpha(at: 0, 0, in: img) == 0 && alpha(at: 20, 15, in: img) == 255,
+                  "transparent fill keeps padding but no backdrop")
+        } else { check(false, "transparent fill renders") }
+        do {
+            var bg = BackgroundSettings()
+            bg.fill = .blurred(.gray)
+            let back = try JSONDecoder().decode(BackgroundSettings.self, from: JSONEncoder().encode(bg))
+            check(back == bg, "blurred fill round-trips through JSON")
+        } catch { check(false, "blurred fill coding threw \(error)") }
+    }))
+
+    /// Alpha of pixel (x, y) counted from the top-left.
+    func alpha(at x: Int, _ y: Int, in img: CGImage) -> UInt8 {
+        var px = [UInt8](repeating: 0, count: 4)
+        let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(img, in: CGRect(x: -x, y: -(img.height - 1 - y), width: img.width, height: img.height))
+        return px[3]
+    }
 }

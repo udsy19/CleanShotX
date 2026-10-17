@@ -25,12 +25,13 @@ public enum TextKitModule {
         Services.capture.selectArea(AreaSelectionOptions(purpose: .text, allowsWindowSelection: true)) { [weak self] selection in
             guard let self else { return }
             guard let selection, selection.rect.width >= 4, selection.rect.height >= 4 else { self.isBusy = false; return }
+            let screen = selection.screen
             Task { @MainActor in
                 do {
                     let image = try await Self.grab(selection)
-                    self.recognizeText(in: image, keepLineBreaks: keep) { text in
+                    self.recognize(image, keepLineBreaks: keep) { text, barcodes in
                         self.isBusy = false
-                        self.deliver(text)
+                        self.deliver(text, barcodes: barcodes, on: screen)
                     }
                 } catch {
                     self.isBusy = false
@@ -49,30 +50,38 @@ public enum TextKitModule {
     }
 
     func recognizeText(in image: CGImage, keepLineBreaks: Bool, completion: @escaping (String) -> Void) {
+        recognize(image, keepLineBreaks: keepLineBreaks) { text, _ in completion(text) }
+    }
+
+    /// Runs Vision off the main thread; `completion` gets the composed text and the barcode payloads on main.
+    private func recognize(_ image: CGImage, keepLineBreaks: Bool, completion: @escaping (String, [String]) -> Void) {
         let configuration = TextRecognizer.Configuration.current()
         DispatchQueue.global(qos: .userInitiated).async {
-            let text: String
+            var text = "", barcodes: [String] = []
             do {
-                text = try TextRecognizer.recognizeText(in: image, keepLineBreaks: keepLineBreaks, configuration: configuration)
+                let result = try TextRecognizer.recognize(in: image, configuration: configuration)
+                barcodes = result.barcodes
+                text = TextRecognizer.compose(text: TextAssembler.assemble(result.lines, keepLineBreaks: keepLineBreaks),
+                                              barcodes: barcodes)
             } catch {
                 Log.capture.error("Text recognition failed: \(error.localizedDescription, privacy: .public)")
-                text = ""
             }
-            DispatchQueue.main.async { completion(text) }
+            DispatchQueue.main.async { completion(text, barcodes) }
         }
     }
 
-    private func deliver(_ raw: String) {
+    private func deliver(_ raw: String, barcodes: [String], on screen: NSScreen) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            HUD.show("No text detected", symbol: "text.magnifyingglass")
+            Toast.show("No text detected", symbol: "text.magnifyingglass", on: screen)
             return
         }
         Clipboard.copy(text: text)
         Sound.play(.textCopied)
-        HUD.show("Text has been copied", symbol: "doc.on.clipboard.fill")
-        if Defaults[.ocrOpenLinks], let url = TextAssembler.singleURL(in: text) {
-            // Let the HUD appear before the modal alert.
+        Toast.show("Text has been copied", symbol: "doc.on.doc", on: screen)
+        // A QR code with a link, or a capture that is exactly one link.
+        if Defaults[.ocrOpenLinks], let url = barcodes.lazy.compactMap(TextAssembler.singleURL).first ?? TextAssembler.singleURL(in: text) {
+            // Let the toast appear before the modal alert.
             DispatchQueue.main.async { Self.offerToOpen(url) }
         }
     }
@@ -82,14 +91,13 @@ public enum TextKitModule {
         alert.messageText = "Do you want to open this link?"
         alert.informativeText = url.absoluteString
         alert.addButton(withTitle: "Open Link in Browser")
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Never open links")
+        alert.addButton(withTitle: "Don't Open")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't detect links"
         NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: NSWorkspace.shared.open(url)
-        case .alertThirdButtonReturn: Defaults[.ocrOpenLinks] = false
-        default: break
-        }
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { Defaults[.ocrOpenLinks] = false }
+        if response == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
     }
 
     // MARK: Scrolling Capture
@@ -115,7 +123,7 @@ public enum TextKitModule {
     private func begin(area: CGRect, screen: NSScreen, options: CaptureOptions) {
         let clipped = area.intersection(screen.frame)
         guard clipped.width >= 40, clipped.height >= 40 else {
-            HUD.show("Select a larger area to capture", symbol: "exclamationmark.triangle.fill")
+            Toast.show("Select a larger area to capture", symbol: "exclamationmark.triangle.fill", on: screen)
             return
         }
         let session = ScrollingCaptureSession(area: clipped, screen: screen, options: options) { [weak self] in

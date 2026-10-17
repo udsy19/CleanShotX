@@ -3,23 +3,26 @@ import Carbon.HIToolbox
 import ShotcraftCore
 
 /// Self-Timer countdown (CleanShot: `SelfTimerOverlay` – `seconds`, `secondsLabel`, `cancelButton`,
-/// `intervalTimer`). Shows large digits over the area, outlines it, ticks every second and then fires.
+/// `intervalTimer`; same look as `CountDownOverlay`). A black disc with the remaining seconds and a progress
+/// arc sits in the middle of the area, the area is outlined, it ticks every second and then fires.
 /// The panels never take keyboard focus so the user can keep working in other apps; Esc is caught with
 /// event monitors (global monitoring needs Accessibility; the Cancel button always works).
 @MainActor
 final class CountdownController {
     private let rect: CGRect
+    private let total: Int
     private var remaining: Int
     private let completion: (_ fired: Bool) -> Void
     private var timer: Timer?
     private var outline: NSPanel?
     private var badge: NSPanel?
-    private var label: NSTextField?
+    private var dial: CountdownDial?
     private var monitors: [Any] = []
     private var done = false
 
     init(rect: CGRect, seconds: Int, completion: @escaping (_ fired: Bool) -> Void) {
         self.rect = rect
+        self.total = max(1, seconds)
         self.remaining = max(1, seconds)
         self.completion = completion
     }
@@ -44,6 +47,7 @@ final class CountdownController {
         }) { monitors.append(m) }
 
         Sound.play(.countdownTick)
+        dial?.show(remaining: remaining, progress: 1 / CGFloat(total))
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -57,7 +61,7 @@ final class CountdownController {
         guard !done else { return }
         remaining -= 1
         if remaining <= 0 { finish(fired: true); return }
-        label?.stringValue = "\(remaining)"
+        dial?.show(remaining: remaining, progress: CGFloat(total - remaining + 1) / CGFloat(total))
         Sound.play(.countdownTick)
     }
 
@@ -101,34 +105,98 @@ final class CountdownController {
     }
 
     private func makeBadge(on screen: NSScreen) -> NSPanel {
-        let size = CGSize(width: 150, height: 170)
+        let size = CGSize(width: CountdownDial.diameter, height: CountdownDial.diameter)
         var frame = CGRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
-        frame = SelectionGeometry.clamped(frame, to: screen.frame)
+        frame = SelectionGeometry.clamped(frame, to: screen.frame).integral
         let p = basePanel(frame)
-
-        let box = HUDBox(spacing: 6, insets: NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14))
-        box.stack.orientation = .vertical
-        box.stack.alignment = .centerX
-        box.layer?.cornerRadius = 22
-        let digits = NSTextField(labelWithString: "\(remaining)")
-        digits.font = .monospacedDigitSystemFont(ofSize: 72, weight: .semibold)
-        digits.textColor = .white
-        digits.alignment = .center
-        label = digits
-        let caption = NSTextField(labelWithString: "Self-Timer")
-        caption.font = .systemFont(ofSize: 11, weight: .medium)
-        caption.textColor = .secondaryLabelColor
-        let cancel = FirstMouseButton(title: "Cancel", prominent: false) { [weak self] in self?.finish(fired: false) }
-        box.stack.addArrangedSubview(digits)
-        box.stack.addArrangedSubview(caption)
-        box.stack.addArrangedSubview(cancel)
-        box.frame = CGRect(origin: .zero, size: size)
-        box.autoresizingMask = [.width, .height]
-        let root = NSView(frame: box.frame)
-        root.addSubview(box)
-        p.contentView = root
+        let view = CountdownDial(frame: CGRect(origin: .zero, size: size)) { [weak self] in self?.finish(fired: false) }
+        dial = view
+        p.contentView = view
         return p
     }
+}
+
+/// ~80 pt black disc (90%) with a bold white digit and a white progress arc along its inner edge;
+/// hovering swaps the digit for a cancel cross.
+@MainActor
+private final class CountdownDial: NSView {
+    static let diameter: CGFloat = 80
+
+    private let onCancel: () -> Void
+    private let digit = NSTextField(labelWithString: "")
+    private let cross = NSImageView()
+    private let arc = CAShapeLayer()
+    private var tracking: NSTrackingArea?
+
+    init(frame: CGRect, onCancel: @escaping () -> Void) {
+        self.onCancel = onCancel
+        super.init(frame: frame)
+        wantsLayer = true
+        let disc = CAShapeLayer()
+        disc.path = CGPath(ellipseIn: bounds, transform: nil)
+        disc.fillColor = NSColor.black.withAlphaComponent(0.9).cgColor
+        layer?.addSublayer(disc)
+
+        let ringRect = bounds.insetBy(dx: 5, dy: 5)
+        let ring = CGMutablePath()
+        // Clockwise from 12 o'clock.
+        ring.addArc(center: CGPoint(x: ringRect.midX, y: ringRect.midY), radius: ringRect.width / 2,
+                    startAngle: .pi / 2, endAngle: .pi / 2 - 2 * .pi, clockwise: true)
+        arc.path = ring
+        arc.fillColor = nil
+        arc.strokeColor = NSColor.white.cgColor
+        arc.lineWidth = 3
+        arc.lineCap = .round
+        arc.strokeEnd = 0
+        layer?.addSublayer(arc)
+
+        digit.font = .systemFont(ofSize: 44, weight: .bold)
+        digit.textColor = .white
+        digit.alignment = .center
+        cross.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel")?
+            .withSymbolConfiguration(.init(pointSize: 26, weight: .bold))
+        cross.contentTintColor = .white
+        cross.isHidden = true
+        for v in [digit, cross] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+            NSLayoutConstraint.activate([v.centerXAnchor.constraint(equalTo: centerXAnchor), v.centerYAnchor.constraint(equalTo: centerYAnchor)])
+        }
+        toolTip = "Cancel (Esc)"
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Cancel self-timer")
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func show(remaining: Int, progress: CGFloat) {
+        digit.stringValue = "\(remaining)"
+        // Fill toward this second's mark over the coming second.
+        let anim = CABasicAnimation(keyPath: "strokeEnd")
+        anim.fromValue = arc.presentation()?.strokeEnd ?? arc.strokeEnd
+        anim.toValue = progress
+        anim.duration = 1
+        arc.strokeEnd = progress
+        arc.add(anim, forKey: "progress")
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let t = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { digit.isHidden = true; cross.isHidden = false }
+    override func mouseExited(with event: NSEvent) { digit.isHidden = false; cross.isHidden = true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onCancel() }
+    }
+    override func accessibilityPerformPress() -> Bool { onCancel(); return true }
 }
 
 /// Dashed white/black outline marking the area that will be captured.

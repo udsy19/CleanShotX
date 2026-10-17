@@ -92,6 +92,7 @@ func registerCaptureKitTests() {
         check(G.hexString(r: 0.227, g: 0.482, b: 1.0) == "#3A7BFF", "hex uppercase")
         check(G.hexString(r: -1, g: 2, b: 0.5) == "#00FF80", "hex clamps")
         check(G.dimensionString(CGSize(width: 1279.6, height: 720.2)) == "1280 × 720", "dimension rounding")
+        check(G.dimensionString(CGSize(width: 189, height: 150), separator: " x ") == "189 x 150", "badge separator")
     }))
 
     SelfTest.cases.append(("CaptureKit.layout", {
@@ -106,7 +107,5 @@ func registerCaptureKitTests() {
         check(above.minY == 210, "toolbar flips above when no room below")
         let inside = G.placeBelow(CGSize(width: 200, height: 40), anchor: bounds, bounds: bounds)
         check(bounds.contains(inside), "fullscreen selection keeps toolbar on screen")
-        let size = G.placeAboveLeading(CGSize(width: 150, height: 30), anchor: CGRect(x: 10, y: 700, width: 300, height: 100), bounds: bounds)
-        check(bounds.contains(size) && size.maxY <= 800, "size control falls inside when at the top")
     }))
 }

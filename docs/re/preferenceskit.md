@@ -15,116 +15,64 @@ Labels quoted below are short UI strings needed for parity; long prose is rewrit
 | `PRSidebarAccountModel` (`_user`) | Cloud account header in sidebar — **not reimplemented** (no CleanShot Cloud). |
 | `*Settings : _TtCs12_SwiftObject` classes with `_`-prefixed ivars | SwiftUI `ObservableObject` models per pane (property wrappers ⇒ `_x` ivars). Panes are SwiftUI. |
 
-Shotcraft: `PreferencesWindowController` owns one `NSWindow` (titled, closable, miniaturizable, resizable,
-`fullSizeContentView`, frame autosave) hosting a SwiftUI `NavigationSplitView`. `show(pane:)` selects the
-pane (case-insensitive ids + aliases, e.g. `cloud`→`upload`), calls `NSApp.activate()` and
-`makeKeyAndOrderFront`. The last pane is stored in `prefs.lastPane`.
+Shotcraft (5.0 layout, `docs/re/ui-reference.md` §13): `PreferencesController` owns one `NSWindow` (titled, closable,
+miniaturizable, resizable, `fullSizeContentView`, frame autosave) hosting a SwiftUI `NavigationSplitView`. The window is
+810×660 pt, fixed width, resizable vertically (min height 480); a restored frame of another width or off-screen is
+normalised. `hosting.sizingOptions = [.minSize]` so switching panes never resizes or collapses the window.
+`show(pane:)` selects the pane (case-insensitive ids + aliases, e.g. `cloud`→`upload`), deminiaturizes, activates and
+orders front. The last pane is stored in `prefs.lastPane`.
 
-Pane ids: `general, wallpaper, shortcuts, quickAccess, recording, screenshots, annotate, upload, advanced, about`
-(mirrors `GeneralSettings, WallpaperSettings, ShortcutsSettings, QuickAccessSettings, ScreenRecordingSettings,
-ScreenshotsSettings, AnnotateSettings, CloudSettings, AdvancedSettings, AboutSettings`).
+Sidebar (`PRMenuControl`): 220 pt floating inset column; a header (app icon, "Shotcraft", upload destination — the
+stand-in for the Cloud account header, click → Upload pane); rows with 24 pt colour tiles + white SF Symbols at a
+40 pt pitch, grey selection pill (accent-tinted while the sidebar has keyboard focus, ↑/↓ move); About pinned at the
+bottom. Pane titles show in the toolbar. In-pane links use `settings://<pane>` URLs.
 
-## 2. Panes
+Pane ids, in sidebar order: `general, shortcuts, quickAccess, wallpaper, screenshots, recording ("Screen Recording"),
+annotate, upload, advanced`, then `about`.
 
-### General — `GeneralSettings`
-ivars `_screenshotLocation, _startAtLogin, _showMenubarIcon, _hideDesktopIcons, _playSounds, _screenshotSound,
-_afterScreenshot, _afterVideo, _copyPriority`.
-- Launch at login (`.launchAtLogin`; the app target registers `SMAppService`).
-- Play sounds + capture sound picker (`.captureSound`) with a preview button (`Sound.play(.capture)`).
-- "Show menu bar icon" — turning it off confirms: "The menu bar icon will be hidden." + "In order to show the
-  Settings window again, launch CleanShot twice." (app target's `applicationShouldHandleReopen` already opens Settings).
-- Export location (`ScreenLocationPopUpButton` — `chooseLocation`; strings "Choose export location"): popup with
-  current folder, "Other…" (NSOpenPanel), "Show in Finder".
-- After capture — "Decide what should happen after taking a screenshot or recording a video." Two checkbox lists
-  (`_afterScreenshot`, `_afterVideo`). Unchecking the last item is refused with "At least one action needs to be
-  enabled" / "Please select at least one thing that should happen after capturing your screen."
-  Screenshot actions: Quick Access, copy, save, annotate, upload, pin. Recording actions: Quick Access, copy, save,
-  upload, open video editor.
-- Clipboard content (`_copyPriority` → `.clipboardContent`).
-- "Hide desktop icons while capturing" (`_hideDesktopIcons`, defaults sample `captureWithoutDesktopIcons`).
-- Permissions section (Shotcraft addition, required for accessory apps): Screen Recording, Accessibility,
-  Microphone, Camera — live status + "Open System Settings" (string present).
+Keyboard: the app target installs a main menu with Edit/File items at launch, so ⌘X/C/V/A/Z/⇧⌘Z/⌘W work in Settings,
+its sheets and onboarding without module-level routing.
 
-### Wallpaper — `WallpaperSettings`
-ivars `_overlayType, _plainColor, _customWallpaperName`; `WallpaperLocationPopUpButton.chooseLocation`.
-Source (desktop / custom image / plain color), image picker with preview, colour well,
-"Update wallpaper when switching Spaces", and a "Hide Desktop Icons"/"Show Desktop Icons" toggle button
-(→ `Services.capture.setDesktopIconsHidden`).
+## 2. Panes (as built)
 
-### Shortcuts — `ShortcutsSettings`
-ivars `_ignoreAfterCapture, _groups, _showsUseSystemDefaults, _showsAfterCaptureBehavior, hotkeyObserver`.
-- Grouped list (`_groups` ⇒ `AppAction.group`), "Search shortcuts" field, recorder per action ("Type shortcut",
-  "Shortcut is used for another action", "Shortcut is reserved for macOS").
-- "Use System Default Shortcuts" (`_showsUseSystemDefaults`) — helper sheet: explains disabling the macOS
-  screenshot shortcuts (opens `x-apple.systempreferences:com.apple.preference.keyboard?Shortcuts`), then assigns
-  ⇧⌘3 / ⇧⌘4 / ⇧⌘5 to Capture Fullscreen / Capture Area / All-In-One, clearing any other action using them.
-- Warning banner "It looks like you haven't disabled Screenshots shortcuts." when an action uses ⇧⌘3/4/5 while
-  `com.apple.symbolichotkeys` ids 28/29/30/31/184 are still enabled.
-- "Restore Defaults".
+| Pane | Sections → controls |
+|---|---|
+| General | App (Launch at login, Show menu bar icon — confirm before hiding); Capture (Hide desktop icons + link to Wallpaper); Sounds (Play sounds, Shutter sound popup + preview); Export (Export location, Choose…, reveal); **After Capture** table Action \| Screenshot \| Recording with checkboxes and "—" where N/A (refuses an empty set); Permissions (live status, refreshed on app activation + polling). |
+| Shortcuts | Toolbar "Search shortcuts"; System-shortcut banner/helper; groups with glyph headers (`ShortcutGroup`: General, Screenshots, Screen Recording, Scrolling Capture, OCR, Quick Access Overlay & Pins, Annotate); 156×28 recorders; duplicate / reserved-by-macOS badges; Restore Defaults. |
+| Quick Access | Appearance (Position popup, Move to active screen, Overlay size slider with 5 ticks); Behavior (Auto-close, Action, Interval — disabled until auto-close); Close after dragging / uploading, Show upload button, Save button behavior. |
+| Wallpaper | Desktop (preview, Wallpaper popup: desktop / custom image / plain color, Update when switching Spaces or image chooser or colour well); Desktop icons Hide/Show button (state re-read on activation and every second). Changing the wallpaper keeps a "With wallpaper" window background in step. |
+| Screenshots | Output (File format popup, Quality for JPG/HEIC); sRGB / Retina 1x / 1px border box; Capture (Self-Timer interval, Show cursor, Freeze screen); Window Screenshots (two tiles "With wallpaper" / "Transparent", Padding, Capture window shadow, Reset Defaults); Crosshair (Crosshair Mode popup, Show magnifier). |
+| Screen Recording | General (controls, remember selection, menu-bar time, dim, countdown + seconds, Do Not Disturb, Studio Mode default); Cursor (show, hide when idle, Highlight clicks + Options… popover colour); Keystrokes (+ Accessibility status); Video (format, fps, quality, Retina 1x); Audio (mono, microphone + device, system audio); Camera; GIF (fps, "800 × auto" resolution). |
+| Annotate | Tools (inverse arrow, smooth drawing, remember background tool, shadow, auto-expand canvas, crop snapping); Window (always on top, Dock icon, save button); Accessibility (colour names). |
+| Upload (replaces Cloud) | Header box (destination tile, summary, Test Connection + result) and Destination popup; per-destination fields with inline URL validation; Upload (screenshot size); Clipboard (copy link when upload starts); Recently Uploaded (refreshed on activation). S3 secret in the Keychain. |
+| Advanced | File Name (ask for name, File name format Customize… sheet); Clipboard (copy format); Capture History (Keep history popup incl. Disabled/Forever, Clear History…); Text Recognition (Language popup from `Services.text.supportedLanguages()` + Choose… multi-select sheet, keep line breaks, detect links); All-In-One (remember last selection); Pinned Screenshots; API (URL scheme toggle + command reference); Reset (warning dialogs, restore all defaults). |
+| About | Icon, version, credits, data folder, Show Onboarding…. |
 
-### Quick Access — `QuickAccessSettings`
-ivars `_positionOnLeft, _moveToActiveDisplay, _overlaySize, _autoClose, _autoCloseMode, _autoCloseInterval,
-_closeAfterDragging, _closeAfterUploading, _askForDestinationWhenSaving`; strings "Position on screen",
-"Move to active screen", "Close after dragging", "Close after uploading". Overlay size slider with a live preview
-card; auto-close (seconds + action on close); save button behaviour; show upload button.
+File-name sheet (`NameTemplateWindow`): instruction line, template field, live "Preview:" (+ recording), two-column
+legend of light-blue token chips (click inserts at the caret), "Auto-increment next number:" (validated as a
+non-negative integer; OK disabled otherwise), Restore Defaults / Cancel / OK.
 
-### Recording — `ScreenRecordingSettings`
-ivars `_videoFPS, _maxResolution, _downscaleRetina, _showRecordingControls, _displayRecordingTime, _dimScreen,
-_rememberRecordingArea, _showCountdown, _doNotDisturb, _showCursor, _highlightClicks, _showKeystrokes,
-_recordSystemAudio, _recordAudioInMono, _mergeAudioTracks, _gifFPS, _gifMaxSize, _optimizeGifs, _gifQuality`.
-Strings: "Scale Retina videos to 1x", "Dim screen while recording", "Display recording time in menu bar",
-"Highlight clicks", "Show Keystrokes", "Record audio in mono", "Enable this option to record sound that comes from
-other applications.", "Record microphone", "Record camera", "System Default", "No microphone selected".
-Keystrokes need Accessibility → status + request button. Microphone / camera pickers via
-`AVCaptureDevice.DiscoverySession` (defaults sample stores `microphoneDeviceID = "<uid>:input"`, i.e. uniqueID).
-
-### Screenshots — `ScreenshotsSettings` + `AdvancedSettings`(naming part)
-ivars `_format, _downscaleRetina, _convertTosRGB, _addFrame, _selfTimerInterval, _showCursor, _freezeScreen,
-_crosshairMode, _showMagnifier, _backgroundPresetID`. Strings: "Scale Retina screenshots to 1x",
-"Convert to sRGB profile", "Add 1px border to all screenshots", "Show cursor on screenshots",
-"Freeze screen when taking a screenshot", "Remember last selection",
-"To enable magnifier, you must enable Crosshair Mode first." (magnifier disabled until crosshair is on).
-Window screenshots: shadow, background (Transparent / Desktop wallpaper / Custom wallpaper / colour), padding.
-File naming: "File name format" opens the **NameTemplateWindow** sheet (`NameTemplateViewController`: `tokenField`,
-`previewLabel`, `nextNumberTextField`, `restoreDefaultsClicked:`, `okClicked:`, `cancelClicked:`;
-`TokenFieldPatternControl` = draggable token chips with `token`/`name`). Shotcraft: text field + clickable token chips
-(`FileNameTemplate.tokens`), live preview via `FileNameTemplate.render(advanceCounter: false)`, next counter value,
-Restore Defaults / Cancel / OK. "Ask for name after every capture".
-
-### Annotate — `AnnotateSettings`
-ivars `_inverseArrowDirection, _smoothDrawing, _rememberBackgroundToolState, _drawShadow, _autoExpandCanvas,
-_showColorNames, _alwaysOnTop, _showDockIcon` ⇒ every `.annotate*` key, plus save-button behaviour and crop snapping.
-
-### Upload — `CloudSettings` (replaced)
-CleanShot Cloud (`_user, _copyLinkBeforeUpload, _optimizeScreenshots …`) is proprietary. Shotcraft exposes its own
-destinations: none / S3-compatible / custom HTTP / synced folder; "Copy link when upload starts"
-(`_copyLinkBeforeUpload`); max image width (`_optimizeScreenshots` analogue). S3 secret lives in the Keychain
-(`Keychain.s3SecretKeyAccount`). "Test Connection" → `Services.upload.testConnection`; "Recent uploads" list.
-
-### Advanced — `AdvancedSettings`
-ivars `_automaticallyDetectLanguage, _primaryLanguage, _keepLineBreaks, _detectLinks, _historyCapacity,
-_allowURLSchemes, languages, …`. Strings: "Automatically Detect Language", "Keep line breaks", "Never open links",
-"Clear History...", "Are you sure you want to delete all files from history?", "Capture History is disabled.",
-"Lock and hide screenshot on mouse over", "Allow URL scheme API", "Reset All Warning Dialogs",
-"All warning dialogs are now enabled.", "Restore Defaults".
-
-### About — `AboutSettings` (`_automaticallyCheckForUpdates, _analyticsAllowed`), `Acknowledgments`, `EULA`
-Icon, name, version, description, credits. No updater / analytics / EULA (not applicable to a local build).
+Not built (no backing setting or feature yet): Screenshots "Background preset", "Add @2x suffix", GIF "Optimize" and
+"Quality", Audio "tracks", keystroke Options…, Upload "Notifications", PixelSnap promo.
 
 ## 3. Onboarding — `Onboarding : NSWindowController`
 ivars `slides, currentView, completionHandler, showReadyToUsePopupAfter`; every slide is an `ONView`
 (`primaryButton`, `secondaryButton`, `bottomBar`); `ONBasicView` = image + title + description.
 
-| CleanShot slide | Evidence string | Shotcraft step |
-|---|---|---|
-| `ONWelcomeView` | "Welcome to CleanShot X", "Let's walk you through a quick configuration" | Welcome |
-| (permission alert) | "In order to continue working properly, CleanShot needs Screen Recording permission." | Screen Recording (live status, request / open settings) |
-| `ONSystemShortcutsView`, `ONAllInOneShortcutSingle`, `ONDefaultToolView` | "Set as default screenshot tool?", "Use the same shortcut as macOS?", "Do you want to assign system default shortcut to All-In-One mode?", "Use old shortcut" | Shortcuts: macOS ⇧⌘3/4/5, All-In-One on ⇧⌘5 only, or keep ⌥⇧ defaults |
-| `ONHideDesktopIconsView : ONSwitchView` | "Would you like to have your desktop icons hidden" | Desktop icons switch |
-| `ONLaunchAtLoginView` | "Would you like to have CleanShot ready" | Launch at login |
-| `ONPreferencesView` | "You can adjust all the settings and set your own" | After-capture defaults (Quick Access / copy / save) |
-| `ONFinishView` (`menubarImageView`) | "CleanShot is ready to use!" | Finish — shows the menu bar icon location |
-| `ONStatisticsView`, `ONCloudView` | "Share usage statistics?" | Omitted (no analytics / cloud). |
+Shotcraft: fixed 580×560 window (transparent title bar, safe area ignored so the bottom bar stays inside), slides
+slide horizontally; each slide = 100 pt illustration, 22 pt bold title, 13 pt secondary body, accessory; bottom bar
+with Back, page dots, secondary and a prominent primary (Return).
+
+| CleanShot slide | Shotcraft step and visual |
+|---|---|
+| `ONWelcomeView` | Welcome — app icon (`NSApp.applicationIconImage`) + 2×3 feature summary tiles |
+| (permission alert) | Screen Recording — live status, Grant Access… / Open System Settings |
+| `ONSystemShortcutsView`, `ONDefaultToolView` | "Set as default screenshot tool?" — keycap illustration, three choices, warning if the macOS shortcuts are still on |
+| `ONHideDesktopIconsView` | Desktop icons — mini desktop whose icons fade with the switch |
+| `ONLaunchAtLoginView` | Launch at login — menu bar illustration |
+| `ONPreferencesView` | "Tweak your workflow" — after-capture checkboxes |
+| `ONFinishView` | "Shotcraft is ready to use!" — app icon, menu bar arrow, the user's effective shortcuts |
+| `ONStatisticsView`, `ONCloudView` | Omitted (no analytics / cloud account). |
 
 Closing the window at any step marks `onboardingCompleted = true`.
 

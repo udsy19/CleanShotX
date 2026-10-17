@@ -15,6 +15,8 @@ final class QuickAccessController: QuickAccessServicing {
 
     private var header: OverlayPanel?
     private var screen: NSScreen?
+    /// "Temporarily hide": the stack slid down so only the newest card's top edge peeks out; hovering it restores.
+    private(set) var isSlidDown = false
     private var displayTimer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var defaultsSub: AnyCancellable?
@@ -23,6 +25,11 @@ final class QuickAccessController: QuickAccessServicing {
         observers.append(NotificationCenter.default.addObserver(forName: CapturedMedia.didChange, object: nil, queue: .main) { [weak self] n in
             guard let media = n.object as? CapturedMedia else { return }
             MainActor.assumeIsolated { self?.mediaDidChange(media) }
+        })
+        // UploadKit reports progress for every upload, wherever it was started.
+        observers.append(NotificationCenter.default.addObserver(forName: CapturedMedia.uploadProgress, object: nil, queue: .main) { [weak self] n in
+            guard let media = n.object as? CapturedMedia, let fraction = n.userInfo?["fraction"] as? Double else { return }
+            MainActor.assumeIsolated { self?.cards.first { $0.media.id == media.id }?.uploadProgressed(fraction) }
         })
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in
@@ -48,6 +55,7 @@ final class QuickAccessController: QuickAccessServicing {
     var hasOverlays: Bool { !cards.isEmpty }
 
     func show(_ media: CapturedMedia) {
+        isSlidDown = false
         if let existing = cards.first(where: { $0.media.id == media.id }) {
             // Already on screen: move it to the newest slot.
             cards.removeAll { $0 === existing }
@@ -75,6 +83,20 @@ final class QuickAccessController: QuickAccessServicing {
             guard Alerts.confirm("Do you want to close all overlays?", info: info, confirmTitle: "Close All") else { return }
         }
         cards.forEach { $0.close(recordForRestore: true) }
+    }
+
+    /// Slides the stack down out of the way (swipe down / "Temporarily Hide"); hovering the peeking card restores it.
+    func slideDown() {
+        guard !cards.isEmpty, !isSlidDown else { return }
+        isSlidDown = true
+        cards.forEach { $0.setHovered(false) }
+        layout(animated: true)
+    }
+
+    func cardWasHovered(_ card: QuickAccessCard) {
+        guard isSlidDown else { return }
+        isSlidDown = false
+        layout(animated: true)
     }
 
     func saveAll() {
@@ -109,8 +131,8 @@ final class QuickAccessController: QuickAccessServicing {
             if recentlyClosed.count > maxRecentlyClosed { recentlyClosed.removeFirst(recentlyClosed.count - maxRecentlyClosed) }
         }
         let panel = card.panel
-        if let frame = card.targetFrame, panel.isVisible {
-            let out = QuickAccessLayout.offscreenFrame(for: frame, in: (panel.screen ?? NSScreen.active).visibleFrame,
+        if panel.isVisible {
+            let out = QuickAccessLayout.offscreenFrame(for: panel.frame, in: (panel.screen ?? NSScreen.active).visibleFrame,
                                                        side: Defaults[.quickAccessSide])
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = 0.22
@@ -124,7 +146,7 @@ final class QuickAccessController: QuickAccessServicing {
         } else {
             panel.orderOut(nil)
         }
-        if cards.isEmpty { stopDisplayTracking() }
+        if cards.isEmpty { stopDisplayTracking(); isSlidDown = false }
         layout(animated: true)
     }
 
@@ -132,7 +154,8 @@ final class QuickAccessController: QuickAccessServicing {
 
     private func targetScreen() -> NSScreen {
         if let s = screen, NSScreen.screens.contains(s) { return s }
-        let s = Defaults[.quickAccessScreen] == .mainScreen ? (NSScreen.main ?? NSScreen.active) : NSScreen.active
+        // "Main screen" is the primary display (the one with the menu bar), not the key window's screen.
+        let s = Defaults[.quickAccessScreen] == .mainScreen ? (NSScreen.screens.first ?? NSScreen.active) : NSScreen.active
         screen = s
         return s
     }
@@ -145,36 +168,62 @@ final class QuickAccessController: QuickAccessServicing {
         let sizes = cards.map { QuickAccessLayout.cardSize(for: $0.media.pixelSize, scale: scale) }
         let result = QuickAccessLayout.layout(newestFirst: sizes, in: visible, side: side, scale: scale)
 
-        for (card, frame) in zip(cards, result.cards) {
-            card.targetFrame = frame
+        for (index, (card, slot)) in zip(cards, result.cards).enumerated() {
             let panel = card.panel
-            guard let frame else { panel.orderOut(nil); continue }
+            var frame = slot
+            if isSlidDown, let f = slot { frame = index == 0 ? QuickAccessLayout.slidDownFrame(for: f, in: visible) : nil }
+            card.targetFrame = frame
+            guard let frame else {
+                // Older cards: no room, or the stack is slid down.
+                if panel.isVisible { fadeOut(panel) }
+                continue
+            }
             if card === appearing {
                 panel.setFrame(QuickAccessLayout.offscreenFrame(for: frame, in: visible, side: side), display: false)
                 panel.alphaValue = 1
                 panel.orderFrontRegardless()
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.28
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.35
+                    ctx.timingFunction = OverlayStyle.springTiming
                     panel.animator().setFrame(frame, display: true)
-                }
-            } else if !panel.isVisible {
+                }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
+            } else if !panel.isVisible || (panel.alphaValue < 1 && !card.isDragging) {
                 panel.setFrame(frame, display: false)
-                panel.alphaValue = 0
+                if !panel.isVisible { panel.alphaValue = 0 }
                 panel.orderFrontRegardless()
                 NSAnimationContext.runAnimationGroup { $0.duration = 0.2; panel.animator().alphaValue = 1 }
             } else if panel.frame != frame {
                 if animated {
-                    NSAnimationContext.runAnimationGroup { ctx in
-                        ctx.duration = 0.22
+                    NSAnimationContext.runAnimationGroup({ ctx in
+                        ctx.duration = 0.25
+                        ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                         panel.animator().setFrame(frame, display: true)
-                    }
+                    }, completionHandler: { MainActor.assumeIsolated { self.layoutDidSettle() } })
                 } else {
                     panel.setFrame(frame, display: true)
                 }
             }
         }
-        if let hf = result.header { showHeader(at: hf, animated: animated) } else { hideHeader() }
+        if !isSlidDown, let hf = result.header { showHeader(at: hf, animated: animated) } else { hideHeader() }
+        if !animated { layoutDidSettle() }
+    }
+
+    /// Fades a card that lost its slot; the order-out is skipped if a later layout gave it a slot again.
+    private func fadeOut(_ panel: OverlayPanel) {
+        NSAnimationContext.runAnimationGroup({ $0.duration = 0.18; panel.animator().alphaValue = 0 }, completionHandler: {
+            MainActor.assumeIsolated {
+                guard let card = self.cards.first(where: { $0.panel === panel }), card.targetFrame == nil else { return }
+                panel.orderOut(nil)
+            }
+        })
+    }
+
+    /// Cards that moved under a still pointer (or away from it) get no tracking events: re-derive hover state.
+    private func layoutDidSettle() {
+        for card in cards {
+            card.panel.invalidateShadow()
+            card.syncHoverWithPointer()
+        }
     }
 
     // MARK: Header (Close All / Save All)
@@ -205,7 +254,8 @@ final class QuickAccessController: QuickAccessServicing {
         fx.material = .hudWindow
         fx.blendingMode = .behindWindow
         fx.state = .active
-        fx.maskImage = .roundedMask(radius: 10)
+        fx.appearance = NSAppearance(named: .darkAqua)
+        fx.maskImage = .roundedMask(radius: OverlayStyle.cardCornerRadius * 0.75)
         let closeAll = HeaderButton(title: "Close All") { [weak self] in self?.closeAll() }
         let saveAll = HeaderButton(title: "Save All") { [weak self] in self?.saveAll() }
         closeAll.toolTip = "Close All Overlays"
@@ -242,6 +292,7 @@ final class QuickAccessController: QuickAccessServicing {
     }
 
     private func checkCurrentDisplay() {
+        cards.forEach { $0.syncHoverWithPointer() }
         guard Defaults[.quickAccessScreen] == .activeScreen, NSScreen.screens.count > 1,
               !cards.contains(where: { $0.isHovered || $0.isUploading }), NSEvent.pressedMouseButtons == 0 else { return }
         let active = NSScreen.active
@@ -254,7 +305,7 @@ final class QuickAccessController: QuickAccessServicing {
 
     private func mediaDidChange(_ media: CapturedMedia) {
         guard let card = cards.first(where: { $0.media.id == media.id }) else { return }
-        card.reloadThumbnail()
+        card.mediaDidChange()
         layout(animated: true)   // aspect may have changed (e.g. cropped in Annotate)
     }
 }
@@ -262,6 +313,7 @@ final class QuickAccessController: QuickAccessServicing {
 /// Compact text button for the stack header.
 private final class HeaderButton: NSButton {
     private let handler: () -> Void
+    private var hoverArea: NSTrackingArea?
     private var hovering = false { didSet { layer?.backgroundColor = NSColor.white.withAlphaComponent(hovering ? 0.18 : 0).cgColor } }
 
     init(title: String, handler: @escaping () -> Void) {
@@ -271,7 +323,7 @@ private final class HeaderButton: NSButton {
         wantsLayer = true
         layer?.cornerRadius = 7
         attributedTitle = NSAttributedString(string: title, attributes: [
-            .foregroundColor: NSColor.labelColor, .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+            .foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
         ])
         target = self
         action = #selector(run)
@@ -281,8 +333,7 @@ private final class HeaderButton: NSButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        installHoverTracking(on: self, existing: &hoverArea)
     }
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }

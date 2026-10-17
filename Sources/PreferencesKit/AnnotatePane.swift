@@ -15,27 +15,28 @@ struct AnnotatePane: View {
 
     var body: some View {
         PaneForm(pane: .annotate) {
+            Section("Tools") {
+                SettingToggle("Inverse arrow direction", isOn: $inverseArrow,
+                              help: "New arrows point back to where you started drawing.")
+                SettingToggle("Smooth drawing", isOn: $smoothDrawing, help: "Smooths freehand pencil and highlighter strokes.")
+                Toggle("Remember if background tool was opened", isOn: $rememberBackground)
+                Toggle("Draw shadow on objects", isOn: $drawShadow)
+                SettingToggle("Automatically expand canvas", isOn: $expandCanvas,
+                              help: "Ensures all annotations fit by dynamically resizing canvas.")
+                Toggle("Snap crop to content edges", isOn: $snapCrop)
+            }
+
             Section("Window") {
-                Toggle("Keep window always on top", isOn: $alwaysOnTop)
-                SettingToggle("Show Dock icon while editing", isOn: $showDockIcon,
+                Toggle("Always on top", isOn: $alwaysOnTop)
+                SettingToggle("Show Dock icon", isOn: $showDockIcon,
                               help: "Makes the editor reachable from the Dock and ⌘-Tab.")
-                Picker("Save button", selection: $saveBehavior) {
+                Picker("Save button behavior", selection: $saveBehavior) {
                     ForEach(SaveButtonBehavior.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
             }
 
-            Section("Drawing") {
-                SettingToggle("Smooth drawing", isOn: $smoothDrawing, help: "Smooths freehand pencil and highlighter strokes.")
-                Toggle("Draw shadow on objects", isOn: $drawShadow)
-                Toggle("Inverse arrow direction", isOn: $inverseArrow)
+            Section("Accessibility") {
                 Toggle("Show color names", isOn: $showColorNames)
-            }
-
-            Section("Canvas") {
-                SettingToggle("Expand canvas automatically", isOn: $expandCanvas,
-                              help: "Grows the canvas when you draw or drop objects outside the image.")
-                Toggle("Snap crop to content edges", isOn: $snapCrop)
-                Toggle("Remember background tool state", isOn: $rememberBackground)
             }
         }
     }

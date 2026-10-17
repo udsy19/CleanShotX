@@ -1,17 +1,14 @@
 # Core requests from StudioKit
 
-1. **Stopping a Studio recording from the menu bar / shortcuts.**
-   `StatusBar.setRecording` says a click on the status item calls `Services.recording.stopRecording()`, and
-   `ActionRouter` only treats `Services.recording.isRecording` as "recording in progress". Studio recordings are
-   owned by `Services.studio`, so the menu-bar stop button does nothing for them.
-   Proposal: add `var isRecording: Bool { get }` and `func stopRecording()` to `StudioServicing`, and have the
-   status item / ActionRouter call `Services.studio.stopRecording()` when `Services.studio.isRecording`.
-   (Today StudioKit already treats a second `startStudioRecording` call while recording as "stop".)
+All earlier requests have been integrated:
 
-2. **Shared Dock-icon presence.** AnnotateKit and StudioKit each flip `NSApp.setActivationPolicy` between
-   `.regular` and `.accessory` while their document windows are open, using a "any other titled window visible?"
-   heuristic. A small Core helper (`DockPresence.retain(owner)` / `release(owner)`) would avoid modules fighting
-   over the policy.
+1. `StudioServicing.isRecording` / `stopRecording()` — done (StudioKit implements both).
+2. Shared Dock-icon presence — done (`DockIcon.set("studio", count:)`).
+3. `Sound.Effect.exportDone` — done.
 
-3. **`Sound.Effect.exportDone`** — StudioKit plays `.capture` when an export finishes; a dedicated effect would be
-   clearer.
+Open:
+
+4. **Main-menu entries for the Studio editor.** CleanShot's File menu has Save ⌘S, Save As…, Export… ⌘E,
+   Export & Upload to Cloud… ⌘U, Export Current Frame as Image… ⇧⌘E. The editor handles these shortcuts itself;
+   if the app menu gains a File menu, its items can send `saveDocument:` (already implemented by the editor's
+   window controller) and the rest could be routed through a small `StudioServicing` extension.

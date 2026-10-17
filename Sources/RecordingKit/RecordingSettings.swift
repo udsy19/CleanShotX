@@ -3,29 +3,40 @@ import AVFoundation
 import ShotcraftCore
 
 enum CameraShape: String, Codable, CaseIterable {
-    case circle, roundedRect
-    var title: String { self == .circle ? "Circle" : "Rounded Rectangle" }
+    case circle, square, rectangle
+    var title: String { rawValue.capitalized }
+    /// Width / height.
+    var aspect: CGFloat { self == .rectangle ? 16.0 / 9 : 1 }
 }
 
 enum CameraSize: String, Codable, CaseIterable {
     case small, medium, large
     var title: String { rawValue.capitalized }
+    /// Height of the bubble.
     var points: CGFloat {
         switch self {
-        case .small: 140
-        case .medium: 200
-        case .large: 280
+        case .small: 120
+        case .medium: 160
+        case .large: 240
         }
     }
+}
+
+/// Click highlight look: a ring around a solid dot, or a translucent disc.
+enum ClickStyle: String, Codable, CaseIterable {
+    case outline, filled
+    var title: String { rawValue.capitalized }
 }
 
 extension Defaults.Keys {
     static let rkCameraShape = Key<CameraShape>("recordingKit.cameraShape", default: .circle)
     static let rkCameraSize = Key<CameraSize>("recordingKit.cameraSize", default: .medium)
     static let rkCameraMirror = Key<Bool>("recordingKit.cameraMirror", default: true)
-    static let rkKeystrokesShortcutsOnly = Key<Bool>("recordingKit.keystrokesShortcutsOnly", default: false)
+    static let rkClickStyle = Key<ClickStyle>("recordingKit.clickStyle", default: .outline)
+    static let rkKeystrokesShortcutsOnly = Key<Bool>("recordingKit.keystrokesShortcutsOnly", default: true)
     static let rkExportQuality = Key<VideoQuality>("recordingKit.exportQuality", default: .original)
-    static let rkExportScale = Key<Double>("recordingKit.exportScale", default: 1)
+    /// Export resolution as a short-side pixel count; 0 = original.
+    static let rkExportShortSide = Key<Int>("recordingKit.exportShortSide", default: 0)
 }
 
 /// Capture-device discovery for the microphone / camera menus.

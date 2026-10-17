@@ -167,7 +167,7 @@ public final class CursorTrack: @unchecked Sendable {
         return 0
     }
 
-    public static let rippleDuration = 0.55
+    public static let rippleDuration = 0.45
 
     /// Active ripples at `t`: (position, progress 0…1).
     public func ripples(at t: Double) -> [(NPoint, Double)] {

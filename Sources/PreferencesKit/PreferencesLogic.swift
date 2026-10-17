@@ -6,19 +6,23 @@ import ShotcraftCore
 
 // MARK: - Panes
 
+/// Sidebar panes in CleanShot X 5.0 order; `about` sits apart at the bottom of the sidebar.
 public enum PreferencesPane: String, CaseIterable, Identifiable, Sendable {
-    case general, wallpaper, shortcuts, quickAccess, recording, screenshots, annotate, upload, advanced, about
+    case general, shortcuts, quickAccess, wallpaper, screenshots, recording, annotate, upload, advanced, about
 
     public var id: String { rawValue }
+
+    /// Panes listed in the main sidebar list (About is pinned below it).
+    public static var sidebarPanes: [PreferencesPane] { allCases.filter { $0 != .about } }
 
     public var title: String {
         switch self {
         case .general: "General"
-        case .wallpaper: "Wallpaper"
         case .shortcuts: "Shortcuts"
         case .quickAccess: "Quick Access"
-        case .recording: "Recording"
+        case .wallpaper: "Wallpaper"
         case .screenshots: "Screenshots"
+        case .recording: "Screen Recording"
         case .annotate: "Annotate"
         case .upload: "Upload"
         case .advanced: "Advanced"
@@ -26,18 +30,19 @@ public enum PreferencesPane: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// White glyph drawn on the pane's coloured sidebar tile.
     public var symbol: String {
         switch self {
-        case .general: "gearshape"
-        case .wallpaper: "photo.on.rectangle"
+        case .general: "gearshape.fill"
         case .shortcuts: "command"
-        case .quickAccess: "rectangle.stack"
-        case .recording: "record.circle"
-        case .screenshots: "camera.viewfinder"
-        case .annotate: "pencil.tip.crop.circle"
-        case .upload: "icloud.and.arrow.up"
-        case .advanced: "slider.horizontal.3"
-        case .about: "info.circle"
+        case .quickAccess: "rectangle.and.hand.point.up.left.fill"
+        case .wallpaper: "square.on.square"
+        case .screenshots: "camera.fill"
+        case .recording: "video.fill"
+        case .annotate: "pencil"
+        case .upload: "cloud.fill"
+        case .advanced: "wrench.and.screwdriver.fill"
+        case .about: "info"
         }
     }
 
@@ -62,6 +67,19 @@ public enum PreferencesPane: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Builds popup-button choice lists that always contain the stored value, even a non-standard one.
+public enum PickerChoices {
+    /// `base` unchanged when it contains `value`; otherwise `value` is inserted before the first larger entry
+    /// (0, which means "original"/"forever", is never treated as larger).
+    public static func including(_ value: Int, in base: [Int]) -> [Int] {
+        guard !base.contains(value) else { return base }
+        var out = base
+        let index = out.firstIndex { $0 != 0 && $0 > value } ?? out.endIndex
+        out.insert(value, at: index)
+        return out
+    }
+}
+
 // MARK: - After-capture actions
 
 public enum AfterCaptureRules {
@@ -70,6 +88,14 @@ public enum AfterCaptureRules {
 
     public static let screenshotChoices: [AfterCaptureAction] = [.showQuickAccess, .copyToClipboard, .save, .annotate, .upload, .pin]
     public static let recordingChoices: [AfterCaptureAction] = [.showQuickAccess, .copyToClipboard, .save, .upload, .openVideoEditor]
+
+    /// Rows of the General → After Capture table (Action | Screenshot | Recording), in CleanShot's order.
+    public static let tableRows: [AfterCaptureAction] = [.showQuickAccess, .copyToClipboard, .save, .upload, .annotate, .pin, .openVideoEditor]
+
+    /// Row title; "Upload" names our own upload destinations instead of CleanShot Cloud.
+    public static func title(for action: AfterCaptureAction) -> String {
+        action == .upload ? "Upload & copy link" : action.displayName
+    }
 
     /// Returns the new set, or nil when the change would leave no action enabled (the change is refused).
     public static func toggling(_ action: AfterCaptureAction, on: Bool, in current: Set<AfterCaptureAction>) -> Set<AfterCaptureAction>? {
@@ -144,18 +170,59 @@ public enum ShortcutPlanner {
         guard !q.isEmpty else { return actions }
         let words = q.split(separator: " ").map(String.init)
         return actions.filter { a in
-            let hay = "\(a.title) \(a.group) \(a.urlCommand) \(display(a))".lowercased()
+            let hay = "\(a.title) \(ShortcutGroup(a).title) \(a.urlCommand) \(display(a))".lowercased()
             return words.allSatisfy { hay.contains($0) }
         }
     }
 
-    /// Groups in display order.
-    public static let groupOrder = ["Screenshots", "Screen Recording", "Annotate", "Overlays", "Other"]
+    /// Groups in the Shortcuts pane's display order; empty groups are dropped.
+    public static func grouped(_ actions: [AppAction]) -> [(group: ShortcutGroup, actions: [AppAction])] {
+        let groups = Dictionary(grouping: actions, by: ShortcutGroup.init)
+        return ShortcutGroup.allCases.compactMap { g in groups[g].map { (g, $0) } }
+    }
+}
 
-    public static func grouped(_ actions: [AppAction]) -> [(group: String, actions: [AppAction])] {
-        let groups = Dictionary(grouping: actions, by: \.group)
-        let ordered = groupOrder + groups.keys.filter { !groupOrder.contains($0) }.sorted()
-        return ordered.compactMap { g in groups[g].map { (g, $0) } }
+/// Shortcuts-pane sections (CleanShot 5.0: General, Screenshots, Screen Recording, Scrolling Capture, OCR,
+/// Quick Access Overlay, Annotate). Pane layout only; independent of Core's `AppAction.group`.
+public enum ShortcutGroup: String, CaseIterable, Sendable {
+    case general, screenshots, recording, scrolling, text, overlays, annotate
+
+    public init(_ action: AppAction) {
+        switch action {
+        case .allInOne, .toggleDesktopIcons, .openHistory, .restoreLastCapture, .colorPicker, .openPreferences: self = .general
+        case .captureArea, .capturePreviousArea, .captureFullscreen, .captureWindow, .selfTimer,
+             .captureAreaAndCopy, .captureAreaAndSave, .captureAreaAndUpload, .captureAreaAndAnnotate, .captureAreaAndPin:
+            self = .screenshots
+        case .recordScreen, .recordGIF, .recordStudio: self = .recording
+        case .scrollingCapture: self = .scrolling
+        case .captureText: self = .text
+        case .pinScreenshot, .pinLast, .togglePins, .closeAllOverlays: self = .overlays
+        case .openAnnotate, .openFromClipboard, .annotateLast: self = .annotate
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .general: "General"
+        case .screenshots: "Screenshots"
+        case .recording: "Screen Recording"
+        case .scrolling: "Scrolling Capture"
+        case .text: "OCR"
+        case .overlays: "Quick Access Overlay & Pins"
+        case .annotate: "Annotate"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .screenshots: "camera"
+        case .recording: "video"
+        case .scrolling: "arrow.up.and.down.text.horizontal"
+        case .text: "text.viewfinder"
+        case .overlays: "pin"
+        case .annotate: "pencil"
+        }
     }
 }
 
@@ -242,26 +309,66 @@ public enum PreferencesReset {
 
 // MARK: - OCR languages
 
-public enum OCRLanguageCatalog {
-    /// Languages supported by Vision text recognition on macOS 14 (BCP-47).
-    public static let codes = [
-        "en-US", "fr-FR", "it-IT", "de-DE", "es-ES", "pt-BR", "zh-Hans", "zh-Hant", "yue-Hans", "yue-Hant",
-        "ko-KR", "ja-JP", "ru-RU", "uk-UA", "th-TH", "vi-VT", "ar-SA", "ars-SA",
-    ]
-
+public enum OCRLanguageSelection {
+    /// Localized name of a BCP-47 code, for codes not in the recognizer's list (e.g. a stored code from an older OS).
     public static func displayName(_ code: String) -> String {
         Locale.current.localizedString(forIdentifier: code.replacingOccurrences(of: "vi-VT", with: "vi-VN")) ?? code
     }
 
-    /// Toggles a language; the list never becomes empty and keeps the catalog order.
-    public static func toggling(_ code: String, on: Bool, in current: [String]) -> [String] {
+    /// Toggles a language; the list never becomes empty. Known codes keep the order of `available`
+    /// (the recognizer's list); stored codes it doesn't know are kept after them.
+    public static func toggling(_ code: String, on: Bool, in current: [String], available: [String]) -> [String] {
         var set = Set(current)
         if on { set.insert(code) } else { set.remove(code) }
         if set.isEmpty { return current }
-        let known = codes.filter(set.contains)
-        let unknown = current.filter { set.contains($0) && !codes.contains($0) }
-        return known + unknown
+        let known = available.filter(set.contains)
+        let unknown = (current + [code]).filter { set.contains($0) && !available.contains($0) }
+        var seen = Set<String>()
+        return known + unknown.filter { seen.insert($0).inserted }
     }
+}
+
+// MARK: - Window screenshot background
+
+/// Screenshots → Window Screenshots shows two tiles, "With wallpaper" and "Transparent". "With wallpaper" means the
+/// background chosen in the Wallpaper pane, so the stored `windowBackgroundStyle` follows `wallpaperSource`.
+public enum WindowBackgroundMapping {
+    public static func style(for source: WallpaperSource) -> WindowBackgroundStyle {
+        switch source {
+        case .desktop: .desktopWallpaper
+        case .custom: .customWallpaper
+        case .color: .color
+        }
+    }
+
+    /// Writes the "With wallpaper" style (and colour) for the current Wallpaper settings.
+    public static func applyWallpaper() {
+        let source = Defaults[.wallpaperSource]
+        Defaults[.windowBackgroundStyle] = style(for: source)
+        if source == .color { Defaults[.windowBackgroundColor] = Defaults[.wallpaperColor] }
+    }
+
+    /// Keeps a "With wallpaper" window background in step after the Wallpaper pane changes. Transparent stays.
+    public static func syncAfterWallpaperChange() {
+        if Defaults[.windowBackgroundStyle] != .transparent { applyWallpaper() }
+    }
+}
+
+// MARK: - Validation
+
+public enum SettingsValidation {
+    /// A problem with an http(s) URL typed into a field, or nil when it's empty or valid.
+    public static func urlProblem(_ text: String) -> String? {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return nil }
+        guard let url = URL(string: t), let scheme = url.scheme?.lowercased() else { return "Not a valid URL." }
+        guard scheme == "http" || scheme == "https" else { return "The URL must start with https:// or http://." }
+        guard let host = url.host, !host.isEmpty else { return "The URL has no host name." }
+        return nil
+    }
+
+    /// Popup value used for "Keep history": -1 = disabled, 0 = forever, otherwise days.
+    public static func historyChoice(enabled: Bool, days: Int) -> Int { enabled ? max(0, days) : -1 }
 }
 
 // MARK: - URL scheme reference

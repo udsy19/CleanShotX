@@ -7,14 +7,16 @@ import OverlayKit
 func registerOverlayKitTests() {
     SelfTest.cases.append(("OverlayKit.cardSize", {
         let normal = QuickAccessLayout.cardSize(for: CGSize(width: 1600, height: 1000), scale: 1)
-        check(normal == CGSize(width: 200, height: 125), "16:10 card at 1x")
+        check(normal == CGSize(width: 174, height: 124), "16:10 card at the default size is ~174×124 (ui-reference §4)")
+        let square = QuickAccessLayout.cardSize(for: CGSize(width: 500, height: 500), scale: 1)
+        check(square == CGSize(width: 174, height: 174), "height follows the aspect inside the clamp")
         let wide = QuickAccessLayout.cardSize(for: CGSize(width: 1000, height: 100), scale: 1)
-        check(wide.height == 90, "very wide media clamps to min aspect")
+        check(wide.height == 124, "very wide media clamps to min aspect")
         let tall = QuickAccessLayout.cardSize(for: CGSize(width: 100, height: 1000), scale: 1)
-        check(tall.height == 250, "very tall media clamps to max aspect")
-        check(QuickAccessLayout.cardSize(for: .zero, scale: 1).width == 200, "zero size falls back")
-        check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 3).width == 280, "scale clamped to 1.4")
-        check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 0.1).width == 120, "scale clamped to 0.6")
+        check(tall.height == 218, "very tall media clamps to max aspect")
+        check(QuickAccessLayout.cardSize(for: .zero, scale: 1).width == 174, "zero size falls back")
+        check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 3).width == 244, "scale clamped to 1.4")
+        check(QuickAccessLayout.cardSize(for: CGSize(width: 10, height: 10), scale: 0.1).width == 104, "scale clamped to 0.6")
     }))
 
     SelfTest.cases.append(("OverlayKit.stackLayout", {
@@ -34,7 +36,7 @@ func registerOverlayKitTests() {
 
         let three = QuickAccessLayout.layout(newestFirst: [card, card, card], in: vis, side: .left, scale: 1)
         let top = three.cards[2]!
-        check(three.header == CGRect(x: 16, y: top.maxY + 12, width: 200, height: 30), "header above the topmost card")
+        check(three.header == CGRect(x: 16, y: top.maxY + 12, width: 174, height: 30), "header above the topmost card")
 
         let short = CGRect(x: 0, y: 0, width: 1000, height: 300)
         let overflow = QuickAccessLayout.layout(newestFirst: Array(repeating: card, count: 5), in: short, side: .left, scale: 1)
@@ -44,7 +46,11 @@ func registerOverlayKitTests() {
 
         let scaled = QuickAccessLayout.layout(newestFirst: [QuickAccessLayout.cardSize(for: CGSize(width: 16, height: 10), scale: 1.4)],
                                               in: vis, side: .left, scale: 1.4)
-        check(scaled.cards[0] == CGRect(x: 22, y: 22, width: 280, height: 175), "margins scale with size")
+        check(scaled.cards[0] == CGRect(x: 22, y: 22, width: 244, height: 173), "margins scale with size")
+
+        let peek = QuickAccessLayout.slidDownFrame(for: two.cards[0]!, in: offset)
+        check(peek.maxY == offset.minY + QuickAccessLayout.slideDownPeek && peek.size == card && peek.minX == 16,
+              "slid-down card only peeks above the bottom edge")
 
         let start = QuickAccessLayout.offscreenFrame(for: two.cards[0]!, in: vis, side: .left)
         check(start.maxX < vis.minX && start.minY == 16, "slide-in starts past the left edge")
@@ -132,7 +138,8 @@ func registerOverlayKitTests() {
 
     SelfTest.cases.append(("OverlayKit.historyFilter", {
         check(HistoryIndex.Filter.screenshots.matches(.image) && !HistoryIndex.Filter.screenshots.matches(.gif), "screenshots")
-        check(HistoryIndex.Filter.recordings.matches(.video) && HistoryIndex.Filter.recordings.matches(.studioProject), "recordings")
+        check(HistoryIndex.Filter.videos.matches(.video) && HistoryIndex.Filter.videos.matches(.studioProject), "videos")
+        check(HistoryIndex.Filter.videos.title == "Videos", "5.0 filter pill title")
         check(HistoryIndex.Filter.gifs.matches(.gif) && !HistoryIndex.Filter.gifs.matches(.video), "gifs")
         check(MediaKind.allKindsForTest.allSatisfy { HistoryIndex.Filter.all.matches($0) }, "all")
     }))

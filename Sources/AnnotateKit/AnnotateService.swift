@@ -44,7 +44,7 @@ public final class AnnotateService: AnnotateServicing {
         }
         var scale = media.scale > 0 ? media.scale : 1
         if media.pixelSize.width > 0, CGFloat(img.width) != media.pixelSize.width { scale = Self.scale(of: media.url, image: img) }
-        present(AnnotateEditorController(state: CanvasState(image: img, scale: scale), origin: .media, media: media, projectURL: nil))
+        present(AnnotateEditorController(state: Self.fresh(img, scale: scale), origin: .media, media: media, projectURL: nil))
     }
 
     public func open(fileURL: URL) {
@@ -57,7 +57,7 @@ public final class AnnotateService: AnnotateServicing {
         let scale = Self.scale(of: fileURL, image: img)
         let media = CapturedMedia(url: fileURL, kind: .image, mode: .imported,
                                   pixelSize: CGSize(width: img.width, height: img.height), scale: scale, isSaved: true)
-        present(AnnotateEditorController(state: CanvasState(image: img, scale: scale), origin: .media, media: media, projectURL: nil))
+        present(AnnotateEditorController(state: Self.fresh(img, scale: scale), origin: .media, media: media, projectURL: nil))
     }
 
     public func openFromClipboard() {
@@ -66,7 +66,7 @@ public final class AnnotateService: AnnotateServicing {
             HUD.show("No image on the clipboard", symbol: "exclamationmark.circle.fill")
             return
         }
-        present(AnnotateEditorController(state: CanvasState(image: best.image, scale: best.scale), origin: .clipboard, media: nil, projectURL: nil))
+        present(AnnotateEditorController(state: Self.fresh(best.image, scale: best.scale), origin: .clipboard, media: nil, projectURL: nil))
     }
 
     public func openDocument(_ url: URL) {
@@ -117,6 +117,19 @@ public final class AnnotateService: AnnotateServicing {
     }
 
     // MARK: Helpers
+
+    /// A new document for an image, with the default background preset applied
+    /// (Background tool → Presets → Default Preset: "Automatically apply preset to all screenshots").
+    static func fresh(_ image: CGImage, scale: CGFloat) -> CanvasState {
+        var state = CanvasState(image: image, scale: scale)
+        if let id = Defaults[.annotateDefaultBackgroundPreset],
+           let preset = Defaults[.annotateBackgroundPresets].first(where: { $0.id.uuidString == id }) {
+            var bg = preset.settings
+            bg.embeddedImage = WallpaperCache.embeddedData(for: bg.fill, screen: NSScreen.active)
+            state.background = bg
+        }
+        return state
+    }
 
     /// Pixels per point of an image file: `@2x` suffix, else DPI metadata (144 dpi = 2×), else 1.
     static func scale(of url: URL, image: CGImage) -> CGFloat {

@@ -8,62 +8,63 @@ struct GeneralPane: View {
     @Default(.captureSound) private var captureSound
     @Default(.showMenuBarIcon) private var showMenuBarIcon
     @Default(.exportLocation) private var exportLocation
-    @Default(.clipboardContent) private var clipboardContent
     @Default(.hideDesktopIconsWhileCapturing) private var hideDesktopIcons
+    /// Bumped when a confirmation is cancelled, so the switch snaps back to the stored value.
+    @State private var menuBarIconRevision = 0
 
     var body: some View {
         PaneForm(pane: .general) {
-            Section("Startup") {
+            Section("App") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                 Toggle(isOn: menuBarIconBinding) {
                     Text("Show menu bar icon")
                     if !showMenuBarIcon { Text("Open Shotcraft again (e.g. from Finder or Spotlight) to show this window.") }
                 }
+                .id(menuBarIconRevision)
+            }
+
+            Section {
+                Toggle("Hide desktop icons while capturing", isOn: $hideDesktopIcons)
+            } header: { Text("Capture") } footer: {
+                HelpText("You can set a custom wallpaper to hide desktop icons in [wallpaper settings](settings://wallpaper).")
             }
 
             Section("Sounds") {
                 Toggle("Play sounds", isOn: $playSounds)
-                LabeledContent("Capture sound") {
-                    HStack {
-                        Picker("Capture sound", selection: $captureSound) {
+                LabeledContent("Shutter sound") {
+                    HStack(spacing: 6) {
+                        Picker("Shutter sound", selection: shutterBinding) {
                             ForEach(CaptureSound.allCases, id: \.self) { Text($0.displayName).tag($0) }
                         }
                         .labelsHidden()
                         .fixedSize()
-                        Button { Sound.play(.capture) } label: { Image(systemName: "play.circle") }
+                        Button { Sound.play(.capture) } label: { Image(systemName: "speaker.wave.2") }
                             .buttonStyle(.borderless)
-                            .help("Preview")
+                            .help("Play shutter sound")
                             .disabled(captureSound == .none)
                     }
                 }
                 .disabled(!playSounds)
-                .onChange(of: captureSound) { _, new in if new != .none { Sound.play(.capture) } }
             }
 
             Section {
                 FolderRow(title: "Export location", path: $exportLocation)
-            } footer: {
-                HelpText("Screenshots and recordings are saved here when you choose Save.")
+            } header: { Text("Export") } footer: {
+                HelpText("Set the default save location used when saving from the Quick Access Overlay, After Capture, and other Save actions across the app.")
             }
 
-            AfterCaptureSection(title: "After taking a screenshot", key: .afterScreenshotActions,
-                                choices: AfterCaptureRules.screenshotChoices,
-                                header: "Decide what should happen after taking a screenshot or recording a video.")
-            AfterCaptureSection(title: "After recording a video", key: .afterRecordingActions,
-                                choices: AfterCaptureRules.recordingChoices, header: nil)
-
-            Section("Capture") {
-                Picker(selection: $clipboardContent) {
-                    ForEach(ClipboardContent.allCases, id: \.self) { Text($0.displayName).tag($0) }
-                } label: {
-                    Text("Copy to clipboard as")
-                    Text("File & Image pastes into both Finder and image editors.")
-                }
-                Toggle("Hide desktop icons while capturing", isOn: $hideDesktopIcons)
-            }
+            AfterCaptureTable()
 
             PermissionsSection()
         }
+    }
+
+    /// Picking a sound previews it (only on a user change, not when defaults are restored elsewhere).
+    private var shutterBinding: Binding<CaptureSound> {
+        Binding(get: { captureSound }, set: { new in
+            captureSound = new
+            if new != .none { Sound.play(.capture) }
+        })
     }
 
     /// Hiding the icon asks for confirmation first, since Settings is then only reachable by relaunching.
@@ -73,42 +74,69 @@ struct GeneralPane: View {
             let ok = Alerts.confirm("The menu bar icon will be hidden.",
                                     info: "In order to show the Settings window again, launch Shotcraft twice.",
                                     confirmTitle: "Hide Icon", suppressionID: "prefs.hideMenuBarIcon")
-            if ok { showMenuBarIcon = false }
+            if ok { showMenuBarIcon = false } else { menuBarIconRevision += 1 }
         })
     }
 }
 
-/// Checkbox list of after-capture actions; refuses to leave the set empty.
-struct AfterCaptureSection: View {
-    let title: String
-    let key: Defaults.Key<Set<AfterCaptureAction>>
-    let choices: [AfterCaptureAction]
-    let header: String?
-    @Default private var actions: Set<AfterCaptureAction>
+/// "After Capture": Action | Screenshot | Recording checkbox table. Neither list may become empty.
+private struct AfterCaptureTable: View {
+    @Default(.afterScreenshotActions) private var screenshot
+    @Default(.afterRecordingActions) private var recording
+    /// Bumped when a change is refused, so the checkbox snaps back.
+    @State private var revision = 0
 
-    init(title: String, key: Defaults.Key<Set<AfterCaptureAction>>, choices: [AfterCaptureAction], header: String?) {
-        self.title = title; self.key = key; self.choices = choices; self.header = header
-        _actions = Default(key)
-    }
+    private static let columnWidth: CGFloat = 76
 
     var body: some View {
         Section {
-            ForEach(choices, id: \.self) { action in
-                Toggle(action.displayName, isOn: binding(for: action))
+            HStack {
+                Text("Action")
+                Spacer()
+                Text("Screenshot").frame(width: Self.columnWidth)
+                Text("Recording").frame(width: Self.columnWidth)
             }
+            .font(.callout).foregroundStyle(.secondary)
+
+            ForEach(AfterCaptureRules.tableRows, id: \.self) { action in
+                HStack {
+                    Text(AfterCaptureRules.title(for: action))
+                    Spacer()
+                    cell(action, in: $screenshot, applicable: AfterCaptureRules.screenshotChoices.contains(action),
+                         kind: "screenshot")
+                    cell(action, in: $recording, applicable: AfterCaptureRules.recordingChoices.contains(action),
+                         kind: "recording")
+                }
+            }
+            .id(revision)
         } header: {
-            VStack(alignment: .leading, spacing: 4) {
-                if let header { Text(header).font(.callout).foregroundStyle(.secondary).textCase(nil) }
-                Text(title)
-            }
+            SectionHeader(title: "After Capture",
+                          detail: "Decide what should happen after taking a screenshot or recording a video.")
         }
     }
 
-    private func binding(for action: AfterCaptureAction) -> Binding<Bool> {
-        Binding(get: { actions.contains(action) }, set: { on in
-            if let next = AfterCaptureRules.toggling(action, on: on, in: actions) {
-                actions = next
+    @ViewBuilder
+    private func cell(_ action: AfterCaptureAction, in set: Binding<Set<AfterCaptureAction>>, applicable: Bool,
+                      kind: String) -> some View {
+        Group {
+            if applicable {
+                Toggle(isOn: binding(action, in: set)) { EmptyView() }
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .accessibilityLabel("\(AfterCaptureRules.title(for: action)) after \(kind)")
             } else {
+                Text("—").foregroundStyle(.tertiary).accessibilityLabel("Not available")
+            }
+        }
+        .frame(width: Self.columnWidth)
+    }
+
+    private func binding(_ action: AfterCaptureAction, in set: Binding<Set<AfterCaptureAction>>) -> Binding<Bool> {
+        Binding(get: { set.wrappedValue.contains(action) }, set: { on in
+            if let next = AfterCaptureRules.toggling(action, on: on, in: set.wrappedValue) {
+                set.wrappedValue = next
+            } else {
+                revision += 1
                 NSSound.beep()
                 let a = NSAlert()
                 a.messageText = AfterCaptureRules.atLeastOneTitle

@@ -15,6 +15,8 @@ final class CaptureService: CaptureServicing {
     private var colorSampler: NSColorSampler?
     /// True while screens are being frozen before an overlay appears.
     private var preparing = false
+    /// Bumped to abandon an overlay that is still being prepared (another selection took over).
+    private var prepareGeneration = 0
 
     // MARK: Desktop icons
 
@@ -87,6 +89,8 @@ final class CaptureService: CaptureServicing {
     func selectArea(_ options: AreaSelectionOptions, completion: @escaping (AreaSelection?) -> Void) {
         session?.cancel()
         countdown?.cancel()
+        // An overlay still freezing the screens would otherwise appear on top of this one.
+        if preparing { prepareGeneration += 1; preparing = false }
         guard Permissions.ensureScreenRecording() else { completion(nil); return }
         var config = SelectionConfig()
         config.purpose = options.purpose
@@ -151,12 +155,18 @@ final class CaptureService: CaptureServicing {
                              handler: @escaping (SelectionOutcome, NSEvent.ModifierFlags, FrozenScreens?) async -> Void) {
         guard !toggleOffActiveCapture(), Permissions.ensureScreenRecording() else { return }
         preparing = true
+        prepareGeneration += 1
+        let generation = prepareGeneration
         Task {
             let held = await icons.beginTemporaryHide()
             var config = base
             if freeze {
                 do { config.frozen = try await CaptureEngine.captureAllScreens(includeWindows: icons.coverWindowIDs) }
                 catch { Log.capture.error("Freeze failed: \(error.localizedDescription, privacy: .public)") }
+            }
+            guard generation == prepareGeneration else {
+                if held { icons.endTemporaryHide() }
+                return
             }
             preparing = false
             let frozen = config.frozen

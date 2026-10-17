@@ -27,6 +27,8 @@ final class StudioRecordingSession {
     private var tracker: InputTracker?
     private var workDir: URL?
     private var startedAt = Date()
+    /// Identifies the current capture start-up, so a restart can't be confused with a late older start.
+    private var attempt = 0
 
     /// - Parameters:
     ///   - area: global Cocoa rect (already clipped to one screen).
@@ -114,6 +116,8 @@ final class StudioRecordingSession {
 
     private func startCapture() {
         state = .recording
+        attempt += 1
+        let attempt = attempt
         let dir = AppPaths.temporary.appendingPathComponent("studio-\(UUID().uuidString)", isDirectory: true)
         AppPaths.ensure(dir)
         workDir = dir
@@ -150,7 +154,7 @@ final class StudioRecordingSession {
                 }
                 self.recorder = rec
                 try await rec.start()
-                guard self.state == .recording else { await rec.cancel(); return }
+                guard self.state == .recording, self.attempt == attempt else { await rec.cancel(); return }
                 clock.start()
                 self.startedAt = Date()
                 tracker.start(recordKeys: self.options.keystrokes)
@@ -159,6 +163,8 @@ final class StudioRecordingSession {
                 self.outline?.setRecording(true)
                 self.showControls()
             } catch {
+                // Stopped/restarted while starting up: that path already cleaned up.
+                guard self.state == .recording, self.attempt == attempt else { return }
                 self.state = .finishing
                 await self.recorder?.cancel()
                 _ = self.tracker?.finish()
@@ -179,7 +185,7 @@ final class StudioRecordingSession {
         controlsModel.onRestart = { [weak self] in self?.restart() }
         controlsModel.onDelete = { [weak self] in self?.deleteRecording() }
         if controls == nil {
-            let p = PanelFactory.panel(RecordingControlsBar(model: controlsModel), cornerRadius: 12)
+            let p = PanelFactory.panel(RecordingControlsBar(model: controlsModel))
             PanelFactory.place(p, below: area, on: screen)
             controls = p
         }
@@ -229,6 +235,7 @@ final class StudioRecordingSession {
 
     /// Stops all writers and deletes the work directory (camera session keeps running for a restart).
     private func discardCapture(then next: @escaping () -> Void) {
+        attempt += 1
         timer?.invalidate(); timer = nil
         StatusBar.setRecording(false, nil)
         clock.stop()
@@ -245,7 +252,18 @@ final class StudioRecordingSession {
 
     /// Finishes the recording and writes the project package.
     func stop() {
-        guard state == .recording, let recorder, let workDir, let tracker else { return }
+        guard state == .recording else { return }
+        // Capture hasn't started yet (stopped from the menu bar during start-up): nothing to keep.
+        guard clock.isStarted, let recorder, let workDir, let tracker else {
+            state = .finishing
+            discardCapture { [weak self] in
+                guard let self else { return }
+                self.camera?.cancel(); self.camera = nil
+                self.teardownUI()
+                self.onFinish(nil)
+            }
+            return
+        }
         state = .finishing
         timer?.invalidate(); timer = nil
         clock.stop()

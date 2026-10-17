@@ -73,12 +73,14 @@ struct ShortcutsPane: View {
             }
 
             ForEach(ShortcutPlanner.grouped(visible), id: \.group) { group in
-                Section(group.group) {
+                Section {
                     ForEach(group.actions, id: \.self) { action in
                         ShortcutRow(action: action, current: effective[action],
                                     isDuplicate: effective[action].map { duplicates[$0] != nil } ?? false,
                                     isShadowed: shadowed.contains(action))
                     }
+                } header: {
+                    Label(group.group.title, systemImage: group.group.symbol)
                 }
             }
 
@@ -113,23 +115,27 @@ private struct ShortcutRow: View {
     let isShadowed: Bool
 
     var body: some View {
-        LabeledContent {
-            HStack(spacing: 6) {
-                if isDuplicate {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-                        .help("Shortcut is used for another action")
-                } else if isShadowed {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        .help("Shortcut is reserved for macOS")
+        // An HStack rather than LabeledContent: the AppKit recorder has no text baseline to align with.
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.title)
+                if let d = action.defaultShortcut, d != current {
+                    Text("Default: \(d.displayString)").font(.callout).foregroundStyle(.secondary)
                 }
-                ShortcutRecorder(for: action)
-                    .frame(width: 150, height: 24)
-                    // Recreate the recorder when the stored value changes elsewhere (restore, system defaults).
-                    .id(current.map { "\($0.keyCode)-\($0.modifierFlags)" } ?? "none")
             }
-        } label: {
-            Text(action.title)
-            if let d = action.defaultShortcut, d != current { Text("Default: \(d.displayString)") }
+            Spacer(minLength: 8)
+            if isDuplicate {
+                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                    .help("Shortcut is used for another action")
+            } else if isShadowed {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    .help("Shortcut is reserved for macOS")
+            }
+            ShortcutRecorder(for: action)
+                .frame(width: 156, height: 28)
+                // Recreate the recorder when the stored value changes elsewhere (restore, system defaults).
+                .id(current.map { "\($0.keyCode)-\($0.modifierFlags)" } ?? "none")
+                .accessibilityLabel("\(action.title) shortcut")
         }
     }
 }

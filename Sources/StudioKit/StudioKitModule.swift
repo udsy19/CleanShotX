@@ -49,11 +49,13 @@ final class StudioService: StudioServicing {
         var rect = area.intersection(target.frame).integral
         if rect.width < 32 || rect.height < 32 { rect = target.frame }
         Defaults[.lastRecordingArea] = CodableRect(rect)
+        weak var created: StudioRecordingSession?
         let s = StudioRecordingSession(area: rect, screen: target) { [weak self] url in
             guard let self else { return }
-            self.session = nil
+            if self.session === created { self.session = nil }
             if let url { self.openProject(url) }
         }
+        created = s
         session = s
         s.begin()
     }

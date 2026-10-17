@@ -270,8 +270,6 @@ public final class ScrollStitcher {
         self.axis = axis; self.maxLength = maxLength
     }
 
-    /// True once at least one movement has been stitched.
-    public var hasMatched: Bool { trailing != nil }
     /// Pixel size of the image `render()` would produce.
     public var pixelSize: CGSize {
         guard let ref = reference else { return .zero }

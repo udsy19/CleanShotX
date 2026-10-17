@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CoreMedia
 import AppKit
 import ShotcraftCore
 
@@ -29,6 +30,61 @@ public enum RecordingMath {
         guard maxWidth > 0, size.width > CGFloat(maxWidth), size.width > 0 else { return size }
         let f = CGFloat(maxWidth) / size.width
         return CGSize(width: CGFloat(maxWidth), height: max(1, (size.height * f).rounded()))
+    }
+
+    /// `rect` resized to `size` around its centre, then shrunk/shifted to stay inside `bounds`.
+    public static func resized(_ rect: CGRect, to size: CGSize, within bounds: CGRect) -> CGRect {
+        let w = min(bounds.width, max(1, size.width)), h = min(bounds.height, max(1, size.height))
+        var r = CGRect(x: rect.midX - w / 2, y: rect.midY - h / 2, width: w, height: h)
+        r.origin.x = min(max(bounds.minX, r.minX), bounds.maxX - w)
+        r.origin.y = min(max(bounds.minY, r.minY), bounds.maxY - h)
+        return r.integral
+    }
+
+    /// Largest rect of aspect `ratio` (w/h) that fits in `rect`, centred on it, kept inside `bounds`.
+    public static func constrained(_ rect: CGRect, toAspect ratio: CGFloat, within bounds: CGRect) -> CGRect {
+        guard ratio > 0, rect.width > 0, rect.height > 0 else { return rect }
+        var size = rect.size
+        if size.width / size.height > ratio { size.width = size.height * ratio } else { size.height = size.width / ratio }
+        return resized(rect, to: CGSize(width: size.width.rounded(), height: size.height.rounded()), within: bounds)
+    }
+
+    /// Origin of the pre-record panel: centred in the area when it fits with a margin, otherwise
+    /// below the area, above it, or inside its bottom edge — always within `bounds`.
+    public static func setupPanelOrigin(panel: CGSize, area: CGRect, bounds: CGRect, margin: CGFloat = 24) -> CGPoint {
+        let fitsInside = area.width >= panel.width + margin * 2 && area.height >= panel.height + margin * 2
+        var x = area.midX - panel.width / 2
+        var y: CGFloat
+        if fitsInside { y = area.midY - panel.height / 2 }
+        else if area.minY - 12 - panel.height >= bounds.minY + 8 { y = area.minY - 12 - panel.height }
+        else if area.maxY + 12 + panel.height <= bounds.maxY - 8 { y = area.maxY + 12 }
+        else { y = area.minY + 12 }
+        x = min(max(x, bounds.minX + 8), bounds.maxX - panel.width - 8)
+        y = min(max(y, bounds.minY + 8), bounds.maxY - panel.height - 8)
+        return CGPoint(x: x.rounded(), y: y.rounded())
+    }
+
+    // MARK: Export resolutions
+
+    /// Export presets ("4k", "1440p", …) by short-side pixel count.
+    public static let exportPresets: [(title: String, shortSide: Int)] =
+        [("4k", 2160), ("1440p", 1440), ("1080p", 1080), ("720p", 720), ("480p", 480), ("360p", 360), ("240p", 240)]
+
+    /// Scale factor (≤ 1) that brings `source`'s short side down to `shortSide`; 1 for 0 (= original).
+    public static func exportScale(source: CGSize, shortSide: Int) -> Double {
+        let side = min(source.width, source.height)
+        guard shortSide > 0, side > 0 else { return 1 }
+        return min(1, Double(shortSide) / Double(side))
+    }
+
+    /// Presets strictly smaller than the source, as (title, shortSide, output size) — the source itself is "Original".
+    public static func exportOptions(for source: CGSize) -> [(title: String, shortSide: Int, size: (width: Int, height: Int))] {
+        let original = evenPixelSize(points: source, scale: 1)
+        var out: [(title: String, shortSide: Int, size: (width: Int, height: Int))] = [("Original", 0, original)]
+        for p in exportPresets where CGFloat(p.shortSide) < min(source.width, source.height) {
+            out.append((p.title, p.shortSide, evenPixelSize(points: source, scale: CGFloat(exportScale(source: source, shortSide: p.shortSide)))))
+        }
+        return out
     }
 
     // MARK: Encoding
@@ -97,6 +153,20 @@ public enum RecordingMath {
         return out
     }
 
+    /// Index of the frame showing at `time` for frames lasting `delays` (clamped to the last frame).
+    public static func frameIndex(at time: Double, delays: [Double]) -> Int {
+        guard !delays.isEmpty else { return 0 }
+        var t = 0.0
+        for (i, d) in delays.enumerated() {
+            t += d
+            if time < t - 1e-9 { return i }
+        }
+        return delays.count - 1
+    }
+
+    /// GIF delay field value (centiseconds, ≥ 2).
+    public static func gifDelayCentiseconds(_ seconds: Double) -> Int { max(2, Int((seconds * 100).rounded())) }
+
     // MARK: Keystrokes
 
     /// "⌃⌥⇧⌘K" style label; modifiers in the macOS menu order.
@@ -153,5 +223,46 @@ public struct RecordingClock: Sendable {
 
     public func elapsed(at date: Date = Date()) -> TimeInterval {
         accumulated + (runningSince.map { date.timeIntervalSince($0) } ?? 0)
+    }
+}
+
+
+/// Pause bookkeeping on the capture clock. Samples are kept or dropped by their own timestamp (not by
+/// arrival time), so frames and audio buffers that were captured before Pause but delivered after it still
+/// land in the file, and nothing captured while paused leaks in after Resume.
+public struct PauseTimeline: Sendable {
+    private var intervals: [CMTimeRange] = []
+    private var openStart: CMTime?
+
+    public init() {}
+
+    public var isPaused: Bool { openStart != nil }
+
+    public mutating func pause(at t: CMTime) {
+        guard openStart == nil else { return }
+        openStart = t
+    }
+
+    public mutating func resume(at t: CMTime) {
+        guard let s = openStart else { return }
+        openStart = nil
+        if t > s { intervals.append(CMTimeRange(start: s, end: t)) }
+    }
+
+    /// Output timestamp for capture time `t`, or nil when `t` falls inside a pause.
+    public func adjusted(_ t: CMTime) -> CMTime? {
+        if let s = openStart, t >= s { return nil }
+        var offset = CMTime.zero
+        for r in intervals {
+            if t >= r.end { offset = offset + r.duration } else if t >= r.start { return nil }
+        }
+        return t - offset
+    }
+
+    /// Output end time when recording stops at capture time `t` (a paused recording ends where the pause began).
+    public func endTime(stoppedAt t: CMTime) -> CMTime {
+        let stop = openStart.map { min($0, t) } ?? t
+        let offset = intervals.filter { $0.end <= stop }.reduce(CMTime.zero) { $0 + $1.duration }
+        return stop - offset
     }
 }

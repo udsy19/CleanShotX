@@ -8,25 +8,21 @@ struct WallpaperPane: View {
     @Default(.customWallpaperPath) private var customPath
     @Default(.wallpaperColor) private var color
     @Default(.updateWallpaperOnSpaceChange) private var updateOnSpaceChange
-    @State private var iconsHidden = false
+    @StateObject private var icons = DesktopIconsModel()
 
     var body: some View {
         PaneForm(pane: .wallpaper) {
             Section {
                 WallpaperPreview(source: source, customPath: customPath, color: color)
                     .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-            } footer: {
-                HelpText("This background replaces the desktop while desktop icons are hidden, and is used behind window screenshots set to “Desktop wallpaper”.")
-            }
-
-            Section("Background") {
-                Picker("Source", selection: $source) {
+                Picker(selection: sourceBinding) {
                     Text("Desktop wallpaper").tag(WallpaperSource.desktop)
                     Text("Custom image").tag(WallpaperSource.custom)
                     Text("Plain color").tag(WallpaperSource.color)
+                } label: {
+                    Text("Wallpaper")
+                    Text("Set a custom wallpaper used to hide desktop icons and as the background behind window screenshots.")
                 }
-                .pickerStyle(.segmented)
 
                 switch source {
                 case .desktop:
@@ -36,8 +32,8 @@ struct WallpaperPane: View {
                         HStack {
                             Text(customPath.isEmpty ? "No image chosen" : (customPath as NSString).lastPathComponent)
                                 .lineLimit(1).truncationMode(.middle)
-                                .foregroundStyle(customPath.isEmpty ? .secondary : .primary)
-                                .help(customPath)
+                                .foregroundStyle(customImageMissing ? .red : customPath.isEmpty ? .secondary : .primary)
+                                .help(customImageMissing ? "The file no longer exists: \(customPath)" : customPath)
                             Button("Choose…") {
                                 if let url = Panels.chooseImage(title: "Choose Wallpaper") { customPath = url.path }
                             }
@@ -48,25 +44,74 @@ struct WallpaperPane: View {
                         }
                     }
                 case .color:
-                    ColorPicker("Color", selection: $color.color, supportsOpacity: false)
+                    ColorPicker("Color", selection: colorBinding, supportsOpacity: false)
                 }
-            }
+            } header: { Text("Desktop") }
 
             Section {
                 LabeledContent {
-                    Button(iconsHidden ? "Show Desktop Icons" : "Hide Desktop Icons") {
-                        guard let capture = Services.capture else { return }
-                        capture.setDesktopIconsHidden(!capture.desktopIconsHidden)
-                        iconsHidden = capture.desktopIconsHidden
-                    }
-                    .disabled(Services.capture == nil)
+                    Button(icons.hidden ? "Show Desktop Icons" : "Hide Desktop Icons") { icons.toggle() }
+                        .disabled(!icons.available)
                 } label: {
                     Text("Desktop icons")
-                    Text(iconsHidden ? "Icons are hidden behind the wallpaper." : "Hide icons for a clean desktop before presenting or recording.")
+                    Text(icons.hidden ? "Icons are hidden behind the wallpaper." : "Hide icons for a clean desktop before presenting or recording.")
                 }
             }
         }
-        .onAppear { iconsHidden = Services.capture?.desktopIconsHidden ?? false }
+    }
+
+    private var customImageMissing: Bool {
+        !customPath.isEmpty && !FileManager.default.fileExists(atPath: (customPath as NSString).expandingTildeInPath)
+    }
+
+    /// Window screenshots set to "With wallpaper" follow the wallpaper chosen here.
+    private var sourceBinding: Binding<WallpaperSource> {
+        Binding(get: { source }, set: { source = $0; WindowBackgroundMapping.syncAfterWallpaperChange() })
+    }
+
+    private var colorBinding: Binding<Color> {
+        Binding(get: { color.swiftUIColor }, set: {
+            color = RGBAColor($0)
+            WindowBackgroundMapping.syncAfterWallpaperChange()
+        })
+    }
+}
+
+/// Mirrors `Services.capture.desktopIconsHidden`, which can also change from the menu bar, a shortcut or the URL
+/// scheme while Settings is open; re-read on activation and periodically while visible.
+@MainActor
+private final class DesktopIconsModel: ObservableObject {
+    @Published private(set) var hidden = false
+    private var timer: Timer?
+    private var activation: NSObjectProtocol?
+
+    var available: Bool { Services.capture != nil }
+
+    init() {
+        refresh()
+        activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                                            object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+    }
+
+    deinit {
+        if let activation { NotificationCenter.default.removeObserver(activation) }
+        timer?.invalidate()
+    }
+
+    func refresh() {
+        let now = Services.capture?.desktopIconsHidden ?? false
+        if now != hidden { hidden = now }
+    }
+
+    func toggle() {
+        guard let capture = Services.capture else { return }
+        capture.setDesktopIconsHidden(!capture.desktopIconsHidden)
+        refresh()
     }
 }
 
@@ -75,6 +120,8 @@ private struct WallpaperPreview: View {
     let customPath: String
     let color: RGBAColor
     @State private var image: NSImage?
+    /// Bumped when the desktop picture may have changed (Space switch, app activation).
+    @State private var desktopRevision = 0
 
     var body: some View {
         ZStack {
@@ -88,13 +135,20 @@ private struct WallpaperPreview: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
         .shadow(radius: 3, y: 1)
         .padding(.vertical, 4)
-        .task(id: "\(source.rawValue)|\(customPath)") { image = await Self.thumbnail(url: sourceURL) }
+        .accessibilityLabel("Wallpaper preview")
+        .task(id: "\(source.rawValue)|\(customPath)|\(desktopRevision)") { image = await Self.thumbnail(url: sourceURL) }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)) { _ in
+            if source == .desktop { desktopRevision += 1 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if source == .desktop { desktopRevision += 1 }
+        }
     }
 
     private var sourceURL: URL? {
         switch source {
         case .color: return nil
-        case .custom: return customPath.isEmpty ? nil : URL(fileURLWithPath: customPath)
+        case .custom: return customPath.isEmpty ? nil : URL(fileURLWithPath: (customPath as NSString).expandingTildeInPath)
         case .desktop: return NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0) }
         }
     }

@@ -211,8 +211,22 @@ public enum LaneMath {
 }
 
 public extension ZoomSegment {
-    /// A copy with a fresh id (used by split).
+    /// A copy with a fresh id (used by split / duplicate).
     func duplicated() -> ZoomSegment { ZoomSegment(start: start, end: end, level: level, mode: mode, focus: focus) }
+}
+
+public extension LaneMath {
+    /// A copy of segment `id` placed right after it (shortened to the free space). Returns the copy's id.
+    @discardableResult
+    static func duplicate(_ id: UUID, in segments: inout [ZoomSegment], duration: Double) -> UUID? {
+        guard let src = segments.first(where: { $0.id == id }),
+              let (s, e) = place(start: src.end, end: src.end + src.duration, in: segments, duration: duration) else { return nil }
+        var copy = src.duplicated()
+        copy.start = s; copy.end = e
+        segments.append(copy)
+        segments.sort { $0.start < $1.start }
+        return copy.id
+    }
 }
 
 public extension Array where Element == ZoomSegment {
@@ -228,5 +242,11 @@ public enum TimeFormat {
         let m = total / 60, s = total % 60
         if tenths { return String(format: "%d:%02d.%d", m, s, Int((t - Double(total)) * 10) % 10) }
         return String(format: "%d:%02d", m, s)
+    }
+
+    /// "00:08" — the transport and ruler style (hours roll into minutes).
+    public static func clock(_ t: Double) -> String {
+        let total = Int(max(0, t).rounded(.down))
+        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }

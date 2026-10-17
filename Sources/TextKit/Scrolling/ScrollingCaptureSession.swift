@@ -6,6 +6,8 @@ import ShotcraftCore
     private enum State { case ready, capturing, finishing, ended }
 
     static let maxLength = 30_000
+    private static let slowDownText = "Please slow down..."
+    private static let pausedText = "Paused — scroll down to continue"
 
     private let area: CGRect
     private let screen: NSScreen
@@ -18,16 +20,14 @@ import ShotcraftCore
     private var captureInFlight = false
     private var captureErrors = 0
     private var hasMatched = false
+    private var limitReached = false
     private var frameTimer: Timer?
+    private var autoScrollTask: Task<Void, Never>?
+    private var finishTask: Task<Void, Never>?
     private var monitors: [Any] = []
 
-    // Auto-scroll
-    private var autoScrolling = false
-    private var autoStep: CGFloat = 0
-    private var unchangedCount = 0
-
     // Windows
-    private let frameWindow: NSWindow
+    private let frameWindow = OverlayPanel(clickThrough: true)
     private let frameView = AreaFrameView()
     private let controls = ScrollingControls()
     private let preview = PreviewPanel()
@@ -38,7 +38,6 @@ import ShotcraftCore
         self.screen = screen
         self.options = options
         self.onEnd = onEnd
-        frameWindow = ScrollingPanel(contentRect: screen.frame, clickThrough: true)
         frameWindow.level = .floating
         frameView.area = self.area.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY)
         frameWindow.contentView = frameView
@@ -53,34 +52,35 @@ import ShotcraftCore
         controls.onStart = { [weak self] in self?.startCapturing() }
         controls.onDone = { [weak self] in self?.finish() }
         controls.onCancel = { [weak self] in self?.cancel() }
-        controls.onAutoScroll = { [weak self] on in self?.setAutoScroll(on) }
-        controls.onOrientation = { [weak self] _ in self?.updateGuidance() }
+        controls.onAutoScroll = { [weak self] axis, on in self?.setAutoScroll(on, axis: axis) }
         NSApp.activate(ignoringOtherApps: true)
-        controls.place(below: area, on: screen)
+        controls.place(in: area, on: screen)
         installKeyMonitors()
     }
 
-    func cancel() {
-        guard state != .ended else { return }
-        end()
-    }
+    /// Esc / Cancel: works in every state, including while the result is being rendered.
+    func cancel() { end() }
 
+    /// Tears everything down exactly once; safe to call from any state.
     private func end() {
+        guard state != .ended else { return }
         state = .ended
-        frameTimer?.invalidate(); frameTimer = nil
-        autoScrolling = false
+        stopFrameTimer()
+        autoScrollTask?.cancel(); autoScrollTask = nil
+        finishTask?.cancel(); finishTask = nil
         for m in monitors { NSEvent.removeMonitor(m) }
         monitors.removeAll()
         controls.close()
-        preview.panel.orderOut(nil)
+        preview.hide()
         hint.hide()
         frameWindow.orderOut(nil)
+        engine = nil   // releases the stitched strips
         onEnd()
     }
 
     private func installKeyMonitors() {
         let handle: (NSEvent) -> Bool = { [weak self] event in
-            guard let self else { return false }
+            guard let self, self.state != .ended else { return false }
             switch event.keyCode {
             case 53: self.cancel(); return true                       // Esc
             case 36, 76:                                               // Return / Enter
@@ -90,7 +90,7 @@ import ShotcraftCore
             }
         }
         if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { handle($0) ? nil : $0 }) { monitors.append(local) }
-        // Works only with Accessibility permission; lets Esc cancel while another app is frontmost.
+        // Delivered only with Accessibility permission; lets Esc cancel while another app is frontmost.
         if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { e in
             if e.keyCode == 53 { MainActor.assumeIsolated { _ = handle(e) } }
         }) { monitors.append(global) }
@@ -98,34 +98,37 @@ import ShotcraftCore
 
     // MARK: Capturing
 
-    private func startCapturing(auto: Bool = false) {
+    private func startCapturing(autoScroll axis: ScrollAxis? = nil) {
         guard state == .ready else { return }
         state = .capturing
-        let choice = controls.orientation
-        engine = ScrollEngine(axis: choice.axis, maxLength: Self.maxLength)
-        if let axis = choice.axis { detectedAxis = axis; controls.setDetectedAxis(axis) }
+        engine = ScrollEngine(maxLength: Self.maxLength)
         controls.setCapturing()
-        controls.setCounter(frames: 0)
-        frameView.isActive = true
-        preview.place(around: area, on: screen, axis: detectedAxis ?? .vertical, avoiding: controls.panel.frame)
+        updateGuidance()
         Task { @MainActor in
             await self.captureFrame()
             guard self.state == .capturing else { return }
-            if auto { self.setAutoScroll(true) } else { self.startFrameTimer() }
+            if let axis { self.setAutoScroll(true, axis: axis) } else { self.startFrameTimer() }
         }
-        updateGuidance()
     }
 
     private func startFrameTimer() {
-        frameTimer?.invalidate()
-        frameTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        stopFrameTimer()
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.state == .capturing, !self.autoScrolling else { return }
+                guard let self, self.state == .capturing, self.autoScrollTask == nil else { return }
                 self.updateGuidance()
                 guard !self.captureInFlight else { return }
                 Task { @MainActor in await self.captureFrame() }
             }
         }
+        // `.common` keeps grabbing while the help popover or a menu is tracking.
+        RunLoop.main.add(timer, forMode: .common)
+        frameTimer = timer
+    }
+
+    private func stopFrameTimer() {
+        frameTimer?.invalidate()
+        frameTimer = nil
     }
 
     /// Grabs the area (our windows are excluded) and runs it through the stitcher off the main thread.
@@ -146,6 +149,7 @@ import ShotcraftCore
             }
             return nil
         }
+        guard state != .ended else { return nil }
         let update = await withCheckedContinuation { (cont: CheckedContinuation<ScrollUpdate, Never>) in
             engine.queue.async { cont.resume(returning: engine.process(image)) }
         }
@@ -157,43 +161,38 @@ import ShotcraftCore
         if let axis = u.axis, axis != detectedAxis {
             detectedAxis = axis
             controls.setDetectedAxis(axis)
-            preview.place(around: area, on: screen, axis: axis, avoiding: controls.panel.frame)
         }
-        controls.setCounter(frames: u.frames)
-        preview.update(u)
+        preview.update(u, area: area, screen: screen)
         switch u.event {
         case .appended:
             hasMatched = true
-            hint.hide("Please slow down...")
+            hint.hide(Self.slowDownText)
             hint.hide(Self.pausedText)
-            updateGuidance()
         case .noOverlap:
-            hint.show("Please slow down...", symbol: "tortoise.fill", style: .warning, duration: 1.5, shake: true)
+            hint.show(Self.slowDownText, symbol: "tortoise.fill", style: .warning, duration: 1.5, shake: true)
         case .reversed:
-            if hint.currentText != "Please slow down..." {
+            if hint.currentText != Self.slowDownText {
                 hint.show(Self.pausedText, symbol: "pause.circle.fill", style: .warning, duration: 1.5)
             }
         case .limitReached:
-            frameTimer?.invalidate(); frameTimer = nil
-            autoScrolling = false
-            controls.setAutoScroll(false)
+            limitReached = true
+            stopFrameTimer()
+            stopAutoScroll()
             hint.show("Screenshot is very large", symbol: "exclamationmark.triangle.fill", style: .warning)
         case .started, .identical:
             break
         }
     }
 
-    private static var pausedText: String { "Paused — scroll forward to continue" }
-
     /// Persistent guidance until the first movement is stitched.
     private func updateGuidance() {
-        guard state == .capturing, !hasMatched, !autoScrolling else { return }
-        if let t = hint.currentText, t == "Please slow down..." || t == Self.pausedText { return }
+        guard state == .capturing, !hasMatched, autoScrollTask == nil else { return }
+        if let t = hint.currentText, t == Self.slowDownText || t == Self.pausedText { return }
         if !NSMouseInRect(NSEvent.mouseLocation, area, false) {
             hint.show("Move cursor here to start scrolling", symbol: "cursorarrow.motionlines")
             return
         }
-        switch detectedAxis ?? controls.orientation.axis {
+        switch detectedAxis {
         case .vertical: hint.show("Slowly scroll down the content", symbol: "arrow.down")
         case .horizontal: hint.show("Slowly scroll right", symbol: "arrow.right")
         case nil: hint.show("Scroll Vertically or Horizontally", symbol: "arrow.up.and.down.and.arrow.left.and.right")
@@ -202,64 +201,102 @@ import ShotcraftCore
 
     // MARK: Auto-scroll
 
-    private func setAutoScroll(_ on: Bool) {
-        guard on else { autoScrolling = false; controls.setAutoScroll(false); if state == .capturing { startFrameTimer() }; return }
+    private func setAutoScroll(_ on: Bool, axis requested: ScrollAxis) {
+        guard on else {
+            stopAutoScroll()
+            if state == .capturing, !limitReached { startFrameTimer() }
+            return
+        }
+        // Synthetic scroll events are silently dropped without Accessibility permission.
         guard Permissions.hasAccessibility else {
             controls.setAutoScroll(false)
             Permissions.requestAccessibility()
             hint.show("Auto-Scroll needs Accessibility permission", symbol: "lock.shield", style: .warning, duration: 3)
             return
         }
-        if state == .ready { startCapturing(auto: true); return }
-        guard state == .capturing, !autoScrolling else { return }
-        let axis = detectedAxis ?? controls.orientation.axis ?? .vertical
+        if state == .ready { startCapturing(autoScroll: requested); return }
+        guard state == .capturing, autoScrollTask == nil, !limitReached, let engine else { controls.setAutoScroll(false); return }
+        let axis = detectedAxis ?? requested
         if detectedAxis == nil {
             detectedAxis = axis
             controls.setDetectedAxis(axis)
-            preview.place(around: area, on: screen, axis: axis, avoiding: controls.panel.frame)
-            if let engine { engine.queue.async { engine.lock(axis) } }
+            engine.queue.async { engine.lock(axis) }
         }
-        frameTimer?.invalidate(); frameTimer = nil
-        autoScrolling = true
+        guard let point = scrollPoint() else {
+            hint.show("Select a larger area to use Auto-Scroll", symbol: "exclamationmark.triangle.fill", style: .warning, duration: 2)
+            controls.setAutoScroll(false)
+            return
+        }
+        stopFrameTimer()
         controls.setAutoScroll(true)
         hint.hide()
-        autoStep = min(400, (axis == .vertical ? area.height : area.width) * 0.35)
-        unchangedCount = 0
-        // Synthetic scroll events go to the window under the cursor: park it in the area.
-        CGWarpMouseCursorPosition(ScreenGeometry.cgPoint(fromCocoa: CGPoint(x: area.midX, y: area.midY)))
+        // Scroll events go to the window under the cursor: park it in the area, clear of our controls.
+        CGWarpMouseCursorPosition(ScreenGeometry.cgPoint(fromCocoa: point))
         CGAssociateMouseAndMouseCursorPosition(1)
-        autoScrollTick()
+        let initialStep = min(400, (axis == .vertical ? area.height : area.width) * 0.35)
+        autoScrollTask = Task { @MainActor [weak self] in
+            await self?.runAutoScroll(axis: axis, step: initialStep, at: point)
+        }
     }
 
-    private func autoScrollTick() {
-        guard autoScrolling, state == .capturing, let axis = detectedAxis else { return }
-        postScroll(by: autoStep, axis: axis)
-        Task { @MainActor in
+    private func stopAutoScroll() {
+        autoScrollTask?.cancel()
+        autoScrollTask = nil
+        controls.setAutoScroll(false)
+    }
+
+    /// A point inside the area that none of our control panels cover.
+    private func scrollPoint() -> CGPoint? {
+        let covered = controls.coveredFrames
+        let candidates = [CGPoint(x: area.midX, y: area.midY),
+                          CGPoint(x: area.midX, y: area.maxY - area.height * 0.25),
+                          CGPoint(x: area.minX + area.width * 0.25, y: area.midY)]
+        return candidates.first { p in !covered.contains { $0.insetBy(dx: -4, dy: -4).contains(p) } }
+    }
+
+    private func runAutoScroll(axis: ScrollAxis, step initialStep: CGFloat, at point: CGPoint) async {
+        var step = initialStep
+        var unchanged = 0
+        var first = true
+        func running() -> Bool { !Task.isCancelled && state == .capturing }
+        while running() {
+            // The user took the cursor away: scroll events would land elsewhere.
+            if !first, !NSMouseInRect(NSEvent.mouseLocation, area, false) {
+                stopAutoScroll()
+                startFrameTimer()
+                hint.show("Auto-Scroll stopped — the cursor left the area", symbol: "cursorarrow.motionlines", duration: 2)
+                return
+            }
+            first = false
+            postScroll(by: step, axis: axis, at: point)
             try? await Task.sleep(nanoseconds: 350_000_000)   // let smooth scrolling settle
-            guard self.autoScrolling, self.state == .capturing else { return }
-            guard let update = await self.captureFrame() else { self.autoScrollTick(); return }
+            var update: ScrollUpdate?
+            while running(), update == nil {
+                update = await captureFrame()
+                if update == nil { try? await Task.sleep(nanoseconds: 50_000_000) }
+            }
+            guard running(), let update else { return }
             switch update.event {
             case .appended:
-                self.unchangedCount = 0
+                unchanged = 0
             case .identical, .started:
-                self.unchangedCount += 1
-                if self.unchangedCount >= 3 { self.finish(); return }   // reached the end of the content
+                unchanged += 1
+                if unchanged >= 3 { autoScrollTask = nil; finish(); return }   // reached the end of the content
             case .noOverlap:
-                self.postScroll(by: -self.autoStep, axis: axis)
-                self.autoStep = max(24, self.autoStep / 2)
+                postScroll(by: -step, axis: axis, at: point)
+                step = max(24, step / 2)
                 try? await Task.sleep(nanoseconds: 300_000_000)
             case .reversed:
                 break
             case .limitReached:
                 return
             }
-            self.autoScrollTick()
         }
     }
 
-    /// Posts pixel-unit scroll-wheel events at the area centre. Positive = forward (down / right).
-    private func postScroll(by points: CGFloat, axis: ScrollAxis) {
-        let location = ScreenGeometry.cgPoint(fromCocoa: CGPoint(x: area.midX, y: area.midY))
+    /// Posts pixel-unit scroll-wheel events at `point`. Positive = forward (down / right).
+    private func postScroll(by points: CGFloat, axis: ScrollAxis, at point: CGPoint) {
+        let location = ScreenGeometry.cgPoint(fromCocoa: point)
         var remaining = Int(points.rounded())
         while remaining != 0 {
             let chunk = remaining > 0 ? min(remaining, 60) : max(remaining, -60)
@@ -278,15 +315,16 @@ import ShotcraftCore
     func finish() {
         guard state == .capturing else { return }
         state = .finishing
-        frameTimer?.invalidate(); frameTimer = nil
-        autoScrolling = false
+        stopFrameTimer()
+        autoScrollTask?.cancel(); autoScrollTask = nil
         hint.hide()
-        Task { @MainActor in
-            while self.captureInFlight { try? await Task.sleep(nanoseconds: 20_000_000) }
-            guard let engine = self.engine else { self.end(); return }
+        finishTask = Task { @MainActor in
+            while self.captureInFlight, self.state == .finishing { try? await Task.sleep(nanoseconds: 20_000_000) }
+            guard self.state == .finishing, let engine = self.engine else { return }
             let hasFrames = await withCheckedContinuation { c in engine.queue.async { c.resume(returning: engine.hasFrames) } }
             if !hasFrames { await self.captureFrame() }
             let image = await withCheckedContinuation { c in engine.queue.async { c.resume(returning: engine.render()) } }
+            guard self.state == .finishing else { return }   // cancelled while rendering
             let scale = self.screen.backingScaleFactor
             let actions = self.options.actions
             self.end()

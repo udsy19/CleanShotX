@@ -9,20 +9,21 @@ final class ExportPanelModel: ObservableObject {
     let base: CGSize
     let duration: Double
     let hasAudio: Bool
-    let audioMuted: Bool
+    /// "Export & Upload": the button reads "Export & Upload".
+    let upload: Bool
     var onExport: (ExportSettings) -> Void = { _ in }
     var onCancel: () -> Void = {}
 
-    init(base: CGSize, duration: Double, hasAudio: Bool, audioMuted: Bool) {
-        self.base = base; self.duration = duration; self.hasAudio = hasAudio; self.audioMuted = audioMuted
+    init(base: CGSize, duration: Double, hasAudio: Bool, upload: Bool) {
+        self.base = base; self.duration = duration; self.hasAudio = hasAudio; self.upload = upload
         var s = ExportSettings()
         s.format = ExportSettings.Format(rawValue: Defaults[.studioExportFormat]) ?? .h264
-        s.resolution = ExportSettings.Resolution(rawValue: Defaults[.studioExportResolution]) ?? .original
+        let res = ExportSettings.Resolution(rawValue: Defaults[.studioExportResolution]) ?? .original
+        s.resolution = ExportSettings.Resolution.options(for: base).contains(res) ? res : .original
         s.fps = Defaults[.studioExportFPS] == 30 ? 30 : 60
-        s.quality = Defaults[.studioExportQuality]
-        s.optimizedForSharing = Defaults[.studioExportOptimized]
+        s.quality = min(max(Defaults[.studioExportQuality], 0), 1)
         s.gifFPS = Defaults[.gifFPS]
-        s.includeAudio = hasAudio && !audioMuted
+        s.includeAudio = hasAudio
         settings = s
     }
 
@@ -31,12 +32,16 @@ final class ExportPanelModel: ObservableObject {
         Defaults[.studioExportResolution] = settings.resolution.rawValue
         Defaults[.studioExportFPS] = settings.fps
         Defaults[.studioExportQuality] = settings.quality
-        Defaults[.studioExportOptimized] = settings.optimizedForSharing
     }
 
-    var outputSize: CGSize { settings.outputSize(base: base) }
+    func title(for r: ExportSettings.Resolution) -> String {
+        var s = settings; s.resolution = r
+        let size = s.outputSize(base: base)
+        return "\(r.title) (\(Int(size.width)) × \(Int(size.height)))"
+    }
+
     var estimate: String {
-        let bytes = EncoderEstimate.estimatedBytes(settings: settings, base: base, duration: duration, hasAudio: hasAudio && !audioMuted)
+        let bytes = EncoderEstimate.estimatedBytes(settings: settings, base: base, duration: duration, hasAudio: hasAudio)
         return "~" + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
@@ -46,54 +51,71 @@ struct ExportPanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Export").font(.title3.weight(.semibold))
-            Form {
-                Picker("Format", selection: $model.settings.format) {
-                    ForEach(ExportSettings.Format.allCases, id: \.self) { Text($0.title).tag($0) }
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    label("Format")
+                    Picker("", selection: $model.settings.format) {
+                        ForEach(ExportSettings.Format.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
                 }
-                Picker("Resolution", selection: $model.settings.resolution) {
-                    ForEach(ExportSettings.Resolution.allCases, id: \.self) { r in
-                        Text(r == .original ? "Original (\(Int(model.base.width))×\(Int(model.base.height)))" : r.title).tag(r)
+                GridRow {
+                    label("Resolution")
+                    Picker("", selection: $model.settings.resolution) {
+                        ForEach(ExportSettings.Resolution.options(for: model.base), id: \.self) { Text(model.title(for: $0)).tag($0) }
                     }
+                    .labelsHidden()
                 }
-                if model.settings.format == .gif {
-                    Picker("Frame rate", selection: $model.settings.gifFPS) {
-                        ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0) fps").tag($0) }
-                    }
-                } else {
-                    Picker("Frame rate", selection: $model.settings.fps) {
-                        Text("30 fps").tag(30); Text("60 fps").tag(60)
-                    }
-                    .disabled(model.settings.optimizedForSharing)
-                    LabeledContent("Quality") {
-                        Slider(value: $model.settings.quality, in: 0...1) { EmptyView() } minimumValueLabel: {
-                            Text("Smaller").font(.caption)
-                        } maximumValueLabel: { Text("Better").font(.caption) }
-                        .disabled(model.settings.optimizedForSharing)
-                    }
-                    Toggle("Optimized for sharing", isOn: $model.settings.optimizedForSharing)
-                        .help("Balances quality and loading time: H.264, up to 1080p and 30 fps.")
-                    Toggle("Include audio", isOn: $model.settings.includeAudio)
-                        .disabled(!model.hasAudio || model.audioMuted)
-                    if !model.hasAudio {
-                        Text("There is no audio in your video.").font(.caption).foregroundStyle(.secondary)
-                    } else if model.audioMuted {
-                        Text("Audio is muted in your project.").font(.caption).foregroundStyle(.secondary)
+                GridRow {
+                    label("Frame rate")
+                    if model.settings.format == .gif {
+                        Picker("", selection: $model.settings.gifFPS) {
+                            ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0) fps").tag($0) }
+                        }
+                        .labelsHidden()
+                    } else {
+                        Picker("", selection: $model.settings.fps) { Text("30 fps").tag(30); Text("60 fps").tag(60) }
+                            .labelsHidden()
                     }
                 }
-                LabeledContent("Output size") { Text("\(Int(model.outputSize.width)) × \(Int(model.outputSize.height))").monospacedDigit() }
-                LabeledContent("Estimated file size") { Text(model.estimate).monospacedDigit() }
+                if model.settings.format != .gif {
+                    GridRow {
+                        label("Quality")
+                        HStack(spacing: 8) {
+                            Slider(value: $model.settings.quality, in: 0...1).controlSize(.small)
+                            Text(ExportSettings.qualityTitle(model.settings.quality))
+                                .foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
+                        }
+                    }
+                    GridRow {
+                        label("Audio")
+                        Toggle("", isOn: $model.settings.includeAudio)
+                            .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                            .disabled(!model.hasAudio)
+                            .help(model.hasAudio ? "Include the project's audio" : "This video has no audio.")
+                    }
+                }
             }
-            .formStyle(.grouped)
-            .scrollDisabled(true)
+            Divider()
+            HStack {
+                Text("Estimated file size").foregroundStyle(.secondary)
+                Spacer()
+                Text(model.estimate).monospacedDigit()
+            }
             HStack {
                 Spacer()
                 Button("Cancel") { model.onCancel() }.keyboardShortcut(.cancelAction)
-                Button("Export") { model.persist(); model.onExport(model.settings) }.keyboardShortcut(.defaultAction)
+                Button(model.upload ? "Export & Upload" : "Export") { model.persist(); model.onExport(model.settings) }
+                    .keyboardShortcut(.defaultAction)
             }
         }
+        .font(.system(size: 12))
         .padding(18)
-        .frame(width: 440)
+        .frame(width: 340)
+    }
+
+    private func label(_ s: String) -> some View {
+        Text(s).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
     }
 }
 
@@ -102,36 +124,35 @@ struct ExportPanelView: View {
 @MainActor
 final class RenderProgressModel: ObservableObject {
     @Published var progress = 0.0
-    @Published var detail = "Preparing…"
+    @Published var remaining = ""
     let started = Date()
     var onCancel: () -> Void = {}
 
     func update(_ p: Double) {
         progress = p
         let elapsed = Date().timeIntervalSince(started)
-        if p > 0.03 {
-            let remaining = elapsed / p * (1 - p)
-            detail = "\(Int(p * 100))% — about \(TimeFormat.string(remaining, tenths: false)) remaining"
-        } else {
-            detail = "\(Int(p * 100))%"
-        }
+        guard p > 0.03, elapsed > 1 else { remaining = ""; return }
+        let left = elapsed / p * (1 - p)
+        remaining = left < 60 ? "~\(Int(left.rounded(.up)))s remaining" : "~\(TimeFormat.string(left, tenths: false)) remaining"
     }
 }
 
 struct RenderProgressView: View {
     @ObservedObject var model: RenderProgressModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Exporting video").font(.headline)
-            ProgressView(value: model.progress).progressViewStyle(.linear)
+        VStack(spacing: 10) {
+            Text("Exporting video...").font(.system(size: 13, weight: .semibold))
+            ProgressView(value: model.progress).progressViewStyle(.linear).controlSize(.small)
             HStack {
-                Text(model.detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                Text(model.remaining).foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel Processing…") { model.onCancel() }.keyboardShortcut(.cancelAction)
+                Text("\(Int(model.progress * 100))%").foregroundStyle(.secondary)
             }
+            .font(.system(size: 11).monospacedDigit())
+            Button("Cancel Export") { model.onCancel() }.keyboardShortcut(.cancelAction)
         }
         .padding(18)
-        .frame(width: 380)
+        .frame(width: 320)
     }
 }
 

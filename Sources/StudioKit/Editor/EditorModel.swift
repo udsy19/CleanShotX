@@ -8,6 +8,8 @@ import ShotcraftCore
 @MainActor
 final class EditorModel: ObservableObject {
     enum Selection: Equatable { case none, clip(UUID), zoom(UUID), camera(UUID) }
+    /// Timeline pointer tool: V = selection, B = cut (click a clip to split it there).
+    enum Tool { case selection, cut }
 
     private(set) var package: StudioPackage
     let events: StudioEvents
@@ -16,9 +18,8 @@ final class EditorModel: ObservableObject {
     /// Output-timeline seconds.
     @Published var playhead: Double = 0
     @Published var isPlaying = false
+    @Published var tool: Tool = .selection
     @Published private(set) var isEdited = false
-    @Published private(set) var canUndo = false
-    @Published private(set) var canRedo = false
     /// Set when the project was opened from autosave.json.
     let recovered: Bool
 
@@ -28,6 +29,9 @@ final class EditorModel: ObservableObject {
     private var coalesceTime = Date.distantPast
     private var savedProject: StudioProject
     private var autosaveWork: DispatchWorkItem?
+    /// Package writes (autosave, save, discard) are serialized here so a late autosave can't resurrect
+    /// autosave.json after a save or "Don't Save".
+    private static let io = DispatchQueue(label: "shotcraft.studio.project-io", qos: .utility)
 
     init(package: StudioPackage, project: StudioProject, events: StudioEvents, recovered: Bool) throws {
         self.package = package
@@ -88,8 +92,6 @@ final class EditorModel: ObservableObject {
     }
 
     private func afterChange() {
-        canUndo = historyIndex > 0
-        canRedo = historyIndex < history.count - 1
         isEdited = project != savedProject
         playhead = min(playhead, duration)
         validateSelection()
@@ -121,21 +123,33 @@ final class EditorModel: ObservableObject {
     // MARK: Saving
 
     func save() throws {
-        try package.write(project: project)
-        savedProject = project
+        cancelAutosave()
+        let pkg = package, p = project
+        try Self.io.sync { try pkg.write(project: p) }
+        savedProject = p
         isEdited = false
-        StudioStyleMemory.remember(project.style)
+        StudioStyleMemory.remember(p.style)
     }
 
+    /// "Don't Save": drops pending and written autosaves.
     func discardChanges() {
-        package.discardAutosave()
+        cancelAutosave()
+        let pkg = package
+        Self.io.sync { pkg.discardAutosave() }
+    }
+
+    private func cancelAutosave() {
+        autosaveWork?.cancel()
+        autosaveWork = nil
     }
 
     private func scheduleAutosave() {
-        autosaveWork?.cancel()
-        guard isEdited else { package.discardAutosave(); return }
-        let snapshot = project, pkg = package
-        let work = DispatchWorkItem { DispatchQueue.global(qos: .utility).async { pkg.autosave(project: snapshot) } }
+        cancelAutosave()
+        let pkg = package
+        guard isEdited else { Self.io.async { pkg.discardAutosave() }; return }
+        let snapshot = project
+        // The work item is cancelled on the main queue, so a save that runs first always wins.
+        let work = DispatchWorkItem { Self.io.async { pkg.autosave(project: snapshot) } }
         autosaveWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
     }
@@ -145,6 +159,8 @@ final class EditorModel: ObservableObject {
         let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: ".")
         guard !title.isEmpty, title != project.title else { return }
+        cancelAutosave()
+        Self.io.sync {}   // no write may land in the old location after the move
         let dest = AppPaths.uniqueURL(package.url.deletingLastPathComponent().appendingPathComponent(title).appendingPathExtension(StudioPackage.fileExtension))
         do {
             try FileManager.default.moveItem(at: package.url, to: dest)
@@ -154,7 +170,7 @@ final class EditorModel: ObservableObject {
             for i in history.indices { history[i].title = final }
             savedProject.title = final
             project.title = final
-            if isEdited { scheduleAutosave() } else { try? package.write(project: project) }
+            if isEdited { scheduleAutosave() } else { let pkg = package, p = project; Self.io.sync { try? pkg.write(project: p) } }
         } catch {
             Alerts.error("An error occurred while saving the project", error)
         }
@@ -162,9 +178,12 @@ final class EditorModel: ObservableObject {
 
     // MARK: Timeline commands
 
-    func splitClipAtPlayhead() {
+    func splitClipAtPlayhead() { splitClip(atOutput: playhead) }
+
+    /// Cut tool / ⌘B: splits the clip under output time `t`.
+    func splitClip(atOutput t: Double) {
         var tl = timeline
-        guard tl.split(atOutput: playhead) != nil else { NSSound.beep(); return }
+        guard tl.split(atOutput: t) != nil else { NSSound.beep(); return }
         update { $0.clips = tl.clips }
     }
 
@@ -218,6 +237,21 @@ final class EditorModel: ObservableObject {
         var zooms = project.zooms
         guard LaneMath.split(at: playheadSource, in: &zooms, makeCopy: { $0.duplicated() }) != nil else { NSSound.beep(); return }
         update { $0.zooms = zooms }
+    }
+
+    func duplicateZoom(_ id: UUID) {
+        var zooms = project.zooms
+        guard let copy = LaneMath.duplicate(id, in: &zooms, duration: project.recording.duration) else { NSSound.beep(); return }
+        update { $0.zooms = zooms }
+        selection = .zoom(copy)
+    }
+
+    func setZoom(_ id: UUID, level: Double? = nil, mode: ZoomMode? = nil) {
+        update { p in
+            guard let i = p.zooms.firstIndex(where: { $0.id == id }) else { return }
+            if let level { p.zooms[i].level = level }
+            if let mode { p.zooms[i].mode = mode }
+        }
     }
 
     func applyZoomLevelToAll() {

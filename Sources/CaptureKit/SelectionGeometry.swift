@@ -261,8 +261,9 @@ public enum SelectionGeometry {
 
     // MARK: Formatting
 
-    public static func dimensionString(_ size: CGSize) -> String {
-        "\(Int(size.width.rounded())) × \(Int(size.height.rounded()))"
+    /// "W × H" (size fields, menus) or "W x H" with `separator: " x "` (the selection badge).
+    public static func dimensionString(_ size: CGSize, separator: String = " × ") -> String {
+        "\(Int(size.width.rounded()))\(separator)\(Int(size.height.rounded()))"
     }
 
     /// "#RRGGBB" from 0…1 components.
@@ -300,15 +301,6 @@ public enum SelectionGeometry {
             r.origin.y = anchor.maxY + gap
             if r.maxY > bounds.maxY - 4 { r.origin.y = max(anchor.minY, bounds.minY) + gap }
         }
-        r.origin.x = min(max(r.minX, bounds.minX + 4), bounds.maxX - size.width - 4)
-        r.origin.y = min(max(r.minY, bounds.minY + 4), bounds.maxY - size.height - 4)
-        return r
-    }
-
-    /// Positions a control above `anchor`'s top-left corner, falling back to inside the top-left.
-    public static func placeAboveLeading(_ size: CGSize, anchor: CGRect, bounds: CGRect, gap: CGFloat = 8) -> CGRect {
-        var r = CGRect(x: anchor.minX, y: anchor.maxY + gap, width: size.width, height: size.height)
-        if r.maxY > bounds.maxY - 4 { r.origin.y = min(anchor.maxY, bounds.maxY) - gap - size.height }
         r.origin.x = min(max(r.minX, bounds.minX + 4), bounds.maxX - size.width - 4)
         r.origin.y = min(max(r.minY, bounds.minY + 4), bounds.maxY - size.height - 4)
         return r

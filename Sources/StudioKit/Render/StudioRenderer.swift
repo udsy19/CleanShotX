@@ -64,10 +64,8 @@ final class RenderScene: @unchecked Sendable {
         let short = min(canvas.width, canvas.height)
         let shrink = cam.shrinkOnZoom ? 1 - 0.3 * min(1, max(0, zoomScale - 1)) : 1
         let d = CGFloat(cam.size) * short * CGFloat(shrink)
-        let m = 0.035 * short
-        let x: CGFloat = (cam.position == .topLeft || cam.position == .bottomLeft) ? m : canvas.width - m - d
-        let y: CGFloat = (cam.position == .bottomLeft || cam.position == .bottomRight) ? m : canvas.height - m - d
-        let bubble = CGRect(x: x, y: y, width: d, height: d)
+        let bubble = CGRect(origin: cam.position.origin(of: CGSize(width: d, height: d), in: canvas, margin: 0.035 * short),
+                            size: CGSize(width: d, height: d))
         let r0: CGFloat = switch cam.shape {
         case .circle: d / 2
         case .rounded: d * 0.22
@@ -159,12 +157,12 @@ enum StudioRenderer {
         }
 
         // Keystrokes.
-        if style.keystrokes.show, let (text, alpha) = scene.keystrokes.label(at: t), alpha > 0.01,
-           let cg = Artwork.shared.label(text, fontSize: 30 * layout.unit * CGFloat(style.keystrokes.size)) {
+        let keys = style.keystrokes
+        if keys.show, let (text, alpha) = scene.keystrokes.label(at: t), alpha > 0.01,
+           let cg = Artwork.shared.label(text, fontSize: 28 * layout.unit * CGFloat(keys.size), light: keys.style == .light) {
             let img = CIImage(cgImage: cg)
-            let m = 0.06 * canvas.height
-            let y = style.keystrokes.position == .bottom ? m : canvas.height - m - img.extent.height
-            let placed = img.transformed(by: CGAffineTransform(translationX: ((canvas.width - img.extent.width) / 2).rounded(), y: y.rounded()))
+            let o = keys.position.origin(of: img.extent.size, in: canvas, margin: 0.06 * min(canvas.width, canvas.height))
+            let placed = img.transformed(by: CGAffineTransform(translationX: o.x.rounded(), y: o.y.rounded()))
             stage = withAlpha(placed, alpha).composited(over: stage)
         }
 
@@ -233,18 +231,26 @@ enum StudioRenderer {
         // Natural cursor ≈ 22pt tall on the recorded display.
         let base = 22 * CGFloat(scene.recordingScale) * layout.screenScale * zoomScale
 
+        // Click highlight: an outline ring around a solid dot, or a filled disc; grows 0.6→1 and fades.
         if cs.clickEffect == .ripple {
             let c = cs.rippleColor
+            let pt = base / 22   // one recorded point on the canvas
             for (p, progress) in scene.cursor.ripples(at: t) where (0...1).contains(p.x) && (0...1).contains(p.y) {
                 let center = layout.canvasPoint(p).applying(zoom)
-                let e = Easing.apply(.snappy, progress)
-                let r = base * CGFloat(0.35 + 1.15 * e) * CGFloat(max(0.8, cs.size * 0.8))
-                let fade = (1 - progress)
-                let outer = disc(center: center, radius: r, color: CIColor(red: c.r, green: c.g, blue: c.b, alpha: c.a * 0.9 * fade))
-                let inner = disc(center: center, radius: max(0, r - max(2, base * 0.12)), color: CIColor(red: 1, green: 1, blue: 1, alpha: 1))
-                let ring = outer.applyingFilter("CISourceOutCompositing", parameters: [kCIInputBackgroundImageKey: inner])
-                let fill = disc(center: center, radius: r, color: CIColor(red: c.r, green: c.g, blue: c.b, alpha: c.a * 0.22 * fade))
-                out = ring.composited(over: fill.composited(over: out))
+                let fade = 1 - Easing.smoothstep(progress)
+                let r = 18 * pt * CGFloat(0.6 + 0.4 * Easing.apply(.snappy, progress)) * CGFloat(max(0.8, cs.size / 1.5))
+                switch cs.clickStyle {
+                case .outline:
+                    let light = CIColor(red: c.r + (1 - c.r) * 0.45, green: c.g + (1 - c.g) * 0.45, blue: c.b + (1 - c.b) * 0.45,
+                                        alpha: 0.75 * fade)
+                    let outer = disc(center: center, radius: r, color: light)
+                    let inner = disc(center: center, radius: max(0, r - 3 * pt), color: CIColor(red: 1, green: 1, blue: 1, alpha: 1))
+                    let ring = outer.applyingFilter("CISourceOutCompositing", parameters: [kCIInputBackgroundImageKey: inner])
+                    let dot = disc(center: center, radius: 6 * pt, color: CIColor(red: c.r, green: c.g, blue: c.b, alpha: fade))
+                    out = dot.composited(over: ring.composited(over: out))
+                case .filled:
+                    out = disc(center: center, radius: r, color: CIColor(red: c.r, green: c.g, blue: c.b, alpha: 0.4 * fade)).composited(over: out)
+                }
             }
         }
 

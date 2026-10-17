@@ -44,6 +44,7 @@ func registerStudioKitTests() {
         check(g.rulerStep * g.pixelsPerSecond >= 70, "readable ruler step")
         check(TimelineGeometry.clampScale(1e9) == TimelineGeometry.maxScale, "scale clamp")
         check(TimeFormat.string(65.34) == "1:05.3" && TimeFormat.string(65.34, tenths: false) == "1:05", "time format")
+        check(TimeFormat.clock(8.9) == "00:08" && TimeFormat.clock(605) == "10:05", "transport clock format")
     }))
 
     SelfTest.cases.append(("Studio.LaneMath", {
@@ -63,6 +64,10 @@ func registerStudioKitTests() {
               "split zoom keeps properties")
         ys.applyLevelToAll(3)
         check(ys.allSatisfy { $0.level == 3 }, "apply level to all")
+        var ds = [ZoomSegment(start: 1, end: 3, level: 2), ZoomSegment(start: 4, end: 9, level: 2)]
+        let dup = LaneMath.duplicate(ds[0].id, in: &ds, duration: 10)
+        check(dup != nil && ds.count == 3 && near(ds[1].start, 3) && near(ds[1].end, 4), "duplicate fits the gap after the zoom")
+        check(LaneMath.duplicate(ds[2].id, in: &ds, duration: 9) == nil, "no room to duplicate at the end")
     }))
 
     SelfTest.cases.append(("Studio.Easing", {
@@ -229,10 +234,47 @@ func registerStudioKitTests() {
         check(high > low && low > 0, "quality increases size")
         s.format = .hevc
         check(EncoderEstimate.estimatedBytes(settings: s, base: base, duration: 60, hasAudio: true) < high, "HEVC is smaller")
-        s.format = .h264; s.optimizedForSharing = true; s.resolution = .uhd4k
-        check(s.outputSize(base: base).height <= 1080 && s.effectiveFPS <= 30, "optimized caps size and fps")
+        s.format = .gif; s.resolution = .original
+        check(s.outputSize(base: base).height <= 720 && s.effectiveFPS == s.gifFPS, "GIF caps size and uses the GIF frame rate")
         s = ExportSettings(); s.resolution = .original
         check(s.outputSize(base: CGSize(width: 6000, height: 3000)).width <= 4096, "H.264 size limit")
+        let opts = ExportSettings.Resolution.options(for: CGSize(width: 1920, height: 1080))
+        check(opts.first == .original && !opts.contains(.fhd1080) && !opts.contains(.uhd4k) && opts.contains(.p240), "no upscaling presets")
+        check(ExportSettings.qualityTitle(0.1) == "Very low" && ExportSettings.qualityTitle(0.9) == "High", "quality labels")
+    }))
+
+    SelfTest.cases.append(("Studio.StyleCompatibility", {
+        // A project.json style written before the 3×3 grids, click styles and per-source audio toggles existed.
+        let legacy = """
+        {"background":{"gradient":{"_0":2}},"padding":0.1,"cornerRadius":20,"shadow":0.5,"inset":0,"aspectRatio":"wide16x9",
+         "cursor":{"show":true,"size":2,"smoothing":0.6,"hideWhenIdle":false,"hideWhenTyping":false,"clickEffect":"ripple",
+                   "pressEffect":true,"style":"macOS","rippleColor":{"r":1,"g":1,"b":1,"a":0.9}},
+         "zoom":{"defaultLevel":2,"autoZoom":true,"followCursorByDefault":false,"animation":"smooth","easing":"smooth","motionBlur":0},
+         "camera":{"show":true,"position":"topLeft","size":0.24,"shape":"circle","shrinkOnZoom":true,"flip":true},
+         "keystrokes":{"show":true,"size":1,"position":"top","displayAll":false},
+         "audio":{"microphoneVolume":0.5,"systemVolume":1,"muted":true}}
+        """
+        let style = try? JSONDecoder().decode(StudioStyle.self, from: Data(legacy.utf8))
+        check(style != nil, "legacy style decodes")
+        if let style {
+            check(style.camera.position == .topLeft && style.keystrokes.position == .top, "old positions map onto the grid")
+            check(style.keystrokes.style == .dark && style.cursor.clickStyle == .outline, "new fields get defaults")
+            check(!style.audio.includeMicrophone && !style.audio.includeSystemAudio && near(style.audio.microphoneVolume, 0.5), "muted → excluded")
+            check(style.aspectRatio == .wide16x9 && style.background == .gradient(.sunrise), "unchanged fields survive")
+        }
+        let partial = try? JSONDecoder().decode(StudioStyle.self, from: Data(#"{"padding":0.2,"aspectRatio":"bogus"}"#.utf8))
+        check(partial.map { near($0.padding, 0.2) && $0.aspectRatio == .auto } ?? false, "unknown values fall back")
+        let g = GridPosition.bottomRight.origin(of: CGSize(width: 10, height: 10), in: CGSize(width: 100, height: 50), margin: 5)
+        check(g == CGPoint(x: 85, y: 5), "bottom-right origin (bottom-left space)")
+        let c = GridPosition.top.origin(of: CGSize(width: 10, height: 10), in: CGSize(width: 100, height: 50), margin: 5)
+        check(c == CGPoint(x: 45, y: 35), "top-centre origin")
+        check(ClickColor.nearest(RGBAColor(r: 0.05, g: 0.5, b: 0.98)) == .blue, "nearest named click colour")
+        var cur = CursorSettings(); cur.smoothing = CursorSettings.smoothSmoothing
+        check(cur.isSmoothMotion, "smooth motion preset")
+        var z = ZoomSettings(); z.setDynamic(true)
+        check(z.isDynamic && z.animation == .quick, "dynamic zoom preset")
+        z.setDynamic(false)
+        check(!z.isDynamic, "smooth zoom preset")
     }))
 
     SelfTest.cases.append(("Studio.RecordingClock", {

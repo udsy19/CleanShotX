@@ -24,7 +24,6 @@ final class PlayerController {
     private var refreshPending = false
     /// While true the periodic observer doesn't overwrite the model's playhead (user is scrubbing).
     var isScrubbing = false
-    var onReady: (() -> Void)?
     var onCanvasChange: ((CGSize) -> Void)?
 
     /// Preview frames are rendered at most this large.
@@ -62,11 +61,11 @@ final class PlayerController {
         player.replaceCurrentItem(with: nil)
     }
 
+    /// Loads (or, after the package was renamed/moved, reloads) the recording's tracks and builds the player item.
     func load() async throws {
         let m = try await ProjectMedia.load(package: model.package, recording: model.project.recording)
         media = m
         try rebuild()
-        onReady?()
     }
 
     /// Canvas size used for the live preview.

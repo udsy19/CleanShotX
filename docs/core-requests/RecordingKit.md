@@ -16,3 +16,8 @@ None of these block RecordingKit; each is implemented privately or degrades grac
    CaptureKit returns either the full screen frame or an empty rect in that case.
 
 4. **`Sound.Effect.recordResume`** (optional). Pause and resume both use `.recordPause` now.
+
+5. **Click-highlight default colour.** CleanShot's default is blue (`#0A84FF` dot, light-blue ring); Core's
+   `clickHighlightColor` defaults to yellow `(1, 0.8, 0, 0.6)`. RecordingKit draws whatever colour is set.
+   Proposal: default `RGBAColor(r: 0.04, g: 0.52, b: 1, a: 1)`. Click style (Outline/Filled) lives in
+   `recordingKit.clickStyle`; PreferencesKit may want to expose it.

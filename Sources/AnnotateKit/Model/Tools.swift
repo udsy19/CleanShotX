@@ -2,9 +2,13 @@ import Foundation
 import CoreGraphics
 import ShotcraftCore
 
-/// Editor tools in toolbar order.
+/// Editor tools. `toolbarTools` is the segmented group in toolbar order (CleanShot X 5.0); Crop & Resize is a
+/// separate toolbar chip.
 public enum AnnotateTool: String, Codable, CaseIterable, Sendable {
-    case select, crop, rectangle, filledRectangle, ellipse, line, arrow, text, pen, highlighter, pixelate, spotlight, counter
+    case select, rectangle, filledRectangle, ellipse, line, arrow, text, pixelate, spotlight, counter, pen, highlighter, crop
+
+    /// Tools shown in the segmented tool group, left to right.
+    public static var toolbarTools: [AnnotateTool] { allCases.filter { $0 != .crop } }
 
     public var title: String {
         switch self {
@@ -16,7 +20,7 @@ public enum AnnotateTool: String, Codable, CaseIterable, Sendable {
         case .line: "Line"
         case .arrow: "Arrow"
         case .text: "Text"
-        case .pen: "Pen"
+        case .pen: "Draw"
         case .highlighter: "Highlighter"
         case .pixelate: "Pixelate"
         case .spotlight: "Spotlight"
@@ -28,18 +32,18 @@ public enum AnnotateTool: String, Codable, CaseIterable, Sendable {
     public var key: Character {
         switch self {
         case .select: "v"
-        case .crop: "c"
+        case .crop: "k"
         case .rectangle: "r"
         case .filledRectangle: "f"
-        case .ellipse: "o"
+        case .ellipse: "e"
         case .line: "l"
         case .arrow: "a"
         case .text: "t"
-        case .pen: "p"
-        case .highlighter: "h"
-        case .pixelate: "b"
-        case .spotlight: "s"
-        case .counter: "n"
+        case .pen: "d"
+        case .highlighter: "m"
+        case .pixelate: "p"
+        case .spotlight: "h"
+        case .counter: "c"
         }
     }
 
@@ -47,17 +51,17 @@ public enum AnnotateTool: String, Codable, CaseIterable, Sendable {
         switch self {
         case .select: "cursorarrow"
         case .crop: "crop"
-        case .rectangle: "rectangle"
-        case .filledRectangle: "rectangle.fill"
+        case .rectangle: "square"
+        case .filledRectangle: "square.fill"
         case .ellipse: "circle"
         case .line: "line.diagonal"
-        case .arrow: "arrow.up.right"
-        case .text: "textformat"
-        case .pen: "scribble"
+        case .arrow: "arrow.down.left"
+        case .text: "textformat.size.larger"
+        case .pen: "pencil.tip"
         case .highlighter: "highlighter"
         case .pixelate: "checkerboard.rectangle"
-        case .spotlight: "light.max"
-        case .counter: "1.circle"
+        case .spotlight: "rectangle.inset.filled"
+        case .counter: "1.circle.fill"
         }
     }
 
@@ -104,7 +108,7 @@ public struct ToolStyle: Codable, Equatable, Sendable {
     public init(color: RGBAColor) { self.color = color }
 
     public static func defaults(for tool: AnnotateTool) -> ToolStyle {
-        var s = ToolStyle(color: ColorPalette.presets[0].color)
+        var s = ToolStyle(color: ColorPalette.named("Red"))
         switch tool {
         case .highlighter: s.color = ColorPalette.named("Yellow"); s.lineWidth = 6
         case .filledRectangle: s.color = ColorPalette.named("Black")
@@ -130,21 +134,21 @@ public struct NamedColor: Sendable {
 
 public enum ColorPalette {
     static func c(_ hex: UInt32) -> RGBAColor { GradientPreset.hex(hex) }
+    /// The ten default colours, in the palette's column order.
     public static let presets: [NamedColor] = [
+        NamedColor(name: "Black", color: c(0x000000)),
         NamedColor(name: "Red", color: c(0xFF3B30)),
         NamedColor(name: "Orange", color: c(0xFF9500)),
-        NamedColor(name: "Yellow", color: c(0xFFD60A)),
+        NamedColor(name: "Yellow", color: c(0xFFCC00)),
         NamedColor(name: "Green", color: c(0x34C759)),
-        NamedColor(name: "Teal", color: c(0x30B0C7)),
-        NamedColor(name: "Blue", color: c(0x0A84FF)),
-        NamedColor(name: "Indigo", color: c(0x5E5CE6)),
-        NamedColor(name: "Purple", color: c(0xBF5AF2)),
-        NamedColor(name: "Pink", color: c(0xFF2D92)),
-        NamedColor(name: "Brown", color: c(0xA2845E)),
-        NamedColor(name: "Gray", color: c(0x8E8E93)),
-        NamedColor(name: "Black", color: c(0x000000)),
+        NamedColor(name: "Teal", color: c(0x30C5BE)),
+        NamedColor(name: "Blue", color: c(0x007AFF)),
+        NamedColor(name: "Purple", color: c(0x8E5CF5)),
+        NamedColor(name: "Pink", color: c(0xFF2D55)),
         NamedColor(name: "White", color: c(0xFFFFFF)),
     ]
+    /// Number of "My Colors" slots.
+    public static let customSlots = 10
     public static func named(_ n: String) -> RGBAColor { presets.first { $0.name == n }?.color ?? .black }
 
     public static func name(of color: RGBAColor) -> String? {
@@ -176,6 +180,13 @@ extension Defaults.Keys {
     static let annotateRecentProjects = Key<[String]>("annotate.recentProjects", default: [])
     static let annotateLastSaveFormat = Key<String>("annotate.lastSaveFormat", default: "png")
     static let annotatePrintFitToPage = Key<Bool>("annotate.printFitToPage", default: true)
+    /// Recently chosen custom background images (paths, newest first).
+    static let annotateCustomWallpapers = Key<[String]>("annotate.customWallpapers", default: [])
+    static let annotatePaletteExpanded = Key<Bool>("annotate.paletteExpanded", default: false)
+    /// Draw lock: keep the drawing tool active after an object is drawn (off = back to Move).
+    static let annotateToolLocked = Key<Bool>("annotate.toolLocked", default: true)
+    /// Background preset applied automatically to newly opened screenshots (preset id; nil = none).
+    static let annotateDefaultBackgroundPreset = Key<String?>("annotate.defaultBackgroundPreset", default: nil)
 }
 
 /// Recently opened/saved `.shotcraft` projects (CleanShot: `AnnotateController.projectsHistory`).

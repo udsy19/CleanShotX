@@ -44,6 +44,8 @@ final class CanvasView: NSView, NSTextViewDelegate {
     // Inline text editing
     private var textView: InlineTextView?
     private(set) var editingID: UUID?
+    /// The edited text object was created by this edit (the draw lock applies when it ends).
+    private var editingIsNew = false
 
     // Crop
     private(set) var isCropping = false
@@ -169,11 +171,16 @@ final class CanvasView: NSView, NSTextViewDelegate {
         let m = Self.margin
         let outputRect = CGRect(x: m, y: m, width: layout.outputSize.width, height: layout.outputSize.height)
 
-        // Checkerboard behind transparency (never exported).
-        if !s.background.isActive {
-            Self.checkerColor.setFill()
-            outputRect.fill()
-        }
+        // Soft drop shadow under the image, and a checkerboard behind transparency (never exported).
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.shadowBlurRadius = 8
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
+        shadow.set()
+        (hasTransparency(s.background) ? Self.checkerColor : NSColor.white).setFill()
+        outputRect.fill()
+        NSGraphicsContext.restoreGraphicsState()
 
         ctx.saveGState()
         ctx.translateBy(x: m, y: m)
@@ -199,6 +206,14 @@ final class CanvasView: NSView, NSTextViewDelegate {
         }
     }
 
+    private func hasTransparency(_ b: BackgroundSettings) -> Bool {
+        switch b.fill {
+        case .none: return true
+        case .color(let c): return c.a < 1
+        default: return false
+        }
+    }
+
     private var isDrawingSomething: Bool {
         switch drag {
         case .none, .marquee, .panning: return false
@@ -214,8 +229,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
         for a in selected where !a.kind.isLineBased {
             let r = viewRect(a.frame).insetBy(dx: -2 / magnification, dy: -2 / magnification)
             let p = NSBezierPath(rect: r)
-            p.lineWidth = lw
-            p.setLineDash([4 / magnification, 3 / magnification], count: 2, phase: 0)
+            p.lineWidth = 1.5 / magnification
             accent.setStroke()
             p.stroke()
         }
@@ -234,10 +248,11 @@ final class CanvasView: NSView, NSTextViewDelegate {
                 let v = viewPoint(pt)
                 let r = handleRadius
                 let circle = NSBezierPath(ovalIn: CGRect(x: v.x - r, y: v.y - r, width: r * 2, height: r * 2))
-                (h == .control ? accent : NSColor.white).setFill()
+                // Accent dots with a white rim; the curve control point is the inverse so it reads differently.
+                (h == .control ? NSColor.white : accent).setFill()
                 circle.fill()
                 circle.lineWidth = 1.5 / magnification
-                (h == .control ? NSColor.white : accent).setStroke()
+                (h == .control ? accent : NSColor.white).setStroke()
                 circle.stroke()
             }
         }
@@ -278,7 +293,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
             grid.move(to: CGPoint(x: crop.minX, y: y)); grid.line(to: CGPoint(x: crop.maxX, y: y))
         }
         grid.lineWidth = lw
-        NSColor.white.withAlphaComponent(0.35).setStroke()
+        NSColor.white.withAlphaComponent(0.3).setStroke()
         grid.stroke()
         let border = NSBezierPath(rect: crop)
         border.lineWidth = 1.5 / magnification
@@ -296,8 +311,9 @@ final class CanvasView: NSView, NSTextViewDelegate {
                 NSRect(x: p.x - ht / 2, y: min(p.y, p.y + sy * hl), width: ht, height: hl).fill()
             } else {
                 let horizontal = h == .top || h == .bottom
-                NSRect(x: p.x - (horizontal ? hl / 2 : ht / 2), y: p.y - (horizontal ? ht / 2 : hl / 2),
-                       width: horizontal ? hl : ht, height: horizontal ? ht : hl).fill()
+                let pill = NSRect(x: p.x - (horizontal ? hl / 2 : ht / 2), y: p.y - (horizontal ? ht / 2 : hl / 2),
+                                  width: horizontal ? hl : ht, height: horizontal ? ht : hl)
+                NSBezierPath(roundedRect: pill, xRadius: ht / 2, yRadius: ht / 2).fill()
             }
         }
         // Size badge.
@@ -369,12 +385,11 @@ final class CanvasView: NSView, NSTextViewDelegate {
                 return
             }
             if !session.selection.contains(hit.id) { session.selection = [hit.id] }
-            if flags.contains(.option) {
-                // ⌥-drag duplicates.
-                let copies = session.selectedObjects
-                session.insert(copies, offset: .zero)
-            }
             session.beginInteraction()
+            if flags.contains(.option) {
+                // ⌥-drag duplicates (copy + move are one undo step).
+                session.insert(session.selectedObjects, offset: .zero)
+            }
             drag = .moving(start: p, originals: session.selectedObjects)
             return
         }
@@ -392,6 +407,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
             guard let a = session.makeObject(for: .counter, at: p) else { return }
             session.apply { $0.objects.append(a) }
             session.selection = [a.id]
+            finishedDrawing()
         case .crop:
             break
         default:
@@ -499,6 +515,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
                 if a.kind == .pen || a.kind == .highlighter { a.points = PathSmoothing.thinned(a.points, minDistance: 0.75) }
                 session.apply { $0.objects.append(a) }
                 session.selection = [a.id]
+                finishedDrawing()
             } else {
                 newObject = nil
                 relayout()
@@ -509,12 +526,20 @@ final class CanvasView: NSView, NSTextViewDelegate {
         case .panning:
             NSCursor.openHand.set()
         case .cropMove, .cropHandle, .cropNew:
-            if cropWorking.width < 2 || cropWorking.height < 2 { setCrop(session.state.imageRect) }
+            if cropWorking.width < 2 || cropWorking.height < 2 { setCrop(uncroppedBounds) }
             relayout()
         default:
             break
         }
         needsDisplay = true
+    }
+
+    /// Draw lock off: return to the Move tool after each new object (the new object stays selected).
+    private func finishedDrawing() {
+        guard !Defaults[.annotateToolLocked], session.tool != .select else { return }
+        let keep = session.selection
+        session.tool = .select
+        session.selection = keep
     }
 
     private func isMeaningful(_ a: Annotation) -> Bool {
@@ -591,6 +616,11 @@ final class CanvasView: NSView, NSTextViewDelegate {
         super.keyDown(with: event)
     }
 
+    override func resignFirstResponder() -> Bool {
+        if spaceDown { spaceDown = false; window?.invalidateCursorRects(for: self) }
+        return super.resignFirstResponder()
+    }
+
     override func keyUp(with event: NSEvent) {
         if event.keyCode == 49 {
             spaceDown = false
@@ -641,9 +671,11 @@ final class CanvasView: NSView, NSTextViewDelegate {
     /// Starts inline editing. `startState` is the state before a new text object was inserted, so creation
     /// and typing become one undo step.
     func beginTextEditing(_ id: UUID, startState: CanvasState?) {
+        if editingID != nil { endTextEditing() }
         guard let a = session.object(id) else { return }
-        if startState == nil { session.beginInteraction() } else { session.beginInteraction(from: startState!) }
+        if let startState { session.beginInteraction(from: startState) } else { session.beginInteraction() }
         editingID = id
+        editingIsNew = startState != nil
         session.selection = [id]
         let tv = InlineTextView(frame: textViewFrame(a))
         tv.configure(for: a)
@@ -670,18 +702,25 @@ final class CanvasView: NSView, NSTextViewDelegate {
         textView = nil
         editingID = nil
         let text = tv.string
+        let wasNew = editingIsNew
+        editingIsNew = false
         tv.delegate = nil
+        // Typing undo steps live in the window's undo manager (the editor's history is separate); drop them with the view.
+        tv.undoManager?.removeAllActions()
         tv.removeFromSuperview()
+        let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         session.update { s in
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if empty {
                 s.objects.removeAll { $0.id == id }
             } else if let i = s.objects.firstIndex(where: { $0.id == id }) {
                 s.objects[i].text = text
             }
         }
+        if empty { session.selection.remove(id) }
         session.endInteraction()
         window?.makeFirstResponder(self)
         relayout()
+        if wasNew && !empty { finishedDrawing() }
     }
 
     /// Restyles the inline editor after a toolbar change while editing.
@@ -703,7 +742,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
     private func enterCrop() {
         session.selection = []
         isCropping = true
-        cropWorking = session.state.cropRect ?? session.state.imageRect
+        cropWorking = session.state.cropRect ?? uncroppedBounds
         cropAspect = nil
         relayout()
         onCropChange?(cropWorking)
@@ -724,10 +763,10 @@ final class CanvasView: NSView, NSTextViewDelegate {
     func applyCrop() {
         let full = uncroppedBounds
         let r = Geo.pixelAligned(cropWorking, scale: session.state.scale)
-        let crop: CGRect? = (abs(r.minX - session.state.imageRect.minX) < 0.5 && abs(r.minY) < 0.5 &&
-                             abs(r.width - session.state.imageRect.width) < 0.5 && abs(r.height - session.state.imageRect.height) < 0.5 &&
-                             full.equalTo(session.state.imageRect)) ? nil : r
-        session.apply { $0.cropRect = crop }
+        // Cropping to everything that is visible anyway is "no crop", so the canvas can keep auto-expanding.
+        let unchanged = abs(r.minX - full.minX) < 0.5 && abs(r.minY - full.minY) < 0.5 &&
+            abs(r.width - full.width) < 0.5 && abs(r.height - full.height) < 0.5
+        session.apply { $0.cropRect = unchanged ? nil : r }
         session.tool = toolBeforeCrop == .crop ? .select : toolBeforeCrop
     }
 
@@ -735,7 +774,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
         session.tool = toolBeforeCrop == .crop ? .select : toolBeforeCrop
     }
 
-    func resetCrop() { setCrop(session.state.imageRect) }
+    func resetCrop() { setCrop(uncroppedBounds) }
 
     /// Sets the working crop rect (clamped to the uncropped canvas).
     func setCrop(_ r: CGRect) {

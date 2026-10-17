@@ -11,11 +11,14 @@ final class RecordingSession {
     /// Global Cocoa rect, clipped to `screen`.
     let area: CGRect
     let screen: NSScreen
+    private let displayID: CGDirectDisplayID
 
     private var engine: CaptureEngine?
     private var engineConfig: CaptureEngineConfig?
     private var clock = RecordingClock()
     private(set) var isPaused = false
+    /// True once the recording has been stopped, deleted or discarded.
+    private(set) var didStop = false
     private var isFinishing = false
     private let pixelSize: CGSize
     private let outputScale: CGFloat
@@ -28,7 +31,13 @@ final class RecordingSession {
     private var controls: RecordingControlsPanel?
     private var cursorWatcher: CursorIdleWatcher?
     private var tickTimer: Timer?
+    private var meterTimer: Timer?
     private var diskTimer: Timer?
+    private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    /// Stop was requested while the stream was still starting.
+    private var stopRequested = false
+    /// A failure reported while a restart was relaunching the engine.
+    private var pendingFailure: Error?
     private var gifTask: Task<Void, Never>?
     private var gifPopup: GIFProcessingPopup?
 
@@ -40,6 +49,7 @@ final class RecordingSession {
     init(kind: RecordingKind, area: CGRect, screen: NSScreen, camera: CameraOverlay?) {
         self.kind = kind
         self.screen = screen
+        displayID = screen.displayID
         let clipped = area.intersection(screen.frame).integral
         self.area = clipped.isEmpty ? screen.frame : clipped
         self.camera = camera
@@ -52,7 +62,7 @@ final class RecordingSession {
 
         dim = DimOverlay(area: self.area, dimmed: Defaults[.recordDimScreen])
         dim.show()
-        if kind == .video && (Defaults[.recordHighlightClicks] || Defaults[.recordShowKeystrokes]) || kind == .gif && Defaults[.recordHighlightClicks] {
+        if Defaults[.recordHighlightClicks] || Defaults[.recordShowKeystrokes] {
             let d = DecorationWindow(screen: screen)
             d.show()
             decoration = d
@@ -63,21 +73,24 @@ final class RecordingSession {
 
     // MARK: Start
 
+    /// Starts capturing. If `stop()` was called meanwhile, the recording is stopped right after it starts.
     func start() async throws {
         let config = try await makeEngineConfig()
         engineConfig = config
         try await launchEngine(config)
+        // The stream may already have failed (and the session stopped) while it was starting.
+        guard !isFinishing else { return }
 
         if let decoration {
             if Defaults[.recordHighlightClicks] { let c = ClickHighlighter(host: decoration); c.start(); clicks = c }
-            if kind == .video && Defaults[.recordShowKeystrokes] { let k = KeystrokeOverlay(host: decoration, area: area); k.start(); keys = k }
+            if Defaults[.recordShowKeystrokes] { let k = KeystrokeOverlay(host: decoration, area: area); k.start(); keys = k }
         }
         if Defaults[.recordShowCursor] && Defaults[.recordHideCursorWhenNotMoving] {
             let w = CursorIdleWatcher { [weak self] visible in self?.engine?.setShowsCursor(visible) }
             w.start()
             cursorWatcher = w
         }
-        let controls = RecordingControlsPanel(area: area, screen: screen, actions: .init(
+        let controls = RecordingControlsPanel(area: area, screen: screen, showsMeter: config.microphoneID != nil, actions: .init(
             stop: { [weak self] in self?.stop() },
             togglePause: { [weak self] in self?.togglePause() },
             restart: { [weak self] in self?.restart() },
@@ -91,9 +104,38 @@ final class RecordingSession {
         tickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        if config.microphoneID != nil {
+            meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateMeter() }
+            }
+        }
         diskTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkDiskSpace() }
         }
+        observeEnvironment()
+        if stopRequested { stop() }
+    }
+
+    /// Stops cleanly when the recorded display goes away or the Mac goes to sleep, instead of
+    /// leaving a dead stream with overlays on screen.
+    private func observeEnvironment() {
+        let center = NotificationCenter.default
+        let screens = center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !NSScreen.screens.contains(where: { $0.displayID == self.displayID }) else { return }
+                self.stop(failure: CaptureEngineError.noFrames)
+            }
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        let sleep = workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stop() }
+        }
+        observers = [(center, screens), (workspace, sleep)]
+    }
+
+    /// Asks a session that is still starting (or running) to stop as soon as possible.
+    func requestStop() {
+        if engine == nil || tickTimer == nil { stopRequested = true } else { stop() }
     }
 
     private func launchEngine(_ config: CaptureEngineConfig) async throws {
@@ -138,7 +180,9 @@ final class RecordingSession {
 
         var micID: String?
         if isVideo, Defaults[.recordMicrophone] {
-            if Permissions.status(for: .audio) == .authorized, let mic = AVDevices.selectedMicrophone {
+            if Permissions.status(for: .audio) != .authorized {
+                HUD.show("Microphone access is off — recording without it.", symbol: "mic.slash", duration: 3)
+            } else if let mic = AVDevices.selectedMicrophone {
                 micID = mic.uniqueID
             } else {
                 HUD.show("No microphone was selected for this recording.", symbol: "mic.slash")
@@ -163,6 +207,10 @@ final class RecordingSession {
         StatusBar.setRecording(true, text)
     }
 
+    private func updateMeter() {
+        controls?.setLevel(isPaused ? 0 : CGFloat(engine?.microphoneLevel ?? 0))
+    }
+
     func togglePause() {
         guard !isFinishing, let engine else { return }
         isPaused.toggle()
@@ -175,6 +223,7 @@ final class RecordingSession {
     func restart() {
         guard !isFinishing, let engine, let config = engineConfig else { return }
         isFinishing = true
+        pendingFailure = nil
         Task { @MainActor in
             await engine.cancel()
             do {
@@ -184,6 +233,7 @@ final class RecordingSession {
                 isFinishing = false
                 Sound.play(.recordStart)
                 tick()
+                if let failure = pendingFailure { stop(failure: failure) }
             } catch {
                 Alerts.error("An error occurred while starting screen recording.", error)
                 tearDownOverlays()
@@ -196,7 +246,10 @@ final class RecordingSession {
         guard !isFinishing else { return }
         let wasPaused = isPaused
         if !wasPaused { togglePause() }
-        guard Alerts.confirm("Are you sure you want to delete this recording?", confirmTitle: "Delete", destructive: true) else {
+        let confirmed = Alerts.confirm("Are you sure you want to delete this recording?", confirmTitle: "Delete", destructive: true)
+        // The recording may have stopped on its own (stream error, display unplugged) while the alert was up.
+        guard !isFinishing else { return }
+        guard confirmed else {
             if !wasPaused { togglePause() }
             return
         }
@@ -214,7 +267,7 @@ final class RecordingSession {
     func discard() {
         isFinishing = true
         tearDownOverlays()
-        camera?.close()
+        notifyStopped()
         end()
     }
 
@@ -227,8 +280,10 @@ final class RecordingSession {
     }
 
     private func engineFailed(_ error: Error) {
-        guard !isFinishing else { return }
-        Log.recording.error("Recording failed: \(error.localizedDescription, privacy: .public)")
+        guard !isFinishing else {
+            if engineConfig != nil, !didStop { pendingFailure = error }   // restarting
+            return
+        }
         stop(failure: error)
     }
 
@@ -284,7 +339,10 @@ final class RecordingSession {
 
     private func tearDownOverlays() {
         tickTimer?.invalidate(); tickTimer = nil
+        meterTimer?.invalidate(); meterTimer = nil
         diskTimer?.invalidate(); diskTimer = nil
+        observers.forEach { $0.0.removeObserver($0.1) }
+        observers.removeAll()
         cursorWatcher?.stop(); cursorWatcher = nil
         clicks?.stop(); clicks = nil
         keys?.stop(); keys = nil
@@ -296,6 +354,7 @@ final class RecordingSession {
     }
 
     private func notifyStopped() {
+        didStop = true
         let handler = onStop
         onStop = nil
         handler?(self)

@@ -1,7 +1,7 @@
 import AppKit
 import ShotcraftCore
 
-/// GIF player with frame-based trimming (the GIFTrimmer equivalent), re-encoded with ImageIO.
+/// GIF player with a trim timeline (the GIFTrimmer equivalent), re-encoded frame by frame.
 @MainActor
 final class GIFEditorWindowController: NSWindowController, NSWindowDelegate, MediaEditor {
     let media: CapturedMedia
@@ -9,26 +9,25 @@ final class GIFEditorWindowController: NSWindowController, NSWindowDelegate, Med
 
     private var frames: GIFEncoder.Frames?
     private let imageView = NSImageView()
-    private let startSlider = NSSlider()
-    private let endSlider = NSSlider()
-    private let startLabel = NSTextField(labelWithString: "")
-    private let endLabel = NSTextField(labelWithString: "")
-    private let infoLabel = NSTextField(labelWithString: "")
-    private let playButton = NSButton()
+    private let timeline = TimelineView()
+    private var playButton: NSButton!
+    private let timeLabel = EditorChrome.timeLabel()
+    private let infoLabel = EditorChrome.timeLabel()
     private var saveButtons: [NSButton] = []
     private var playTimer: Timer?
     private var currentFrame = 0
+    /// Start time of each frame.
+    private var frameStarts: [Double] = []
 
     init(media: CapturedMedia) {
         self.media = media
-        let window = EditorWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
-                                  styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.minSize = NSSize(width: 520, height: 380)
-        window.isReleasedWhenClosed = false
-        window.tabbingMode = .disallowed
+        let window = EditorChrome.makeWindow(title: media.url.lastPathComponent, url: media.url,
+                                             size: NSSize(width: 820, height: 600), minSize: NSSize(width: 560, height: 400))
         super.init(window: window)
         window.delegate = self
         window.onSpace = { [weak self] in self?.togglePlay() }
+        window.onMarkIn = { [weak self] in self?.markIn() }
+        window.onMarkOut = { [weak self] in self?.markOut() }
         buildUI()
         load()
         window.center()
@@ -36,76 +35,54 @@ final class GIFEditorWindowController: NSWindowController, NSWindowDelegate, Med
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// Frames inside the trimmed time range.
     private var range: ClosedRange<Int> {
-        let a = startSlider.integerValue, b = endSlider.integerValue
-        return min(a, b)...max(a, b)
+        guard let frames else { return 0...0 }
+        let first = RecordingMath.frameIndex(at: timeline.start + 1e-6, delays: frames.delays)
+        let last = max(first, RecordingMath.frameIndex(at: max(0, timeline.end - 1e-6), delays: frames.delays))
+        return first...last
     }
 
     private var isTrimmed: Bool {
         guard let frames else { return false }
-        return range != 0...(frames.images.count - 1)
+        return range != 0...(frames.count - 1)
     }
 
     // MARK: UI
 
     private func buildUI() {
-        guard let content = window?.contentView else { return }
+        guard let window, let content = window.contentView else { return }
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.animates = false
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.wantsLayer = true
-        imageView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
+        imageView.layer?.backgroundColor = NSColor.black.cgColor
 
-        for (slider, sel) in [(startSlider, #selector(startChanged)), (endSlider, #selector(endChanged))] {
-            slider.target = self
-            slider.action = sel
-            slider.isContinuous = true
-            slider.minValue = 0
-        }
-        startLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        endLabel.font = startLabel.font
-        infoLabel.font = .systemFont(ofSize: 11)
-        infoLabel.textColor = .secondaryLabelColor
-        playButton.bezelStyle = .regularSquare
-        playButton.isBordered = false
-        playButton.target = self
-        playButton.action = #selector(playClicked)
-        playButton.toolTip = "Play / Pause (Space)"
-
-        let startRow = NSStackView(views: [NSTextField(labelWithString: "Start"), startSlider, startLabel])
-        let endRow = NSStackView(views: [NSTextField(labelWithString: "End"), endSlider, endLabel])
-        for row in [startRow, endRow] { row.spacing = 8 }
-        startRow.views[0].widthAnchor.constraint(equalToConstant: 36).isActive = true
-        endRow.views[0].widthAnchor.constraint(equalToConstant: 36).isActive = true
-        startLabel.widthAnchor.constraint(equalToConstant: 130).isActive = true
-        endLabel.widthAnchor.constraint(equalToConstant: 130).isActive = true
-
-        let saveNew = editorButton("Save as New GIF", symbolName: nil, target: self, action: #selector(saveAsNewClicked))
-        let save = editorButton("Save", symbolName: nil, target: self, action: #selector(saveClicked))
-        save.keyEquivalent = "s"
-        save.keyEquivalentModifierMask = .command
-        saveButtons = [saveNew, save]
-        let buttons = NSStackView(views: [playButton, infoLabel, NSView(), saveNew, save])
-
-        let controls = NSStackView(views: [startRow, endRow, buttons])
-        controls.orientation = .vertical
-        controls.alignment = .leading
-        controls.spacing = 8
-        controls.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 12, right: 14)
-        controls.translatesAutoresizingMaskIntoConstraints = false
-        for v in [startRow, endRow, buttons] { v.widthAnchor.constraint(equalTo: controls.widthAnchor, constant: -28).isActive = true }
+        playButton = EditorChrome.playButton(target: self, action: #selector(playClicked))
+        infoLabel.alignment = .right
+        let bottom = EditorChrome.bottomBar(transport: [playButton, timeLabel, NSView(), infoLabel], timeline: timeline)
+        timeline.onScrub = { [weak self] t in self?.scrub(to: t) }
+        timeline.onTrimChange = { [weak self] _, _ in self?.refresh() }
 
         content.addSubview(imageView)
-        content.addSubview(controls)
+        content.addSubview(bottom)
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             imageView.topAnchor.constraint(equalTo: content.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: controls.topAnchor),
-            controls.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            controls.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            imageView.bottomAnchor.constraint(equalTo: bottom.topAnchor),
+            bottom.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            bottom.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            bottom.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
+
+        let saveNew = EditorChrome.button("Save as New GIF", symbolName: nil, target: self, action: #selector(saveAsNewClicked))
+        let save = EditorChrome.button("Save", symbolName: nil, target: self, action: #selector(saveClicked))
+        save.keyEquivalent = "s"
+        save.keyEquivalentModifierMask = .command
+        save.bezelColor = .controlAccentColor
+        saveButtons = [saveNew, save]
+        EditorChrome.addTitlebarButtons(saveButtons, to: window)
         updatePlayButton()
     }
 
@@ -118,46 +95,48 @@ final class GIFEditorWindowController: NSWindowController, NSWindowDelegate, Med
             return
         }
         frames = f
-        let last = Double(f.images.count - 1)
-        for s in [startSlider, endSlider] {
-            s.maxValue = max(1, last)
-            s.numberOfTickMarks = f.images.count <= 60 ? f.images.count : 0
-            s.allowsTickMarkValuesOnly = f.images.count <= 60
-            s.isEnabled = f.images.count > 1
-        }
-        startSlider.integerValue = 0
-        endSlider.integerValue = f.images.count - 1
+        var t = 0.0
+        frameStarts = f.delays.map { d in defer { t += d }; return t }
+        timeline.duration = f.duration
+        timeline.isEnabled = f.count > 1
+        let step = max(1, f.count / 14)
+        timeline.thumbnails = stride(from: 0, to: f.count, by: step).compactMap { f.thumbnail(at: $0, maxPixelSize: 160) }
         show(frame: 0)
         refresh()
         play()
     }
 
-    private func time(at index: Int) -> Double {
-        guard let frames else { return 0 }
-        return frames.delays.prefix(index).reduce(0, +)
-    }
-
     private func refresh() {
         guard let frames else { return }
         let r = range
-        startLabel.stringValue = "Frame \(r.lowerBound + 1) · \(String(format: "%.2fs", time(at: r.lowerBound)))"
-        endLabel.stringValue = "Frame \(r.upperBound + 1) · \(String(format: "%.2fs", time(at: r.upperBound + 1)))"
         let duration = frames.delays[r].reduce(0, +)
-        infoLabel.stringValue = "\(r.count) of \(frames.images.count) frames · \(String(format: "%.1fs", duration))"
+        infoLabel.stringValue = "\(r.count) of \(frames.count) frames · \(String(format: "%.1fs", duration))"
         window?.isDocumentEdited = isTrimmed
         saveButtons.forEach { $0.isEnabled = isTrimmed }
     }
 
     private func show(frame i: Int) {
-        guard let frames, frames.images.indices.contains(i) else { return }
+        guard let frames, let image = frames.image(at: i) else { return }
         currentFrame = i
-        imageView.image = ImageTools.nsImage(frames.images[i], scale: max(1, media.scale))
+        imageView.image = ImageTools.nsImage(image, scale: max(1, media.scale))
+        timeline.playhead = frameStarts[i]
+        timeLabel.stringValue = "\(EditorChrome.format(frameStarts[i])) / \(EditorChrome.format(frames.duration))"
     }
+
+    private func scrub(to t: Double) {
+        guard let frames else { return }
+        stop()
+        show(frame: RecordingMath.frameIndex(at: t, delays: frames.delays))
+        timeline.playhead = t
+    }
+
+    private func markIn() { timeline.setTrim(start: min(timeline.playhead, timeline.end - 0.1), end: timeline.end) }
+    private func markOut() { timeline.setTrim(start: timeline.start, end: max(timeline.playhead, timeline.start + 0.1)) }
 
     // MARK: Playback (timer-driven so it honours the trimmed range)
 
     private func play() {
-        guard let frames, frames.images.count > 1, playTimer == nil else { return }
+        guard let frames, frames.count > 1, playTimer == nil else { return }
         if !range.contains(currentFrame) { show(frame: range.lowerBound) }
         scheduleNext(after: frames.delays[currentFrame])
         updatePlayButton()
@@ -184,26 +163,13 @@ final class GIFEditorWindowController: NSWindowController, NSWindowDelegate, Med
     private func togglePlay() { playTimer == nil ? play() : stop() }
 
     private func updatePlayButton() {
-        playButton.image = symbol(playTimer == nil ? "play.fill" : "pause.fill", size: 15)
+        playButton?.image = symbol(playTimer == nil ? "play.fill" : "pause.fill", size: 15)
+        playButton?.setAccessibilityLabel(playTimer == nil ? "Play" : "Pause")
     }
 
     // MARK: Actions
 
     @objc private func playClicked() { togglePlay() }
-
-    @objc private func startChanged() {
-        stop()
-        if startSlider.integerValue > endSlider.integerValue { endSlider.integerValue = startSlider.integerValue }
-        show(frame: startSlider.integerValue)
-        refresh()
-    }
-
-    @objc private func endChanged() {
-        stop()
-        if endSlider.integerValue < startSlider.integerValue { startSlider.integerValue = endSlider.integerValue }
-        show(frame: endSlider.integerValue)
-        refresh()
-    }
 
     @objc private func saveClicked() {
         guard Alerts.confirm("Do you want to replace the existing GIF?", confirmTitle: "Replace") else { return }
