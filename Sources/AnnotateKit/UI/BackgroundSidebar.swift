@@ -45,6 +45,10 @@ final class BackgroundSidebar: NSView {
         let border = NSBox()
         border.boxType = .separator
         border.translatesAutoresizingMaskIntoConstraints = false
+        // A zero-frame NSBox separator assumes horizontal orientation (intrinsic height 1, hugging 750), which would
+        // shrink the whole editor window vertically. This one is vertical: let it stretch.
+        border.setContentHuggingPriority(.init(1), for: .vertical)
+        border.setContentCompressionResistancePriority(.init(1), for: .vertical)
         addSubview(border)
 
         NSLayoutConstraint.activate([

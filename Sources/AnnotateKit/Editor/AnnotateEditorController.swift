@@ -264,6 +264,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             bottom.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             bottom.heightAnchor.constraint(equalToConstant: 46),
+            // Never let content hugging collapse the canvas (and the window with it).
+            scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 240),
         ])
     }
 

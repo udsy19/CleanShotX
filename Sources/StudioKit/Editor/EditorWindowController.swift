@@ -162,6 +162,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         side.addSubview(host)
         sidebar = side
         let sideSeparator = NSBox(); sideSeparator.boxType = .separator
+        // Vertical separator: a zero-frame NSBox defaults to horizontal (hugging height 1), which would collapse the window.
+        sideSeparator.setContentHuggingPriority(.init(1), for: .vertical)
+        sideSeparator.setContentCompressionResistancePriority(.init(1), for: .vertical)
 
         // Timeline + toolbar
         timeline = TimelineView(model: model, player: player)
