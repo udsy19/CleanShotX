@@ -1,4 +1,4 @@
-// Each module owns Sources/ShotcraftSelfTest/<Module>Tests.swift and its register function.
+// Each module owns Sources/SuperScreenshotSelfTest/<Module>Tests.swift and its register function.
 func registerModuleTests() {
     registerCaptureKitTests()
     registerAnnotateKitTests()

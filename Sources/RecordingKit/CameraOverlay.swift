@@ -1,6 +1,6 @@
 import AppKit
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Floating webcam bubble (circle, square or rectangle) that is recorded together with the screen.
 /// Sits at the bottom-right of the area. Drag to move, click to toggle full-screen camera, right-click for
@@ -13,7 +13,7 @@ final class CameraOverlay: NSObject {
     private let session = AVCaptureSession()
     private let preview: AVCaptureVideoPreviewLayer
     private var currentInput: AVCaptureDeviceInput?
-    private let sessionQueue = DispatchQueue(label: "shotcraft.recording.camera")
+    private let sessionQueue = DispatchQueue(label: "superscreenshot.recording.camera")
     private var startObserver: NSObjectProtocol?
 
     /// Global rect of the recording area the bubble belongs to.

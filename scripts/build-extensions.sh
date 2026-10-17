@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 OUT="$ROOT/build/PlugIns"; rm -rf "$OUT"; mkdir -p "$OUT"
 SDK="$(xcrun --show-sdk-path)"; ARCH="$(uname -m)"; MIN=14.0
-APP_ID=com.udsy.shotcraft
+APP_ID=com.udsy.superscreenshot
 
 # make_appex <name> <display> <point-id> <principal-class> <attributes-xml> <flags> <sources...>
 make_appex() {
@@ -45,13 +45,16 @@ PLIST
 }
 
 IMAGE_RULE='<key>NSExtensionActivationRule</key><string>SUBQUERY(extensionItems, $item, SUBQUERY($item.attachments, $a, ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image").@count == 1).@count == 1</string>'
-make_appex AnnotateShareExtension "Annotate with Shotcraft" com.apple.share-services ShareViewController "$IMAGE_RULE" "" Extensions/Share/ShareViewController.swift
+make_appex AnnotateShareExtension "Annotate with Super Screenshot" com.apple.share-services ShareViewController "$IMAGE_RULE" "" Extensions/Share/ShareViewController.swift
 make_appex PinShareExtension "Pin to the Screen" com.apple.share-services ShareViewController "$IMAGE_RULE" "-D PIN" Extensions/Share/ShareViewController.swift
 
 if [ -d Extensions/QuickLook ]; then
-  QL_TYPES='<key>QLSupportedContentTypes</key><array><string>com.udsy.shotcraft.document</string><string>com.udsy.shotcraft.videoproject</string></array><key>QLSupportsSearchableItems</key><false/><key>QLIsDataBasedPreview</key><true/>'
-  make_appex QuickLookExtension "Shotcraft Preview" com.apple.quicklook.preview PreviewProvider "$QL_TYPES" "" Extensions/QuickLook/Shared.swift Extensions/QuickLook/PreviewProvider.swift
-  TH_TYPES='<key>QLSupportedContentTypes</key><array><string>com.udsy.shotcraft.document</string><string>com.udsy.shotcraft.videoproject</string></array><key>QLThumbnailMinimumDimension</key><integer>0</integer>'
-  make_appex QuickLookThumbnailingExtension "Shotcraft Thumbnails" com.apple.quicklook.thumbnail ThumbnailProvider "$TH_TYPES" "" Extensions/QuickLook/Shared.swift Extensions/QuickLook/ThumbnailProvider.swift
+  # Current document types plus the ones saved before the rename from Shotcraft.
+  DOC_TYPES='<string>com.udsy.superscreenshot.document</string><string>com.udsy.superscreenshot.videoproject</string>'
+  DOC_TYPES+='<string>com.udsy.shotcraft.document</string><string>com.udsy.shotcraft.videoproject</string>'
+  QL_TYPES='<key>QLSupportedContentTypes</key><array>'"$DOC_TYPES"'</array><key>QLSupportsSearchableItems</key><false/><key>QLIsDataBasedPreview</key><true/>'
+  make_appex QuickLookExtension "Super Screenshot Preview" com.apple.quicklook.preview PreviewProvider "$QL_TYPES" "" Extensions/QuickLook/Shared.swift Extensions/QuickLook/PreviewProvider.swift
+  TH_TYPES='<key>QLSupportedContentTypes</key><array>'"$DOC_TYPES"'</array><key>QLThumbnailMinimumDimension</key><integer>0</integer>'
+  make_appex QuickLookThumbnailingExtension "Super Screenshot Thumbnails" com.apple.quicklook.thumbnail ThumbnailProvider "$TH_TYPES" "" Extensions/QuickLook/Shared.swift Extensions/QuickLook/ThumbnailProvider.swift
 fi
 echo "Built extensions in $OUT"

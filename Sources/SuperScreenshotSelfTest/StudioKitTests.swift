@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 import StudioKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
@@ -188,7 +188,7 @@ func registerStudioKitTests() {
         p.style.aspectRatio = .wide16x9
         let decoded = try? StudioPackage.decodeProject(StudioPackage.encode(p))
         check(decoded == p, "project.json roundtrip")
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("studio-selftest-\(UUID().uuidString).shotcraftvideo")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("studio-selftest-\(UUID().uuidString).superscreenshotvideo")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let pkg = StudioPackage(url: dir)
         try? Data().write(to: pkg.screenURL)

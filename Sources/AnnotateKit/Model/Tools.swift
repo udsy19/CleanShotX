@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Editor tools. `toolbarTools` is the segmented group in toolbar order (CleanShot X 5.0); Crop & Resize is a
 /// separate toolbar chip.
@@ -189,7 +189,7 @@ extension Defaults.Keys {
     static let annotateDefaultBackgroundPreset = Key<String?>("annotate.defaultBackgroundPreset", default: nil)
 }
 
-/// Recently opened/saved `.shotcraft` projects (CleanShot: `AnnotateController.projectsHistory`).
+/// Recently opened/saved `.superscreenshot` projects (CleanShot: `AnnotateController.projectsHistory`).
 public enum RecentProjects {
     public static let limit = 15
 

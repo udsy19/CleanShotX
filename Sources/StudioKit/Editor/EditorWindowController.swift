@@ -3,7 +3,7 @@ import SwiftUI
 import Combine
 import AVFoundation
 import Carbon.HIToolbox
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Window that routes unhandled keys to the editor's command handler.
 final class EditorWindow: NSWindow {
@@ -82,7 +82,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         super.init(window: window)
         window.delegate = self
         window.keyHandler = { [weak self] e in self?.handleKey(e) ?? false }
-        let toolbar = NSToolbar(identifier: "ShotcraftStudioEditor")
+        let toolbar = NSToolbar(identifier: "SuperScreenshotStudioEditor")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
@@ -92,12 +92,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         Artwork.shared.prepare()
         buildUI()
         bind()
-        if !window.setFrameUsingName("ShotcraftStudioEditor"), let screen = NSScreen.main {
+        if !window.setFrameUsingName("SuperScreenshotStudioEditor"), let screen = NSScreen.main {
             let vis = screen.visibleFrame
             window.setContentSize(NSSize(width: min(1470, vis.width * 0.92), height: min(850, vis.height * 0.9)))
             window.center()
         }
-        window.setFrameAutosaveName("ShotcraftStudioEditor")
+        window.setFrameAutosaveName("SuperScreenshotStudioEditor")
         load(initial: true)
     }
     required init?(coder: NSCoder) { fatalError() }

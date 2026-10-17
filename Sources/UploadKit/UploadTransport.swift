@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Shared HTTP layer for all destinations: one `URLSession`, per-task delegates for byte-level upload
 /// progress, and retries with back-off for transient failures (CleanShot's `sessionRetryable` / `retryCount`).
@@ -22,7 +22,7 @@ final class UploadTransport: @unchecked Sendable {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 6 * 60 * 60
-        config.httpAdditionalHeaders = ["User-Agent": "Shotcraft/1.0 (macOS)"]
+        config.httpAdditionalHeaders = ["User-Agent": "SuperScreenshot/1.0 (macOS)"]
         session = URLSession(configuration: config)
     }
 

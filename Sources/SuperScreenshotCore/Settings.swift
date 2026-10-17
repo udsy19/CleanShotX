@@ -264,7 +264,7 @@ public extension Defaults.Keys {
     static let s3Bucket = Key<String>("s3Bucket", default: "")
     static let s3AccessKeyID = Key<String>("s3AccessKeyID", default: "")
     static let s3PublicURLPrefix = Key<String>("s3PublicURLPrefix", default: "")
-    static let s3PathPrefix = Key<String>("s3PathPrefix", default: "shotcraft/")
+    static let s3PathPrefix = Key<String>("s3PathPrefix", default: "super-screenshot/")
     static let customHTTPEndpoint = Key<String>("customHTTPEndpoint", default: "")
     static let customHTTPFieldName = Key<String>("customHTTPFieldName", default: "file")
     static let customHTTPHeaders = Key<[String: String]>("customHTTPHeaders", default: [:])

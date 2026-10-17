@@ -37,7 +37,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing, @unchecked Sendable 
     let sourcePixelBufferAttributes: [String: any Sendable]? = StudioCompositor.attributes
     let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = StudioCompositor.attributes
 
-    private let queue = DispatchQueue(label: "shotcraft.studio.compositor", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "superscreenshot.studio.compositor", qos: .userInteractive)
     private let context = CIContext(options: [.cacheIntermediates: false, .name: "StudioCompositor"])
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private let cancelLock = NSLock()
@@ -53,7 +53,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing, @unchecked Sendable 
                 if cancelled { request.finishCancelledRequest(); return }
                 guard let instruction = request.videoCompositionInstruction as? StudioInstruction,
                       let out = request.renderContext.newPixelBuffer() else {
-                    request.finish(with: NSError(domain: "Shotcraft.Studio", code: 1,
+                    request.finish(with: NSError(domain: "SuperScreenshot.Studio", code: 1,
                                                  userInfo: [NSLocalizedDescriptionKey: "Failed to prepare the video composition."]))
                     return
                 }

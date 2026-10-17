@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct GeneralPane: View {
     @Default(.launchAtLogin) private var launchAtLogin
@@ -18,7 +18,7 @@ struct GeneralPane: View {
                 SettingToggle("Launch at login", isOn: $launchAtLogin)
                 Toggle(isOn: menuBarIconBinding) {
                     Text("Show menu bar icon")
-                    if !showMenuBarIcon { Text("Open Shotcraft again (e.g. from Finder or Spotlight) to show this window.") }
+                    if !showMenuBarIcon { Text("Open Super Screenshot again (e.g. from Finder or Spotlight) to show this window.") }
                 }
                 .accessibilityLabel("Show menu bar icon")
                 .id(menuBarIconRevision)
@@ -73,7 +73,7 @@ struct GeneralPane: View {
         Binding(get: { showMenuBarIcon }, set: { show in
             if show { showMenuBarIcon = true; return }
             let ok = Alerts.confirm("The menu bar icon will be hidden.",
-                                    info: "In order to show the Settings window again, launch Shotcraft twice.",
+                                    info: "In order to show the Settings window again, launch Super Screenshot twice.",
                                     confirmTitle: "Hide Icon", suppressionID: "prefs.hideMenuBarIcon")
             if ok { showMenuBarIcon = false } else { menuBarIconRevision += 1 }
         })

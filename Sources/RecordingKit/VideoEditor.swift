@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import AVKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Video Editor for plain recordings: a left rail with the Audio panel, the player, and a trim
 /// timeline; exports through the Export sheet (resolution, quality, audio, estimated size).

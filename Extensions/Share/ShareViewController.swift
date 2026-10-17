@@ -1,7 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// Share-menu extension ("Annotate with Shotcraft" / "Pin to the Screen"). Receives one image, stores it where the
+/// Share-menu extension ("Annotate with Super Screenshot" / "Pin to the Screen"). Receives one image, stores it where the
 /// main app can read it, and hands it over via the URL scheme. Compiled twice: with `-D PIN` for the pin variant.
 final class ShareViewController: NSViewController {
     #if PIN
@@ -43,7 +43,7 @@ final class ShareViewController: NSViewController {
     }
 
     private func handOff(_ file: URL?) {
-        if let file, var c = URLComponents(string: "shotcraft://\(command)") {
+        if let file, var c = URLComponents(string: "superscreenshot://\(command)") {
             c.queryItems = [URLQueryItem(name: "filepath", value: file.path)]
             if let url = c.url { NSWorkspace.shared.open(url) }
         }

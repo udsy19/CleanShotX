@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - Configuration & addressing
 

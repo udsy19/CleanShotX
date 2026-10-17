@@ -1,16 +1,20 @@
 import AppKit
 import AVFoundation
 
-/// Reads a displayable image from Shotcraft documents without linking the app's modules:
-/// `.shotcraft` → the embedded flattened `preview` PNG (falls back to the base image);
-/// `.shotcraftvideo` package → a poster frame of `screen.mov`.
-enum ShotcraftPreview {
+/// Reads a displayable image from Super Screenshot documents without linking the app's modules:
+/// `.superscreenshot` → the embedded flattened `preview` PNG (falls back to the base image);
+/// `.superscreenshotvideo` package → a poster frame of `screen.mov`.
+/// Files saved before the rename (`.shotcraft`, `.shotcraftvideo`) use the same formats.
+enum SuperScreenshotPreview {
+    static let packageExtensions: Set<String> = ["superscreenshotvideo", "shotcraftvideo"]
+    static let documentFormats: Set<String> = ["com.udsy.superscreenshot.document", "com.udsy.shotcraft.document"]
+
     static func image(for url: URL, maxPixel: CGFloat) -> CGImage? {
-        if url.pathExtension.lowercased() == "shotcraftvideo" { return posterFrame(url.appendingPathComponent("screen.mov"), maxPixel: maxPixel) }
+        if packageExtensions.contains(url.pathExtension.lowercased()) { return posterFrame(url.appendingPathComponent("screen.mov"), maxPixel: maxPixel) }
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
         struct Blob: Decodable { var png: Data }
         struct File: Decodable { var format: String; var image: Blob; var preview: Data? }
-        guard let file = try? JSONDecoder().decode(File.self, from: data), file.format == "com.udsy.shotcraft.document" else { return nil }
+        guard let file = try? JSONDecoder().decode(File.self, from: data), documentFormats.contains(file.format) else { return nil }
         return decode(file.preview ?? file.image.png, maxPixel: maxPixel)
     }
 

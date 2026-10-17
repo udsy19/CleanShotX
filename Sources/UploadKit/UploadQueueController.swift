@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// One capture being uploaded. Extra `upload(...)` calls for the same media attach their handlers here.
 @MainActor

@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Content of the toolbar's tool-style popover (CleanShot `annotateTextStyle` / arrow-style menus): the options of
 /// the active tool, or of the selected objects. Changes apply to the selection and to the tool's remembered style.

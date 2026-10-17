@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// A file ready to be sent (possibly a down-scaled temp copy of the capture).
 struct UploadItem: Sendable {

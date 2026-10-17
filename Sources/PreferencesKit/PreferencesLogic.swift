@@ -1,6 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
-import ShotcraftCore
+import SuperScreenshotCore
 
 // Pure, UI-free logic behind the Settings panes. Kept nonisolated so the self-tests can exercise it headlessly.
 
@@ -401,10 +401,10 @@ public enum URLSchemeReference {
     ]
 
     public static let examples = [
-        "shotcraft://capture-area?action=copy",
-        "shotcraft://capture-fullscreen?display=2&action=save",
-        "shotcraft://capture-area?x=0&y=0&width=800&height=600&action=annotate",
-        "shotcraft://open-settings?tab=shortcuts",
+        "superscreenshot://capture-area?action=copy",
+        "superscreenshot://capture-fullscreen?display=2&action=save",
+        "superscreenshot://capture-area?x=0&y=0&width=800&height=600&action=annotate",
+        "superscreenshot://open-settings?tab=shortcuts",
     ]
 }
 

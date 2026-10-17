@@ -3,7 +3,7 @@
 CleanShot X 5.0.1 ships a second recorder called **Studio Mode** (internally *Flow*, class prefix `FL`).
 It records the screen *without* the cursor while logging input events, then opens a project in a timeline
 editor where cursor, zooms, background, camera and keystrokes are re-rendered. This document reconstructs it
-from the binary and maps every piece to the Shotcraft implementation in `Sources/StudioKit`.
+from the binary and maps every piece to the Super Screenshot implementation in `Sources/StudioKit`.
 
 Evidence sources: the app's class metadata (ObjC/Swift class metadata: ivars + selectors),
 the app's strings, its UI strings, its Info.plist, and `strings`
@@ -11,7 +11,7 @@ over the arm64 slice (property-name tables that sit next to each other in `__cst
 
 ## 1. Feature map (evidence → implementation)
 
-| CleanShot class / string | Meaning | Shotcraft |
+| CleanShot class / string | Meaning | Super Screenshot |
 |---|---|---|
 | `Motion` ivars `recordInStudioMode, showCursor, mouseTracker, keyboardTracker, cameraRecorder, systemAudioInputWriter, microphoneAudioInputWriter, recordingPauseDate, recordingTimeOffset` | one SCStream recorder; Studio mode hides the cursor, adds trackers, separate audio writers, pause offsets | `StudioScreenRecorder`, `RecordingClock` |
 | `FLMouseTracker` ivars `pollingInterval, cursorPollingTimer, cursorPollingQueue, recordingOrigin, recordingAreaFrame, pixelScaleX/Y, eventMonitors, lastRecordedMoveEvent`; string `com.cleanshot.FLMouseTracker.cursor` | cursor polled on its own queue, positions relative to the recorded area, clicks via event monitors | `InputTracker` (16 ms DispatchSourceTimer, area-normalized) |
@@ -19,7 +19,7 @@ over the arm64 slice (property-name tables that sit next to each other in `__cst
 | `FLKeyboardTracker` (`onTextKeyDown, previousModifierFlags`), "Keystroke capture requires …" | keystrokes need Accessibility | global keyDown monitor when `AXIsProcessTrusted()`; `events.keystrokesCaptured` |
 | `FLCameraRecorder` (`captureSession, videoDataOutput, assetWriter, timeOffset, lastPTS, firstFrameLock`) + "Camera writer error", "Could not create camera input", "Camera device not found" | camera recorded to its own file, time-aligned | `CameraRecorder` → `camera.mov` |
 | `FLMouseEventsBinaryCoder` | compact event storage | `CursorSample` encodes as `[t,x,y,kind]` arrays in `events.json` |
-| `FLDocument` (`project, meta, videoURL, cameraURL, capturedWallpaper, projectURL`); UTI `com.cleanshot.videoproj` / `.cleanshotvideo` (package) | project is a package directory | `.shotcraftvideo` package (`StudioPackage`) |
+| `FLDocument` (`project, meta, videoURL, cameraURL, capturedWallpaper, projectURL`); UTI `com.cleanshot.videoproj` / `.cleanshotvideo` (package) | project is a package directory | `.superscreenshotvideo` package (`StudioPackage`) |
 | `FLProject` ivars (clips, zooms, mouseEvents, keyboardEvents, recordingInfo, zoomAnimationStyle, motionBlur, audioConfiguration, showCamera, cameraScale, cameraShape, cameraPosition, flipCamera, resizeCameraDuringZoom, showCursor, hideCursorWhenNotMoving, hideCursorWhenTyping, cursorScale, cursorMovementStyle, cursorStyle, cursorClickEffect, cursorPressEffect, showKeystrokes, keystrokesScale, keystrokesStyle, keystrokesDisplayAll, keystrokesPosition, backgroundPaddingPercent, cornerRadius, backgroundShadowIntensity, background, aspectRatio, cameraTimeOffset) | the editable project | `StudioProject` + `StudioStyle` (same fields, own names) |
 | `FLClip (id, startTime, duration)`, `FLCutMark (timestamp, trimmedSeconds)` | clips are source ranges; cuts are gaps | `StudioClip`, `ClipTimeline` |
 | `FLZoom (id, startTimestamp, endTimestamp, zoomValue, mode, position)`; enum strings `followCursor`, `manual` | zoom segment with level, manual focus or follow cursor | `ZoomSegment`, `ZoomMode` |
@@ -54,7 +54,7 @@ over the arm64 slice (property-name tables that sit next to each other in `__cst
    and inactive ones 55 %; then the "Record in Studio Mode" pill (`movieclapper.fill`, "↩").
 3. Countdown (`recordCountdown` / `recordCountdownSeconds`): 80 pt black disc, 44 pt bold digit, a ring that
    fills each second; hover shows a cancel button, Esc cancels back to the panel.
-4. Capture: `SCStream`, display filter excluding Shotcraft's own windows, `sourceRect` = area, native pixel size
+4. Capture: `SCStream`, display filter excluding Super Screenshot's own windows, `sourceRect` = area, native pixel size
    (`backingScaleFactor`), `showsCursor = false`, BGRA, `videoFPS` (30–60). H.264, HEVC above 4096×2304.
    System audio via SCStream audio, microphone via `AVCaptureSession`, each its own AAC track (system first).
 5. `RecordingClock` maps every host timestamp (SCStream PTS, `AVCaptureSession.synchronizationClock`
@@ -70,7 +70,7 @@ over the arm64 slice (property-name tables that sit next to each other in `__cst
 7. Stop → finalize writers → events.json → project.json (style from the last edited project, auto zooms from
    `SmartZoomAnalyzer` when enabled) → move package to `AppPaths.projects` → open editor.
 
-### Package (`<name>.shotcraftvideo/`)
+### Package (`<name>.superscreenshotvideo/`)
 
 `screen.mov` · `camera.mov` (optional) · `events.json` (`StudioEvents`: cursor `[t,x,y,kind]`, clicks, scrolls,
 keys; normalized area coordinates, top-left origin) · `project.json` (`StudioProject`) · `autosave.json`

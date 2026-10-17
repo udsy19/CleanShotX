@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Capture History overlay (CleanShot 5.0 `MediaHistoryOverlay`, ui-reference §10): a full-width strip of dark
 /// glass across the middle of the active screen with filter pills and a horizontally scrolling row of captures.

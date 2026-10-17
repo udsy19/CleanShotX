@@ -53,7 +53,7 @@ supersede earlier estimates.
   `maxX − width − 40`). Card i (0 = newest, at the bottom) has its bottom edge at
   `screen.frame.minY + 100 + i × (height + 10)` — measured from the screen *frame*, not the visible frame, so the
   first card clears the Dock; 10 pt between cards. Cards that would reach the menu bar (`visibleFrame.maxY` less
-  one gap) wait until space frees up. A Close All / Save All header (Shotcraft's own, card-wide, 30 pt) sits
+  one gap) wait until space frees up. A Close All / Save All header (Super Screenshot's own, card-wide, 30 pt) sits
   10 pt above the stack when ≥ 3 cards are shown.
 - Look: corner radius 17 pt on macOS 26+, 15 pt before (binary); a crisp edge (`CardStrokeView`: 0.5 pt black
   18 % hairline outside a 1 pt white 22 % inner stroke); window shadow; glass behind transparent captures. The
@@ -80,7 +80,7 @@ supersede earlier estimates.
   `scissors`), Upload `icloud.and.arrow.up.fill` (BR, per `.quickAccessShowUploadButton`). Pills and circles sit
   on an `NSVisualEffectView` (`.sidebar`, `.withinWindow`, `.active`, `.aqua`) pinned to the button's edges and
   fully rounded (radius = height / 2) — `OverlayButton` with the `.vibrant` backdrop; pins keep its `.light`
-  backdrop. Shotcraft adds a subtle hover/press tint on top of the vibrancy. `OverlayButton` draws its
+  backdrop. Super Screenshot adds a subtle hover/press tint on top of the vibrancy. `OverlayButton` draws its
   glyph/title with its own centred subviews and reports zero `alignmentRectInsets`: an `NSButton` cell with an
   image reports ≈2 pt/1.5 pt top/bottom insets, which made Auto Layout grow the frame into a tall oval. When the
   file is already saved (auto-save after-capture action) a Trash pill replaces Save. Video cards show the

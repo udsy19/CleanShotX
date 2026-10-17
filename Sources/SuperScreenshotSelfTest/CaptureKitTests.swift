@@ -1,5 +1,5 @@
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 import CaptureKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.

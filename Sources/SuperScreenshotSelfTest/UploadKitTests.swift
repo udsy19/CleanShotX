@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 import UploadKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
@@ -81,8 +81,8 @@ func registerUploadKitTests() {
     }))
 
     SelfTest.cases.append(("UploadKit.objectKeys", {
-        let key = UploadNaming.objectKey(prefix: "/shotcraft", fileName: "Screenshot 2026-03-07 at 14.05.09.PNG", id: "AbCdE12345")
-        check(key == "shotcraft/AbCdE12345/Screenshot-2026-03-07-at-14.05.09.png", "prefix + id + sanitized name (\(key))")
+        let key = UploadNaming.objectKey(prefix: "/super-screenshot", fileName: "Screenshot 2026-03-07 at 14.05.09.PNG", id: "AbCdE12345")
+        check(key == "super-screenshot/AbCdE12345/Screenshot-2026-03-07-at-14.05.09.png", "prefix + id + sanitized name (\(key))")
         check(UploadNaming.objectKey(prefix: "", fileName: "a.mp4", id: "x").hasPrefix("x/"), "empty prefix")
         check(UploadNaming.normalizedPrefix("a/b//") == "a/b/", "prefix normalized")
         let id = UploadNaming.randomID()
@@ -107,7 +107,7 @@ func registerUploadKitTests() {
             + Data([0x89, 0x50]) + Data("\r\n--XyZ--\r\n".utf8)
         check(body == expected, "body layout")
         // Streamed variant matches the in-memory one.
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("shotcraft-uploadkit-test-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("superscreenshot-uploadkit-test-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let src = dir.appendingPathComponent("in.bin"), out = dir.appendingPathComponent("out.bin")

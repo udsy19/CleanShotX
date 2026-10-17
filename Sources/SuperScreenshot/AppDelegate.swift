@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import ServiceManagement
-import ShotcraftCore
+import SuperScreenshotCore
 import CaptureKit
 import AnnotateKit
 import RecordingKit
@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in self?.registerHotkeys(); self?.statusMenu.rebuild() }
             .store(in: &cancellables)
         Defaults.publisher(.launchAtLogin).dropFirst().sink { LaunchAtLogin.set($0) }.store(in: &cancellables)
+        // Preferences carried over from the previous app name: register this app as the login item.
+        if LegacyMigration.didMigratePreferences && Defaults[.launchAtLogin] { LaunchAtLogin.set(true) }
 
         if !Defaults[.onboardingCompleted] {
             Services.preferences.showOnboarding()
@@ -84,8 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Files opened via Finder / Dock / `open -a`.
     private func openFile(_ url: URL) {
         switch url.pathExtension.lowercased() {
-        case "shotcraft": Services.annotate.openDocument(url)
-        case "shotcraftvideo": Services.studio.openProject(url)
+        case SuperScreenshotDocument.fileExtension, SuperScreenshotDocument.legacyFileExtension:
+            Services.annotate.openDocument(url)
+        case StudioPackage.fileExtension, StudioPackage.legacyFileExtension: Services.studio.openProject(url)
         case "mp4", "mov", "m4v", "gif":
             let kind: MediaKind = url.pathExtension.lowercased() == "gif" ? .gif : .video
             let media = CapturedMedia(url: url, kind: kind, mode: .imported, pixelSize: .zero, scale: 1, isSaved: true)

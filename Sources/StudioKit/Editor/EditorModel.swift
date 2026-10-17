@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// State of one open Studio project (FLEditor + FLDocument): the project value, undo history, selection,
 /// playhead and dirty/autosave tracking. Views observe it; all edits go through `update`.
@@ -31,7 +31,7 @@ final class EditorModel: ObservableObject {
     private var autosaveWork: DispatchWorkItem?
     /// Package writes (autosave, save, discard) are serialized here so a late autosave can't resurrect
     /// autosave.json after a save or "Don't Save".
-    private static let io = DispatchQueue(label: "shotcraft.studio.project-io", qos: .utility)
+    private static let io = DispatchQueue(label: "superscreenshot.studio.project-io", qos: .utility)
 
     init(package: StudioPackage, project: StudioProject, events: StudioEvents, recovered: Bool) throws {
         self.package = package

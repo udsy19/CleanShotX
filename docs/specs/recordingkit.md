@@ -8,7 +8,7 @@ its UI strings and app strings (UI strings). Cited as *digest* / *ui* / *strings
 
 ## 1. Object model in CleanShot X (digest)
 
-| CleanShot class | ivars / selectors of interest | Shotcraft equivalent |
+| CleanShot class | ivars / selectors of interest | Super Screenshot equivalent |
 |---|---|---|
 | `ScreenRecorder` | `currentRecordingOverlay, recorder, durationTimer, recordingToGif, recordingRetinaVideo, cancelGifModal, watchdogTimer, cursorHighlighter, keyboardOverlay, gifsicle, audioMixer, showRecordingTimeInMenuBar, showRecordingControls`; `checkIfRecordingStarted`, `updateRecordingTimeLabel` | `RecordingService` (state machine) + `RecordingSession` |
 | `RecorderOverlay : FSOverlay` | `recorderSettingsChildWindow, recorderControlsChildWindow, windowNameLabel, displayId, screenFactor, cameraOverlay, countDownOverlay`; `rectangleChanged`, `ratioChanged`, `performKeyEquivalent:` | `RecorderSetupOverlay` (area editor + setup bar) |
@@ -67,7 +67,7 @@ _gifMaxSize, _optimizeGifs, _gifQuality` — all map 1:1 onto the Core keys in `
 ## 3. Capture pipeline
 
 - `SCContentFilter(display:excludingApplications:[self], exceptingWindows:[click, keystroke, camera])` —
-  every Shotcraft window (controls, alerts, Quick Access) is excluded, the decorative overlays are kept so
+  every Super Screenshot window (controls, alerts, Quick Access) is excluded, the decorative overlays are kept so
   they are burned into the video. The decorative windows are kept ordered-in (transparent when idle) so
   they exist in `SCShareableContent` when the filter is built.
 - `sourceRect` = area in display-local points; output size = area × backing scale (or ×1 when

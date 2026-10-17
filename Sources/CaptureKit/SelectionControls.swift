@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 extension Defaults.Keys {
     /// Last ratio picked in the size control (CleanShot: `oneOverlayLastSelectedRatio`).

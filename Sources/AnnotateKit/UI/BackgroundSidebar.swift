@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Background tool sidebar (CleanShot `ANBackgroundSettings`), top to bottom: presets, None, Gradients, Wallpapers,
 /// Blurred, Plain color, then Padding, Inset + Auto-balance, Shadow + Corners, Alignment + Ratio.

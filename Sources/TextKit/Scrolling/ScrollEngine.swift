@@ -15,7 +15,7 @@ struct ScrollUpdate {
 /// A vertical and a horizontal stitcher run side by side until one of them matches a movement (or auto-scroll
 /// forces a direction); the other is then dropped.
 final class ScrollEngine: @unchecked Sendable {   // confined to `queue`
-    let queue = DispatchQueue(label: "shotcraft.textkit.scrolling", qos: .userInitiated)
+    let queue = DispatchQueue(label: "superscreenshot.textkit.scrolling", qos: .userInitiated)
     private var candidates: [ScrollStitcher]
     private(set) var locked: ScrollStitcher?
 

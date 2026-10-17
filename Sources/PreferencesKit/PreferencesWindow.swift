@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Current sidebar selection; external callers navigate through `show(pane:)`.
 @MainActor
@@ -58,7 +58,7 @@ final class PreferencesController: NSObject, PreferencesServicing, NSWindowDeleg
                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         w.contentViewController = hosting
-        w.title = "Shotcraft Settings"
+        w.title = "Super Screenshot Settings"
         w.toolbarStyle = .unified
         w.isReleasedWhenClosed = false
         w.contentMinSize = NSSize(width: Self.contentWidth, height: Self.minHeight)
@@ -67,7 +67,7 @@ final class PreferencesController: NSObject, PreferencesServicing, NSWindowDeleg
         w.collectionBehavior.insert(.fullScreenNone)
         w.delegate = self
         w.center()
-        w.setFrameAutosaveName("ShotcraftSettingsWindow")  // restores the saved frame, if any
+        w.setFrameAutosaveName("SuperScreenshotSettingsWindow")  // restores the saved frame, if any
         // A frame saved by an older build may have another width or sit off-screen; normalise it.
         var content = w.contentRect(forFrameRect: w.frame)
         content.size.width = Self.contentWidth
@@ -215,7 +215,7 @@ private struct SidebarHeader: View {
                     .resizable().interpolation(.high)
                     .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Shotcraft").font(.system(size: 13, weight: .semibold))
+                    Text("Super Screenshot").font(.system(size: 13, weight: .semibold))
                     Text(destination == .none ? "Set up uploads" : destination.displayName)
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }

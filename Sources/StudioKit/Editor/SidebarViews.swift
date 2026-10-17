@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import ImageIO
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Studio editor palette (the window is always dark).
 enum StudioTheme {

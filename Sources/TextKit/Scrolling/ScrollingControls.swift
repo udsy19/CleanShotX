@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// The scrolling-capture controls (SGControlsView + auto-scroll child windows): small pills docked at the
 /// bottom-centre inside the selection — "▶ Auto-Scroll" above, "?" · "✕ Cancel" · "Start" / "✓ Done" below —

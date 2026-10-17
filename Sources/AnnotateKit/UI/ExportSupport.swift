@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - Drag me
 
@@ -179,7 +179,7 @@ enum ExportFormat: CaseIterable {
         case .jpeg: "JPEG"
         case .heic: "HEIC"
         case .tiff: "TIFF"
-        case .project: "Shotcraft Project"
+        case .project: "Super Screenshot Project"
         }
     }
     var imageFormat: ImageFormat? {
@@ -191,7 +191,7 @@ enum ExportFormat: CaseIterable {
         case .project: nil
         }
     }
-    var fileExtension: String { imageFormat?.fileExtension ?? ShotcraftDocument.fileExtension }
+    var fileExtension: String { imageFormat?.fileExtension ?? SuperScreenshotDocument.fileExtension }
     var contentType: UTType {
         if let f = imageFormat { return UTType(f.utType) ?? .png }
         return AnnotateService.projectType

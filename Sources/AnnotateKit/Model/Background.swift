@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - Settings
 

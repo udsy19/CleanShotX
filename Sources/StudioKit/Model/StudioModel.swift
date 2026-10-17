@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 
 // Studio Mode project model ("Flow" in CleanShot X: FLProject / FLClip / FLZoom / FLDocument).
 // All times are *source* seconds (seconds into screen.mov) unless a name says otherwise.

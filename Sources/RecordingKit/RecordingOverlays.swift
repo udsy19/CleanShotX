@@ -1,6 +1,6 @@
 import AppKit
 import QuartzCore
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Window levels used by the recorder, bottom to top.
 enum RecorderLevel {

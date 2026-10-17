@@ -2,17 +2,19 @@ import Foundation
 import AppKit
 
 public enum AppPaths {
-    public static let bundleID = Bundle.main.bundleIdentifier ?? "com.udsy.shotcraft"
+    public static let bundleID = Bundle.main.bundleIdentifier ?? "com.udsy.superscreenshot"
+    /// Name of the app's folder in Application Support (and in the temporary directory).
+    public static let folderName = "SuperScreenshot"
 
     public static var defaultExportLocation: URL {
         FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Desktop")
     }
 
-    /// ~/Library/Application Support/Shotcraft
+    /// ~/Library/Application Support/SuperScreenshot
     public static var support: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return ensure(base.appendingPathComponent("Shotcraft", isDirectory: true))
+        return ensure(base.appendingPathComponent(folderName, isDirectory: true))
     }
 
     /// Captured media that has not been explicitly saved lives here (and is what History indexes).
@@ -21,7 +23,7 @@ public enum AppPaths {
     public static var recordings: URL { ensure(support.appendingPathComponent("Recordings", isDirectory: true)) }
     public static var projects: URL { ensure(support.appendingPathComponent("Projects", isDirectory: true)) }
     public static var temporary: URL {
-        ensure(FileManager.default.temporaryDirectory.appendingPathComponent("Shotcraft", isDirectory: true))
+        ensure(FileManager.default.temporaryDirectory.appendingPathComponent(folderName, isDirectory: true))
     }
 
     /// The user's chosen export folder, created if needed.
@@ -51,7 +53,7 @@ public enum AppPaths {
     }
 }
 
-/// File-name templates, e.g. `Shotcraft %Y-%m-%d at %H.%M.%S`.
+/// File-name templates, e.g. `Super Screenshot %Y-%m-%d at %H.%M.%S`.
 ///
 /// Tokens: `%Y` year, `%m` month, `%d` day, `%H` hour (24h), `%h` hour (12h), `%M` minute, `%S` second,
 /// `%p` AM/PM, `%a` capture type ("Screenshot", "Recording", …), `%A` frontmost app name,
@@ -99,6 +101,6 @@ public enum FileNameTemplate {
         if usedCounter && advanceCounter { Defaults[counterKey] += 1 }
         let sanitized = out.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: ".")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return sanitized.isEmpty ? "Shotcraft" : sanitized
+        return sanitized.isEmpty ? "Super Screenshot" : sanitized
     }
 }

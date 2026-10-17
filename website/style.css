@@ -392,7 +392,7 @@ h2 kbd { font-size: 0.5em; vertical-align: 0.25em; }
 .m-qa .cursor { left: 151px; top: 347px; }
 
 .m-rec { --w: 640; --h: 480; --fx: linear-gradient(90deg, transparent, #000 7%); --fy: linear-gradient(180deg, #000 92%, transparent); }
-.m-rec .menubar { z-index: 6; }
+.m-rec .menubar { z-index: 6; gap: 17px; }
 .m-rec .scr { top: 16px; right: 16px; left: -140px; bottom: -40px; border-radius: 0 12px 0 0; }
 .m-rec .app { left: -450px; top: 40px; width: 1200px; height: 760px; }
 .m-rec .sel { left: 160px; top: 110px; width: 400px; height: 304px; }
@@ -492,7 +492,7 @@ figcaption span { flex: none; color: var(--ink); font-weight: 500; text-transfor
 .foot-row a:hover { color: var(--ink); }
 .wordmark {
   margin: 0; padding: 0 var(--pad); font-weight: 700; letter-spacing: -0.06em; line-height: 0.78;
-  font-size: clamp(80px, 21.5vw, 290px); color: var(--ink); transform: translateY(0.12em);
+  font-size: clamp(36px, 11.1vw, 150px); white-space: nowrap; color: var(--ink); transform: translateY(0.12em);
 }
 
 /* Responsive */

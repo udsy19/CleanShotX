@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// One editor's model: the document state, undo history, selection, active tool and per-tool styles
 /// (CleanShot: `AnnotateSession` + `AnnotateHistory`). Views observe it through `observe`.

@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// The editing surface. It is the document view of a magnifying `NSScrollView`, so its own coordinates are
 /// unzoomed: view point = document point + `docOffset`. Drawing goes through `AnnotateRenderer` (same code as
@@ -846,7 +846,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
         let opts: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: opts) as? [URL] ?? []
         return urls.filter { u in
-            u.pathExtension.lowercased() == ShotcraftDocument.fileExtension ||
+            SuperScreenshotDocument.isDocument(u) ||
                 (UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) ?? false)
         }
     }

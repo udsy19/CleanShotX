@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Watches whether the macOS screenshot shortcuts are enabled (re-read on activation and while a sheet waits).
 @MainActor
@@ -63,7 +63,7 @@ struct ShortcutsPane: View {
                 Section {
                     Banner(symbol: "command.square", tint: .accentColor,
                            title: "Use System Default Shortcuts",
-                           message: "Make Shotcraft your default screenshot tool by moving ⇧⌘3, ⇧⌘4 and ⇧⌘5 from macOS to Capture Fullscreen, Capture Area and All-In-One.",
+                           message: "Make Super Screenshot your default screenshot tool by moving ⇧⌘3, ⇧⌘4 and ⇧⌘5 from macOS to Capture Fullscreen, Capture Area and All-In-One.",
                            actions: AnyView(Button("Set Up…") { showingSystemHelper = true }))
                 }
             }
@@ -90,7 +90,7 @@ struct ShortcutsPane: View {
                     Spacer()
                     Button("Restore Defaults") {
                         if Alerts.confirm("Restore default shortcuts?",
-                                          info: "All shortcuts you've changed will be replaced with Shotcraft's defaults.",
+                                          info: "All shortcuts you've changed will be replaced with Super Screenshot's defaults.",
                                           confirmTitle: "Restore Defaults") {
                             Defaults.reset(.shortcuts)
                         }
@@ -151,7 +151,7 @@ struct SystemShortcutsHelper: View {
                 Image(systemName: "command.square.fill").font(.system(size: 36)).foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Use System Default Shortcuts").font(.title2.bold())
-                    Text("Set Shotcraft as your default screenshot tool.").foregroundStyle(.secondary)
+                    Text("Set Super Screenshot as your default screenshot tool.").foregroundStyle(.secondary)
                 }
             }
 
@@ -167,7 +167,7 @@ struct SystemShortcutsHelper: View {
                 }
             }
 
-            step(2, "Assign the shortcuts to Shotcraft",
+            step(2, "Assign the shortcuts to Super Screenshot",
                  "⇧⌘3 → Capture Fullscreen, ⇧⌘4 → Capture Area, ⇧⌘5 → All-In-One. Other actions using these keys are cleared.") {
                 EmptyView()
             }

@@ -1,7 +1,16 @@
 # Changelog
 
-All notable changes to Shotcraft are documented here. The format follows
+All notable changes to Super Screenshot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
+
+## [1.2.0] — 2026-10-17
+
+### Changed
+- Renamed to Super Screenshot (bundle id `com.udsy.superscreenshot`, URL scheme `superscreenshot://`). Settings and
+  captures move over automatically; macOS asks for Screen Recording permission again because the app identity changed.
+- Annotate projects are saved as `.superscreenshot` and Studio projects as `.superscreenshotvideo`; projects saved
+  under the old name still open. The one-line installer replaces the copy installed under the old name.
+- Redesigned website: every figure is a coded close-up of the app instead of a device screenshot.
 
 ## [1.1.0] — 2026-10-17
 
@@ -44,5 +53,7 @@ First public release.
 - Global shortcuts for every action, a `shotcraft://` URL scheme, share-menu and Quick Look extensions.
 - One-line installer and a universal (Apple silicon + Intel) DMG.
 
-[1.0.1]: https://github.com/udsy19/CleanShotX/releases/tag/v1.0.1
-[1.0.0]: https://github.com/udsy19/CleanShotX/releases/tag/v1.0.0
+[1.2.0]: https://github.com/udsy19/super-screenshot/releases/tag/v1.2.0
+[1.1.0]: https://github.com/udsy19/super-screenshot/releases/tag/v1.1.0
+[1.0.1]: https://github.com/udsy19/super-screenshot/releases/tag/v1.0.1
+[1.0.0]: https://github.com/udsy19/super-screenshot/releases/tag/v1.0.0

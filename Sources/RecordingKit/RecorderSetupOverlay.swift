@@ -1,6 +1,6 @@
 import AppKit
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// How the pre-record overlay was dismissed.
 enum RecorderSetupResult {

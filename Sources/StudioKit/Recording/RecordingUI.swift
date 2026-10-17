@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Borderless panel that can become key (for menus / keyboard) without activating the app.
 final class StudioPanel: NSPanel {

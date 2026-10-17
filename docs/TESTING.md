@@ -1,9 +1,9 @@
 # Testing
 
-Shotcraft is built with the Command Line Tools only (no Xcode), so XCTest/Swift Testing aren't available.
+Super Screenshot is built with the Command Line Tools only (no Xcode), so XCTest/Swift Testing aren't available.
 Testing has three layers.
 
-## 1. Self-tests — `swift run ShotcraftSelfTest`
+## 1. Self-tests — `swift run SuperScreenshotSelfTest`
 
 83 headless test groups covering the pure logic of every module, e.g.:
 
@@ -11,7 +11,7 @@ Testing has three layers.
 |---|---|
 | Core | file-name templates, typed defaults round-trips, shortcut uniqueness, coordinate conversion |
 | CaptureKit | drag/resize/nudge math, edge snapping, handles, pixel cropping, aspect ratios, toolbar layout |
-| AnnotateKit | geometry & hit testing, arrow generation, smoothing, undo stack, export pixel size, `.shotcraft` round-trip |
+| AnnotateKit | geometry & hit testing, arrow generation, smoothing, undo stack, export pixel size, `.superscreenshot` round-trip |
 | RecordingKit | timer formatting, even pixel sizes, bitrate/size estimates, GIF frame timing, pause clock |
 | StudioKit | clip timeline cut/split, zoom planning & easing, smart zoom, cursor smoothing, project JSON, export estimates |
 | OverlayKit | card sizing & stack layout, pin geometry, history persistence/pruning/filters |
@@ -21,7 +21,7 @@ Testing has three layers.
 
 ## 2. End-to-end suite — `scripts/e2e.sh`
 
-Drives a running `build/Shotcraft.app` with synthetic mouse/keyboard input through the Accessibility API
+Drives a running `build/SuperScreenshot.app` with synthetic mouse/keyboard input through the Accessibility API
 (`Tools/e2e/ui.swift`) and checks real outputs. Every capture targets a pinned synthetic test card, so no other
 screen content is involved; preferences are backed up and restored, and only files created by the run are removed.
 
@@ -39,7 +39,7 @@ screen content is involved; preferences are backed up and restored, and only fil
 | Desktop icons hide/show | desktop-level cover windows appear/disappear |
 | Settings window | opens on the requested pane |
 
-Requirements: the terminal running it has Accessibility permission and Shotcraft has Screen Recording permission.
+Requirements: the terminal running it has Accessibility permission and Super Screenshot has Screen Recording permission.
 The script takes over the mouse for ~2 minutes.
 
 ## 3. Manual end-to-end verification (release 1.0.0)
@@ -57,7 +57,7 @@ Exercised on macOS 26.5 (Apple silicon) with the Accessibility driver and window
   export sheet → MP4 with background, padding, shadow and custom cursor.
 - OCR repeated 3× reliably; scrolling capture of a long pane stitched without seams.
 - Capture History: filters, durations/GIF badges, Restore.
-- Quick Look: `.shotcraft` thumbnail and preview, `.shotcraftvideo` thumbnail (via `qlmanage -x`).
+- Quick Look: `.superscreenshot` thumbnail and preview, `.superscreenshotvideo` thumbnail (via `qlmanage -x`).
 - DMG: mounts, contains app + Applications link + install notes; app and all 4 extensions are universal
   (arm64 + x86_64) and pass `codesign --verify --deep --strict`.
 
@@ -72,7 +72,7 @@ Exercised on macOS 26.5 (Apple silicon) with the Accessibility driver and window
 
 ### Not automatable here
 
-- Share-menu extensions ("Annotate with Shotcraft", "Pin to the Screen") are built, signed and registered
+- Share-menu extensions ("Annotate with Super Screenshot", "Pin to the Screen") are built, signed and registered
   (`pluginkit -m`); invoking them requires a Finder/Photos share menu click.
 - Gatekeeper: the DMG is self-signed, not notarized — `spctl` rejects it as expected; first launch needs
   System Settings → Privacy & Security → Open Anyway (documented in the DMG).

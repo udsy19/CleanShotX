@@ -1,6 +1,6 @@
 # Roadmap
 
-Shotcraft 1.0 covers the full capture → annotate → share workflow. These are the known gaps and next steps.
+Super Screenshot 1.0 covers the full capture → annotate → share workflow. These are the known gaps and next steps.
 Contributions are welcome — see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Distribution

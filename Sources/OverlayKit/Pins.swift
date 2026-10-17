@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 // Pinned screenshots (CleanShot's `FloatingOverlay` / `FloatingOverlayController`).
 
@@ -39,7 +39,7 @@ final class PinController: PinServicing {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
-            guard let img = NSImage(contentsOf: url) else { Alerts.error("“\(url.lastPathComponent)” isn't an image Shotcraft can open."); continue }
+            guard let img = NSImage(contentsOf: url) else { Alerts.error("“\(url.lastPathComponent)” isn't an image Super Screenshot can open."); continue }
             // Respect the file's DPI so Retina captures pin at their point size.
             if let rep = img.representations.first, rep.pixelsWide > 0, rep.size.width > 0 { img.size = rep.size }
             pin(image: img, sourceURL: url)

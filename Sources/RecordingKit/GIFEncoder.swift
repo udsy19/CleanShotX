@@ -1,7 +1,7 @@
 import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 enum GIFError: LocalizedError {
     case cancelled, noVideo, encode

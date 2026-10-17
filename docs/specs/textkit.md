@@ -1,7 +1,7 @@
 # TextKit — Capture Text (OCR) + Scrolling Capture
 
 Reconstructed behaviour of CleanShot X 5.0.1's text-recognition and scrolling-capture features and how
-Shotcraft's `TextKit` reimplements them. Evidence references: the app's class metadata (CD),
+Super Screenshot's `TextKit` reimplements them. Evidence references: the app's class metadata (CD),
 the app's strings (SA), its UI strings (UI), and `nm -u` of the arm64 slice (NM).
 
 ## 1. Evidence summary
@@ -19,7 +19,7 @@ the app's strings (SA), its UI strings (UI), and `nm -u` of the arm64 slice (NM)
 | `VNDetectTextRectanglesRequest` | NM | Used for the onboarding/highlight animation (not needed for the copy flow). |
 | `ocrDetectURLs`, "Do you want to open this link?", "Open Link in Browser", "Never open links" | SA:14171, UI:292/600/524 | When the result is a link, optionally ask to open it; one button disables the preference. |
 | "No text detected", "Text has been copied" | UI:565, UI:793 | HUD messages for the two outcomes. |
-| `OCROnboarding`, `OCRONGuide`, `onboardingOCRDisplayed`, "How to use the text recognition tool?" | CD:867-869, SA:14239, UI:424 | First-use onboarding (owned by PreferencesKit onboarding in Shotcraft). |
+| `OCROnboarding`, `OCRONGuide`, `onboardingOCRDisplayed`, "How to use the text recognition tool?" | CD:867-869, SA:14239, UI:424 | First-use onboarding (owned by PreferencesKit onboarding in Super Screenshot). |
 | Language display names "Chinese (Simplified)", "Norwegian (Bokmål)" | UI:191, UI:577 | Codes are shown with localized names; Vision codes are BCP-47 (`en-US`, `zh-Hans`, `nb-NO`). |
 
 ### Scrolling capture
@@ -33,7 +33,7 @@ the app's strings (SA), its UI strings (UI), and `nm -u` of the arm64 slice (NM)
 | `SGControlsView` (`isStartButtonVisible, doneButton`; `startClicked helpClicked cancelClicked doneClicked`) | CD:1071 | Control bar: Start → Done, Help, Cancel. |
 | `SGAlert : FSInfoLabel` (`hideTimer, shaking`), `PauseSGAlert`, `PermanentWarningSGAlert` | CD:962-1068 | Pill-shaped info labels that auto-hide, can shake; a pause alert; a permanent warning. |
 | "Move cursor here to start scrolling", "Slowly scroll down the content", "Scroll Vertically or Horizontally", "Please slow down...", "Screenshot is very large" | UI:510/754/715/631, SA:55 | Hint texts for each state. |
-| "Currently, the following conditions may break the scrolling capture:" + "When selected area contains animations or videos." / "…not scrolling entirely vertically or horizontally." / "…scrolling too fast." / "…start scrolling up." ; "Only scrollable content should be selected…" | SA:7066, SA:56-60, SA:14299 | Help popover contents (rephrased in Shotcraft). |
+| "Currently, the following conditions may break the scrolling capture:" + "When selected area contains animations or videos." / "…not scrolling entirely vertically or horizontally." / "…scrolling too fast." / "…start scrolling up." ; "Only scrollable content should be selected…" | SA:7066, SA:56-60, SA:14299 | Help popover contents (rephrased in Super Screenshot). |
 | `onboardingScrollingCaptureDisplayed`, `SCONArea/SCONScroll/SCONScrollOrientation/SCONTroubleshooting` | SA:14240, CD:1057-1065 | First-use onboarding pages (area → scroll → orientation → troubleshooting). |
 
 ## 2. Capture Text flow (`TextServicing.captureText(keepLineBreaks:)`)

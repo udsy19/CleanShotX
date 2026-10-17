@@ -1,6 +1,6 @@
 import AppKit
 import Quartz
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Actions shared by Quick Access cards, pins and the history window. Cross-module work goes through `Services`.
 @MainActor

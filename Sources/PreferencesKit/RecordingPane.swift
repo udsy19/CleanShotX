@@ -1,5 +1,5 @@
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct RecordingPane: View {
     @Default(.videoFormat) private var format

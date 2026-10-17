@@ -26,7 +26,7 @@ public enum ImageTools {
     @discardableResult
     public static func write(_ image: CGImage, to url: URL, format: ImageFormat, scale: CGFloat = 1) throws -> URL {
         guard let data = encode(image, format: format, dpi: 72 * scale) else {
-            throw NSError(domain: "Shotcraft", code: 1, userInfo: [NSLocalizedDescriptionKey: "There was an error while compressing your image."])
+            throw NSError(domain: "SuperScreenshot", code: 1, userInfo: [NSLocalizedDescriptionKey: "There was an error while compressing your image."])
         }
         try data.write(to: url, options: .atomic)
         return url

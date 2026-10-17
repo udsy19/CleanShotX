@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// One scrolling capture, from the selected area to the stitched image (SGOverlay + ScrollingGrabber).
 @MainActor final class ScrollingCaptureSession {

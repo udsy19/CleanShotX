@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 extension Defaults.Keys {
     /// Last 50 successful uploads, newest first.
@@ -151,12 +151,12 @@ public final class UploadService: UploadServicing {
 
     private func presentNotConfigured() {
         let open = Alerts.confirm("Uploading isn't set up",
-                                  info: "Choose where Shotcraft uploads your captures — S3-compatible storage, your own HTTP endpoint, or a synced folder.",
+                                  info: "Choose where Super Screenshot uploads your captures — S3-compatible storage, your own HTTP endpoint, or a synced folder.",
                                   confirmTitle: "Open Settings", cancelTitle: "Not Now")
         if open { Services.preferences?.show(pane: "upload") }
     }
 
-    /// A tiny generated PNG named `shotcraft-test.png` in its own temp directory.
+    /// A tiny generated PNG named `super-screenshot-test.png` in its own temp directory.
     private static func makeProbeFile() throws -> (file: URL, directory: URL) {
         guard let ctx = ImageTools.context(width: 16, height: 16) else { throw UploadError.failed("Couldn't create the test image.") }
         ctx.setFillColor(CGColor(srgbRed: 0.24, green: 0.48, blue: 0.96, alpha: 1))
@@ -166,7 +166,7 @@ public final class UploadService: UploadServicing {
         guard let image = ctx.makeImage() else { throw UploadError.failed("Couldn't create the test image.") }
         let dir = AppPaths.temporary.appendingPathComponent("Uploads/\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = try ImageTools.write(image, to: dir.appendingPathComponent("shotcraft-test.png"), format: .png)
+        let file = try ImageTools.write(image, to: dir.appendingPathComponent("super-screenshot-test.png"), format: .png)
         return (file, dir)
     }
 }

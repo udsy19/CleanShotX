@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Turns a capture file into an `UploadItem`, down-scaling images wider than the maximum upload width
 /// into a temporary copy ("Set maximum resolution to reduce file size and upload time.").

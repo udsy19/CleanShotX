@@ -1,33 +1,34 @@
 <p align="center">
-  <img src="website/assets/icon-256.png" alt="Shotcraft" width="128" height="128">
+  <img src="website/assets/icon-256.png" alt="Super Screenshot" width="128" height="128">
 </p>
 
-<h1 align="center">Shotcraft</h1>
+<h1 align="center">Super Screenshot</h1>
 
 <p align="center">
   <b>Screenshots and screen recordings for macOS — crafted beautifully, kept private.</b><br>
   Capture, annotate, record, recognize text and share from a tiny app in your menu bar.<br>
-  Free, open source and 100% local: nothing leaves your Mac unless you upload it.
+  Free, open source and 100% local: nothing leaves your Mac unless you upload it.<br>
+  Formerly Shotcraft.
 </p>
 
 <p align="center">
-  <a href="https://udsy19.github.io/CleanShotX/"><b>Website</b></a> ·
-  <a href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg"><b>Download</b></a> ·
+  <a href="https://udsy19.github.io/super-screenshot/"><b>Website</b></a> ·
+  <a href="https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg"><b>Download</b></a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="PRIVACY.md">Privacy</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/udsy19/CleanShotX/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/udsy19/CleanShotX?color=6d5bf7&label=release"></a>
+  <a href="https://github.com/udsy19/super-screenshot/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/udsy19/super-screenshot?color=6d5bf7&label=release"></a>
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111?logo=apple">
   <img alt="Apple silicon and Intel" src="https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-111">
-  <a href="https://github.com/udsy19/CleanShotX/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/udsy19/CleanShotX/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/udsy19/super-screenshot/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/udsy19/super-screenshot/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-f56c9e"></a>
 </p>
 
 <p align="center">
-  <img src="website/assets/og.png" alt="Shotcraft's Annotate editor and Quick Access overlay" width="860">
+  <img src="website/assets/og.png" alt="Super Screenshot's Annotate editor and Quick Access overlay" width="860">
 </p>
 
 ---
@@ -37,24 +38,24 @@
 **One line** — downloads the latest release, installs it into Applications and opens it:
 
 ```bash
-curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash
+curl -fsSL https://udsy19.github.io/super-screenshot/install.sh | bash
 ```
 
-**Or download the [DMG](https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg)**, drag Shotcraft to
-Applications and open it. Shotcraft isn't notarized by Apple, so the first launch of a browser-downloaded copy needs
-**System Settings → Privacy & Security → Open Anyway** (only once). The one-line installer doesn't need this step.
+**Or download the [DMG](https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg)**,
+drag Super Screenshot to Applications and open it. Super Screenshot isn't notarized by Apple, so the first launch of a
+browser-downloaded copy needs **System Settings → Privacy & Security → Open Anyway** (only once). The one-line installer doesn't need this step.
 
 Requires macOS 14 Sonoma or later, Apple silicon or Intel. Run the same command to update; add
 `-s -- --uninstall` after `bash` to remove it.
 
 ## Quick start
 
-1. Open Shotcraft — it lives in your menu bar, and a short welcome guide sets up permissions and shortcuts.
+1. Open Super Screenshot — it lives in your menu bar, and a short welcome guide sets up permissions and shortcuts.
 2. Press <kbd>⌥</kbd><kbd>⇧</kbd><kbd>4</kbd> and drag over anything (or pick macOS's <kbd>⇧</kbd><kbd>⌘</kbd><kbd>4</kbd> during setup).
 3. The capture appears in the Quick Access overlay: drag it into any app, copy, save, annotate, pin or upload.
 4. <kbd>⌥</kbd><kbd>⇧</kbd><kbd>5</kbd> opens **All-In-One** for every other mode: window, fullscreen, scrolling, text, recording.
 
-## Why Shotcraft?
+## Why Super Screenshot?
 
 - **One flow from capture to share.** Every screenshot lands in a floating thumbnail you can drag, copy, annotate or pin — no Save dialogs.
 - **An editor worth using.** Arrows, text, counters, blur, spotlight and a background tool that turns any screenshot into a share-ready image.
@@ -80,7 +81,7 @@ Requires macOS 14 Sonoma or later, Apple silicon or Intel. Run the same command 
 - Crop & resize, rectangle, filled rectangle, ellipse, line, arrow (5 styles), text (several styles), pen, highlighter
 - Pixelate / blur / redact, spotlight, numbered counters, image layers
 - Background tool: gradients, wallpapers, padding, corner radius, shadow, alignment, aspect ratio, presets
-- Unlimited undo, snapping guides, auto-expanding canvas, editable `.shotcraft` documents
+- Unlimited undo, snapping guides, auto-expanding canvas, editable `.superscreenshot` documents
 
 ### Recording
 - Video (H.264/HEVC) or GIF, 30/60 fps, Retina or 1×
@@ -100,7 +101,7 @@ Requires macOS 14 Sonoma or later, Apple silicon or Intel. Run the same command 
 - **Pin to screen** — always-on-top, resizable, adjustable opacity, click-through lock
 - **Capture History** — filters for screenshots, videos and GIFs; restore anything
 - **Upload** — your own S3-compatible bucket, HTTP endpoint or synced folder; link copied instantly
-- **Automation** — global shortcut for every action and a `shotcraft://` URL scheme
+- **Automation** — global shortcut for every action and a `superscreenshot://` URL scheme
 - **Extensions** — "Annotate" and "Pin to the Screen" in the share menu; Quick Look previews for documents
 
 </details>
@@ -133,7 +134,7 @@ Every shortcut can be changed in **Settings → Shortcuts**.
 <details>
 <summary><b>URL scheme</b></summary>
 
-Automate Shotcraft from Raycast, Alfred, Shortcuts or Terminal (`open "shotcraft://…"`). Commands that read the
+Automate Super Screenshot from Raycast, Alfred, Shortcuts or Terminal (`open "superscreenshot://…"`). Commands that read the
 screen ask for permission on first use (**Settings → Advanced → Allow URL scheme API**).
 
 | Command | Parameters |
@@ -146,13 +147,13 @@ screen ask for permission on first use (**Settings → Advanced → Allow URL sc
 | `toggle-desktop-icons`, `hide-desktop-icons`, `show-desktop-icons` | — |
 | `open-settings` | `tab=general\|shortcuts\|recording\|…` |
 
-Example: `open "shotcraft://capture-area?action=copy"`
+Example: `open "superscreenshot://capture-area?action=copy"`
 
 </details>
 
 ## Privacy & permissions
 
-Shotcraft has no accounts, analytics or servers — see [PRIVACY.md](PRIVACY.md). It asks for:
+Super Screenshot has no accounts, analytics or servers — see [PRIVACY.md](PRIVACY.md). It asks for:
 
 | Permission | Used for |
 |---|---|
@@ -165,11 +166,11 @@ Shotcraft has no accounts, analytics or servers — see [PRIVACY.md](PRIVACY.md)
 Only the Command Line Tools are needed (`xcode-select --install`) — no Xcode, no dependencies.
 
 ```bash
-git clone https://github.com/udsy19/CleanShotX.git && cd CleanShotX
+git clone https://github.com/udsy19/super-screenshot.git && cd super-screenshot
 ./scripts/signing-setup.sh        # once: local signing identity so permissions survive rebuilds
-./scripts/build-app.sh            # → build/Shotcraft.app   (--debug for a faster build)
-open build/Shotcraft.app
-swift run ShotcraftSelfTest       # logic tests
+./scripts/build-app.sh            # → build/SuperScreenshot.app   (--debug for a faster build)
+open build/SuperScreenshot.app
+swift run SuperScreenshotSelfTest # logic tests
 ./scripts/e2e.sh                  # end-to-end tests against the running app
 ./scripts/make-dmg.sh             # universal DMG in dist/
 ```
@@ -186,5 +187,5 @@ Issues and pull requests are welcome — read [CONTRIBUTING.md](CONTRIBUTING.md)
 
 [MIT](LICENSE) © Udaya Vijay Anand.
 
-Shotcraft is an independent project inspired by CleanShot X's workflow. It is not affiliated with or endorsed by
+Super Screenshot is an independent project inspired by CleanShot X's workflow. It is not affiliated with or endorsed by
 CleanShot X or MTW and contains none of its code or assets.

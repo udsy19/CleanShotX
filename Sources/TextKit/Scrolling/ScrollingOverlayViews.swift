@@ -1,6 +1,6 @@
 import AppKit
 import QuartzCore
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - Dimmed frame around the area (click-through)
 

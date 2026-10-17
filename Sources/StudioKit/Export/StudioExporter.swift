@@ -2,7 +2,7 @@ import AVFoundation
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Renders a project to MP4 (AVAssetReader → custom compositor → AVAssetWriter) or GIF (FLVideoEncoder).
 final class StudioExporter: @unchecked Sendable {
@@ -121,7 +121,7 @@ final class StudioExporter: @unchecked Sendable {
 
             let group = DispatchGroup()
             group.enter()
-            let vQueue = DispatchQueue(label: "shotcraft.studio.export.video")
+            let vQueue = DispatchQueue(label: "superscreenshot.studio.export.video")
             vIn.requestMediaDataWhenReady(on: vQueue) { [self] in
                 while vIn.isReadyForMoreMediaData {
                     if cancelled { vIn.markAsFinished(); group.leave(); return }
@@ -132,7 +132,7 @@ final class StudioExporter: @unchecked Sendable {
             }
             if let aIn, let aOut {
                 group.enter()
-                let aQueue = DispatchQueue(label: "shotcraft.studio.export.audio")
+                let aQueue = DispatchQueue(label: "superscreenshot.studio.export.audio")
                 aIn.requestMediaDataWhenReady(on: aQueue) { [self] in
                     while aIn.isReadyForMoreMediaData {
                         if cancelled { aIn.markAsFinished(); group.leave(); return }

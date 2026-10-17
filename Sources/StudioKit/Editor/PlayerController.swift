@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Live preview (FLPlayerController): an AVPlayer whose item uses the Studio compositor. Style edits swap
 /// the render scene in place; clip edits rebuild the composition.

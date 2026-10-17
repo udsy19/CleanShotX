@@ -3,7 +3,7 @@
 Source of evidence: the CleanShot X 5.0.1 app bundle. Citations: `cd` = class metadata, `sa` = app strings,
 `ui` = UI strings, `nib` = nib files, `plist` = Info.plist.
 
-Shotcraft re-implements the behaviour, not the code. Labels are short UI words only.
+Super Screenshot re-implements the behaviour, not the code. Labels are short UI words only.
 
 ## 1. Object model (cd 54–300)
 
@@ -13,7 +13,7 @@ CleanShot keeps one `AnnotateSession` per editor window (cd `AnnotateSession`: `
 plus `realTodisplayTransform` / `displayToRealTransform`). Every annotation subclasses `ANDrawingObject`
 (`layer`, `anchorPoints`, `selectionStrokeLayer`, `isDeleted`, `clickableArea`):
 
-| CleanShot class | Base | Stored properties | Shotcraft `AnnotationKind` |
+| CleanShot class | Base | Stored properties | Super Screenshot `AnnotationKind` |
 |---|---|---|---|
 | ANRectangle | ANGenericRectangle | color, thickness | `.rectangle` |
 | ANFilledRectangle | ANGenericRectangle | color | `.filledRectangle` |
@@ -29,7 +29,7 @@ plus `realTodisplayTransform` / `displayToRealTransform`). Every annotation subc
 | ANImageObject | ANInvisibleRectangle | image, imageLayer | `.image` |
 
 `ANGenericRectangle` is defined by `startPoint/endPoint` with four corner `ANAnchorPoint`s;
-`ANGenericLine` by `startPoint/endPoint` with two anchors. Shotcraft uses one flat `Annotation` value type
+`ANGenericLine` by `startPoint/endPoint` with two anchors. Super Screenshot uses one flat `Annotation` value type
 (`start`, `end`, `control`, `points`, style fields) so the whole document is a value and undo is a snapshot.
 
 `ANShadow` (radius, color, offset) + Settings `_drawShadow` (cd AnnotateSettings) → per-object `shadow` flag
@@ -70,7 +70,7 @@ the canvas context menu and on ⇧⌘S / ⌥⌘S / ⌘O / ⌘P.
 Thickness shortcuts `annotateIncreaseThickness` / `annotateDecreaseThickness` → `]`/`[` (without ⌘).
 Modifiers: ⇧ constrains (45° for lines/arrows, square/circle for shapes, aspect for image), ⌥ draws from center.
 Each tool remembers its own style (`annotateLastArrowStyle`, `annotateLastPixelateStyle`, `annotateLastCounterStyle`,
-`annotateLastTextSize` …); Shotcraft stores a `[tool: ToolStyle]` map under `annotate.toolStyles`.
+`annotateLastTextSize` …); Super Screenshot stores a `[tool: ToolStyle]` map under `annotate.toolStyles`.
 
 Object commands (`ui` 233, 313; `sa` 4221/4238): Copy Object to Clipboard (⌘C with a selection, otherwise the
 flattened screenshot — `annotateCopyScreenshot`), Duplicate Object (⌘D), paste (⌘V; pasted images become image
@@ -101,7 +101,7 @@ labels "Add Screenshot From File", "Add New Screenshot", "Paste From Clipboard" 
 Setting `.annotateSnapCrop`. Resize popover nib (nib 37–70): "Width:", "Height:", unit popup "pixels"/"percent",
 proportion lock, "Flatten Annotations" switch with "(Can't be undone)", Cancel / Resize; warning
 "This action will flatten all annotations, making them uneditable." (ui 1031).
-Shotcraft: crop is a non-destructive `cropRect` in document space (Return applies, Esc cancels); Resize scales the
+Super Screenshot: crop is a non-destructive `cropRect` in document space (Return applies, Esc cancels); Resize scales the
 base image and all objects (optionally flattening first).
 
 ## 5. Background tool
@@ -114,7 +114,7 @@ base image and all objects (optionally flattening first).
 `ANPresetControl`: add / save / delete / set-default preset (`annotatePresetNew/Save/Trash`).
 Remembering the sidebar: "Remember if background tool was opened" (ui 660, `.annotateRememberBackgroundTool`).
 
-Shotcraft `BackgroundSettings`: fill `none | color | gradient(id) | desktop wallpaper | image file`;
+Super Screenshot `BackgroundSettings`: fill `none | color | gradient(id) | desktop wallpaper | image file`;
 padding (pt), inset (pt, colour sampled from the image corner), auto-balance (centre the opaque part of the image —
 window screenshots with transparent shadow margins), corner radius (pt), shadow (0–1), 9-point alignment,
 aspect ratio `auto, 1:1, 4:3, 3:2, 16:10, 16:9, 9:16, custom`. 20 original gradients (10 shown, "Show more"),
@@ -127,7 +127,7 @@ Presets live in `annotate.backgroundPresets`; the last settings in `annotate.las
 
 `ANColorPalette(defaultColors, defaultColorsNames, showsAlpha)`, custom colours (`annotateCustomColors`,
 `annotate_custom_colors_count`), `ANColorPicker` with pipette (`pipetteClicked`), `_showColorNames`.
-Shotcraft: popover with two columns — ten default colours (names shown per `.annotateShowColorNames`) and ten
+Super Screenshot: popover with two columns — ten default colours (names shown per `.annotateShowColorNames`) and ten
 "My Colors" slots (`annotate.customColors`; hover ✕ deletes, drag reorders, empty slot adds the current colour) — plus
 a colour-wheel button (NSColorPanel) and an expand chevron (`annotate.paletteExpanded`) that reveals a
 saturation/brightness square, hue and alpha sliders, hex field, eyedropper (`NSColorSampler`), R/G/B/Alpha fields and
@@ -142,12 +142,12 @@ analytics `annotate_save_{done,clipboard,cloud,pin,dragme,savepanel,sharesheet}`
 + `MultiPageImageView(fitToSinglePage)` — "Scale image to fit on one page" (ui 703).
 Close prompts: "Do you want to save the changes you made to the screenshot?" / "…made to this project?" (ui 294–296).
 
-Shotcraft behaviour:
+Super Screenshot behaviour:
 * **Done** (⌘S / ⌘↩): flatten → write to `media.url` in its format (captures/opened files); a clipboard session
   writes a new file and hands it to `MediaPipeline.ingest(…, [.showQuickAccess])`. Also writes the project to
-  `AppPaths.projects/<media-id>.shotcraft`, sets `media.projectURL`, `media.notifyChanged()`, closes.
+  `AppPaths.projects/<media-id>.superscreenshot`, sets `media.projectURL`, `media.notifyChanged()`, closes.
 * **Save**: `.annotateSaveBehavior` — export location (unique name) or save panel. **Save As…** panel with a format
-  popup (PNG/JPG/HEIC/TIFF/Shotcraft Project). **Save Project…** writes a `.shotcraft` document.
+  popup (PNG/JPG/HEIC/TIFF/Super Screenshot Project). **Save Project…** writes a `.superscreenshot` document.
 * **Copy** (button) copies the flattened image and closes; ⌘C copies without closing.
 * **Upload / Pin**: commit, then `Services.upload.upload` / `Services.pin.pin`, close.
 * **Share**, **Drag me** (temp file), **Print** (fit to one page option).
@@ -159,10 +159,10 @@ thumbnailBitmap, projectURL)`, UTI `com.cleanshot.document` / extension `cleansh
 Project" (sa 6112), `AnnotateController(projectsHistory, annotates)`, errors "An error occurred while opening/saving
 the project" (sa 3974/3977).
 
-Shotcraft `.shotcraft` (UTI `com.udsy.shotcraft.document`) is a single UTF-8 JSON file:
+Super Screenshot `.superscreenshot` (UTI `com.udsy.superscreenshot.document`) is a single UTF-8 JSON file:
 
 ```json
-{ "format": "com.udsy.shotcraft.document", "version": 1,
+{ "format": "com.udsy.superscreenshot.document", "version": 1,
   "createdAt": "...", "modifiedAt": "...", "sourcePath": "/…/Screenshot.png",
   "image": { "scale": 2, "png": "<base64>" },
   "cropRect": [[x, y], [w, h]] | null,

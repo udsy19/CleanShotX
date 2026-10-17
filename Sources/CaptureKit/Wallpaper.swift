@@ -1,6 +1,6 @@
 import AppKit
 import ScreenCaptureKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Wallpaper images for the desktop-icon covers and window-screenshot backgrounds.
 @MainActor

@@ -3,7 +3,7 @@ import CoreMedia
 import os
 import VideoToolbox
 import ScreenCaptureKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Everything the engine needs, resolved on the main actor before recording starts.
 struct CaptureEngineConfig: @unchecked Sendable {
@@ -42,7 +42,7 @@ enum CaptureEngineError: LocalizedError {
 final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOutputSampleBufferDelegate,
                            @unchecked Sendable {
     private let config: CaptureEngineConfig
-    private let queue = DispatchQueue(label: "shotcraft.recording.samples", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "superscreenshot.recording.samples", qos: .userInteractive)
     private let hostClock = CMClockGetHostTimeClock()
 
     private var stream: SCStream?

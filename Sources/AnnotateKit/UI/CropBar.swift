@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Crop & Resize controls shown in the toolbar while cropping (CleanShot `ANCropController`): ratio menu (with
 /// snapping), W ⇄ H fields, "Image size" popup that opens the Resize popover, and Reset.

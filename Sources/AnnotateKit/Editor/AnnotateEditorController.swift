@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Window that routes ⌘-shortcuts to the editor (the app has no main menu while it is an accessory app).
 final class EditorWindow: NSWindow {
@@ -31,7 +31,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         case media
         /// An image from the clipboard: Done creates a new file and shows it in Quick Access.
         case clipboard
-        /// A `.shotcraft` project: Done saves the project.
+        /// A `.superscreenshot` project: Done saves the project.
         case project
     }
 
@@ -77,7 +77,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private var closeConfirmed = false
     private var didInitialZoom = false
 
-    private static let objectsPasteboardType = NSPasteboard.PasteboardType("com.udsy.shotcraft.annotations")
+    private static let objectsPasteboardType = NSPasteboard.PasteboardType("com.udsy.superscreenshot.annotations")
     private static let toolbarHeight: CGFloat = 52
     private static let bottomBarHeight: CGFloat = 40
 
@@ -242,7 +242,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     private func buildToolbar(_ window: NSWindow) {
-        let tb = NSToolbar(identifier: "ShotcraftAnnotateToolbar")
+        let tb = NSToolbar(identifier: "SuperScreenshotAnnotateToolbar")
         tb.delegate = self
         tb.displayMode = .iconOnly
         tb.allowsUserCustomization = false
@@ -788,7 +788,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private func handleDrop(_ urls: [URL], at p: CGPoint?) {
         var offset: CGFloat = 0
         for u in urls {
-            if u.pathExtension.lowercased() == ShotcraftDocument.fileExtension {
+            if SuperScreenshotDocument.isDocument(u) {
                 Services.annotate?.openDocument(u)
                 continue
             }
@@ -817,9 +817,9 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     /// Writes the project next to the media in Application Support so the edit can be resumed later.
     @discardableResult
     private func saveSidecarProject(for m: CapturedMedia) -> Bool {
-        let url = AppPaths.projects.appendingPathComponent(m.id.uuidString).appendingPathExtension(ShotcraftDocument.fileExtension)
+        let url = AppPaths.projects.appendingPathComponent(m.id.uuidString).appendingPathExtension(SuperScreenshotDocument.fileExtension)
         do {
-            let data = try ShotcraftDocument.encode(session.state, sourceURL: m.url, createdAt: createdAt)
+            let data = try SuperScreenshotDocument.encode(session.state, sourceURL: m.url, createdAt: createdAt)
             try data.write(to: url, options: .atomic)
             m.projectURL = url
             return true
@@ -911,7 +911,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         finishAndClose()
     }
 
-    /// Save As… with a format popup (PNG / JPEG / HEIC / TIFF / Shotcraft Project).
+    /// Save As… with a format popup (PNG / JPEG / HEIC / TIFF / Super Screenshot Project).
     func saveAs(closeAfter: Bool = false) {
         prepareForExport()
         guard let window else { return }
@@ -952,14 +952,14 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
 
-    /// Save Project… (.shotcraft).
+    /// Save Project… (.superscreenshot).
     func saveProjectAs(closeAfter: Bool = false) {
         prepareForExport()
         guard let window else { return }
         let panel = NSSavePanel()
         panel.directoryURL = projectURL?.deletingLastPathComponent() ?? AppPaths.exportLocation
         panel.allowedContentTypes = [ExportFormat.project.contentType]
-        panel.nameFieldStringValue = "\(baseName).\(ShotcraftDocument.fileExtension)"
+        panel.nameFieldStringValue = "\(baseName).\(SuperScreenshotDocument.fileExtension)"
         panel.beginSheetModal(for: window) { [weak self] r in
             guard r == .OK, let self, let url = panel.url else { return }
             guard self.writeProject(to: url) else { return }
@@ -972,7 +972,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     @discardableResult
     private func writeProject(to url: URL) -> Bool {
         do {
-            let data = try ShotcraftDocument.encode(session.state, sourceURL: media?.url, createdAt: createdAt)
+            let data = try SuperScreenshotDocument.encode(session.state, sourceURL: media?.url, createdAt: createdAt)
             try data.write(to: url, options: .atomic)
             RecentProjects.add(url)
             if origin == .project { session.markClean() }

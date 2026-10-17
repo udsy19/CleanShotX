@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct AdvancedPane: View {
     @Default(.askForNameAfterCapture) private var askForName
@@ -109,7 +109,7 @@ struct AdvancedPane: View {
 
             Section {
                 SettingToggle("Allow URL scheme API", isOn: $allowURLScheme,
-                              help: "Lets other apps and scripts (Shortcuts, Raycast, Alfred) control Shotcraft with shotcraft:// links. When off, you're asked the first time an app tries.")
+                              help: "Lets other apps and scripts (Shortcuts, Raycast, Alfred) control Super Screenshot with superscreenshot:// links. When off, you're asked the first time an app tries.")
                 DisclosureGroup("Commands", isExpanded: $showingURLDocs) {
                     URLSchemeDocs()
                 }

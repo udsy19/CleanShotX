@@ -1,7 +1,7 @@
 import AppKit
 import ScreenCaptureKit
 
-/// Which of Shotcraft's own windows stay out of captures. Like CleanShot, screenshots include pinned
+/// Which of Super Screenshot's own windows stay out of captures. Like CleanShot, screenshots include pinned
 /// screenshots, editor and settings windows (they are part of the user's screen), but never our transient UI:
 /// anything above the floating window level (selection overlays, Quick Access cards, HUDs, alerts) plus windows a
 /// module explicitly flags with `exclude(_:)`. Recordings use the same rule.

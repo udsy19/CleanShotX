@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Entry point called once by the app at launch; registers this module's services in `Services`.
 public enum OverlayKitModule {

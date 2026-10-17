@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Capture History service: persistent JSON index of captures (CleanShot's `mediaHistory` + `MediaUtility.cleanOldMedia`).
 @MainActor
@@ -43,7 +43,7 @@ final class HistoryStore: ObservableObject, HistoryServicing {
         pruneTimer = t
     }
 
-    /// Folders whose unsaved files belong to Shotcraft and may be deleted when their history entry goes away.
+    /// Folders whose unsaved files belong to Super Screenshot and may be deleted when their history entry goes away.
     static var managedDirectories: [URL] { [AppPaths.media, AppPaths.recordings] }
 
     // MARK: HistoryServicing

@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Owns the Quick Access Overlay stack (CleanShot's `PopupController`).
 @MainActor

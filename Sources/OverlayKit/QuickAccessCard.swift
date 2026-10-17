@@ -1,6 +1,6 @@
 import AppKit
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Container view of a card: forwards mouse/scroll/hover events to the card.
 final class QuickAccessCardView: NSView {

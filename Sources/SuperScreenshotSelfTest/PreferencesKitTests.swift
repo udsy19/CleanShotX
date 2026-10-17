@@ -1,6 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
-import ShotcraftCore
+import SuperScreenshotCore
 import PreferencesKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
@@ -40,10 +40,10 @@ func registerPreferencesKitTests() {
     }))
 
     SelfTest.cases.append(("Prefs.windowBackground", {
-        let suite = UserDefaults(suiteName: "shotcraft.selftest.prefs.bg")!
-        suite.removePersistentDomain(forName: "shotcraft.selftest.prefs.bg")
+        let suite = UserDefaults(suiteName: "superscreenshot.selftest.prefs.bg")!
+        suite.removePersistentDomain(forName: "superscreenshot.selftest.prefs.bg")
         Defaults.store = suite
-        defer { Defaults.store = .standard; suite.removePersistentDomain(forName: "shotcraft.selftest.prefs.bg") }
+        defer { Defaults.store = .standard; suite.removePersistentDomain(forName: "superscreenshot.selftest.prefs.bg") }
         check(WindowBackgroundMapping.style(for: .desktop) == .desktopWallpaper, "desktop")
         check(WindowBackgroundMapping.style(for: .custom) == .customWallpaper, "custom")
         check(WindowBackgroundMapping.style(for: .color) == .color, "color")
@@ -151,8 +151,8 @@ func registerPreferencesKitTests() {
     }))
 
     SelfTest.cases.append(("Prefs.restoreDefaults", {
-        let suite = UserDefaults(suiteName: "shotcraft.selftest.prefs")!
-        suite.removePersistentDomain(forName: "shotcraft.selftest.prefs")
+        let suite = UserDefaults(suiteName: "superscreenshot.selftest.prefs")!
+        suite.removePersistentDomain(forName: "superscreenshot.selftest.prefs")
         Defaults.store = suite
         defer { Defaults.store = .standard }
         check(Set(PreferencesReset.restorableKeys.map(\.name)).count == PreferencesReset.restorableKeys.count, "no duplicate keys")
@@ -166,6 +166,6 @@ func registerPreferencesKitTests() {
         check(Defaults[.afterScreenshotActions] == [.showQuickAccess], "after-capture restored")
         check(AppAction.captureArea.shortcut == AppAction.captureArea.defaultShortcut, "shortcuts restored")
         check(Defaults[.onboardingCompleted], "onboarding flag untouched")
-        suite.removePersistentDomain(forName: "shotcraft.selftest.prefs")
+        suite.removePersistentDomain(forName: "superscreenshot.selftest.prefs")
     }))
 }

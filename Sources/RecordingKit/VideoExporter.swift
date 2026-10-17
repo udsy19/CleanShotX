@@ -1,5 +1,5 @@
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct VideoExportOptions {
     var timeRange: CMTimeRange
@@ -118,7 +118,7 @@ private final class Transcoder: @unchecked Sendable {
     private let options: VideoExportOptions
     private let output: URL
     private let progress: @Sendable (Double) -> Void
-    private let queue = DispatchQueue(label: "shotcraft.recording.transcode")
+    private let queue = DispatchQueue(label: "superscreenshot.recording.transcode")
     private var reader: AVAssetReader?
     private var writer: AVAssetWriter?
     // Queue-confined pump state.

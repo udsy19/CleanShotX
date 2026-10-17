@@ -1,4 +1,4 @@
-# CleanShot X — UI reference (for Shotcraft)
+# CleanShot X — UI reference (for Super Screenshot)
 
 Implementation-ready description of CleanShot X 4.x–5.0.x UI, screen by screen. Nothing was captured from this
 machine's screen and the app was never launched.
@@ -231,7 +231,7 @@ on the rect. Recording switches to the recorder panel (§7.1). Esc closes. The o
   Right [V settings4]. Strings also include "Place on the left/right/top/bottom" [S].
 - The stack follows the active screen ("Move to active screen": "Active screen is the screen where your cursor is
   pointing.") [V].
-- CleanShot holds the cards in one full-screen transparent window per screen [binary]; Shotcraft uses one panel per
+- CleanShot holds the cards in one full-screen transparent window per screen [binary]; Super Screenshot uses one panel per
   card with the same on-screen geometry.
 - **Side margin 40 pt** from the screen edge (right: `screen.maxX − width − 40`) [binary].
 - **Card i** (0 = newest, at the bottom) has its bottom edge at **`screen.frame.minY + 100 + i × (height + 10)`**:

@@ -7,7 +7,7 @@ app strings and UI strings of CleanShot X 5.0.1.
 
 ## 1. Architecture in the original
 
-| CleanShot class | Role (evidence) | Shotcraft counterpart |
+| CleanShot class | Role (evidence) | Super Screenshot counterpart |
 |---|---|---|
 | `ScreenCapture` (ivars `task, lastCaptureRect, wasShiftPressed, wasControlPressed, lastUsedScreenshotAction`) | capture orchestration; remembers last rect; reads Shift at capture time | `CaptureService` |
 | `ScreenTools` (`freezerController, crosshairController, selfTimerOverlay, windows, isSwitchingModes`) | owns per-capture helpers | `CaptureService` + `SelectionSession` |

@@ -1,6 +1,6 @@
 # UploadKit — upload pipeline
 
-How CleanShot X 5.0.1 uploads media, and how Shotcraft maps it to destinations the user owns.
+How CleanShot X 5.0.1 uploads media, and how Super Screenshot maps it to destinations the user owns.
 Evidence: the app's class metadata (class/ivar names), its UI strings (UI strings),
 `strings` of the arm64 slice (log tags, analytics keys, API paths).
 
@@ -49,12 +49,12 @@ time.") and the temp copy is deleted afterwards.
    "View All Uploads...". "Update uploaded screenshot" / "Do you want to update the screenshot in Cloud?"
    re-uploads an edited capture to the same link.
 
-## 2. Shotcraft mapping (user-owned destinations)
+## 2. Super Screenshot mapping (user-owned destinations)
 
 CleanShot Cloud is proprietary, so `UploadDestinationKind` offers three destinations; the pipeline shape
 stays the same.
 
-| CleanShot | Shotcraft |
+| CleanShot | Super Screenshot |
 |---|---|
 | `UploadQueueController` + `UploadJob` | `UploadQueueController` (serial, `@MainActor`) + `UploadJob` (handlers, bytes, cancel) |
 | Alamofire session + retrying session | `UploadTransport`: one `URLSession`, per-task `URLSessionTaskDelegate` for byte progress, 2 retries with back-off on transient `URLError`s and HTTP 429/5xx |
@@ -86,7 +86,7 @@ link copied (unless already copied at start). Failure: `Alerts.error("There was 
 your file.", error)`; cancellation is silent. Not configured: alert offering "Open Settings" →
 `Services.preferences.show(pane: "upload")`.
 
-`testConnection` uploads a generated 16×16 PNG named `shotcraft-test.png` through the same destination,
+`testConnection` uploads a generated 16×16 PNG named `super-screenshot-test.png` through the same destination,
 returns its link, then deletes it (S3 `DELETE`, folder removal; custom HTTP has no delete).
 
 Not reproduced: CleanShot Cloud accounts, tags, passwords/expiry, view counts, link verification against

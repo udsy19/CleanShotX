@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import Combine
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - Pane scaffold
 
@@ -402,7 +402,7 @@ struct PermissionRow: View {
 /// Section listing the given permissions with live status.
 struct PermissionsSection: View {
     var kinds: [PermissionKind] = PermissionKind.allCases
-    var footer: String? = "Shotcraft only asks for the permissions a feature needs. Changes made in System Settings appear here automatically."
+    var footer: String? = "Super Screenshot only asks for the permissions a feature needs. Changes made in System Settings appear here automatically."
     @StateObject private var model = PermissionsModel()
 
     var body: some View {

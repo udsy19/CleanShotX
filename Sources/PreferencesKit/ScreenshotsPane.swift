@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct ScreenshotsPane: View {
     @Default(.screenshotFormat) private var format

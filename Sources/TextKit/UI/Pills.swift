@@ -1,6 +1,6 @@
 import AppKit
 import QuartzCore
-import ShotcraftCore
+import SuperScreenshotCore
 
 extension NSWindow.Level {
     /// Above regular app windows (the area being scrolled) but below system UI.

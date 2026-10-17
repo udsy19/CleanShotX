@@ -15,14 +15,14 @@ Labels quoted below are short UI strings needed for parity; long prose is rewrit
 | `PRSidebarAccountModel` (`_user`) | Cloud account header in sidebar — **not reimplemented** (no CleanShot Cloud). |
 | `*Settings : _TtCs12_SwiftObject` classes with `_`-prefixed ivars | SwiftUI `ObservableObject` models per pane (property wrappers ⇒ `_x` ivars). Panes are SwiftUI. |
 
-Shotcraft (5.0 layout, `docs/specs/ui-reference.md` §13): `PreferencesController` owns one `NSWindow` (titled, closable,
+Super Screenshot (5.0 layout, `docs/specs/ui-reference.md` §13): `PreferencesController` owns one `NSWindow` (titled, closable,
 miniaturizable, resizable, `fullSizeContentView`, frame autosave) hosting a SwiftUI `NavigationSplitView`. The window is
 810×660 pt, fixed width, resizable vertically (min height 480); a restored frame of another width or off-screen is
 normalised. `hosting.sizingOptions = [.minSize]` so switching panes never resizes or collapses the window.
 `show(pane:)` selects the pane (case-insensitive ids + aliases, e.g. `cloud`→`upload`), deminiaturizes, activates and
 orders front. The last pane is stored in `prefs.lastPane`.
 
-Sidebar (`PRMenuControl`): 220 pt floating inset column; a header (app icon, "Shotcraft", upload destination — the
+Sidebar (`PRMenuControl`): 220 pt floating inset column; a header (app icon, "Super Screenshot", upload destination — the
 stand-in for the Cloud account header, click → Upload pane); rows with 24 pt colour tiles + white SF Symbols at a
 40 pt pitch, grey selection pill (accent-tinted while the sidebar has keyboard focus, ↑/↓ move); About pinned at the
 bottom. Pane titles show in the toolbar. In-pane links use `settings://<pane>` URLs.
@@ -59,11 +59,11 @@ Not built (no backing setting or feature yet): Screenshots "Background preset", 
 ivars `slides, currentView, completionHandler, showReadyToUsePopupAfter`; every slide is an `ONView`
 (`primaryButton`, `secondaryButton`, `bottomBar`); `ONBasicView` = image + title + description.
 
-Shotcraft: fixed 580×560 window (transparent title bar, safe area ignored so the bottom bar stays inside), slides
+Super Screenshot: fixed 580×560 window (transparent title bar, safe area ignored so the bottom bar stays inside), slides
 slide horizontally; each slide = 100 pt illustration, 22 pt bold title, 13 pt secondary body, accessory; bottom bar
 with Back, page dots, secondary and a prominent primary (Return).
 
-| CleanShot slide | Shotcraft step and visual |
+| CleanShot slide | Super Screenshot step and visual |
 |---|---|
 | `ONWelcomeView` | Welcome — app icon (`NSApp.applicationIconImage`) + 2×3 feature summary tiles |
 | (permission alert) | Screen Recording — live status, Grant Access… / Open System Settings |
@@ -71,11 +71,11 @@ with Back, page dots, secondary and a prominent primary (Return).
 | `ONHideDesktopIconsView` | Desktop icons — mini desktop whose icons fade with the switch |
 | `ONLaunchAtLoginView` | Launch at login — menu bar illustration |
 | `ONPreferencesView` | "Tweak your workflow" — after-capture checkboxes |
-| `ONFinishView` | "Shotcraft is ready to use!" — app icon, menu bar arrow, the user's effective shortcuts |
+| `ONFinishView` | "Super Screenshot is ready to use!" — app icon, menu bar arrow, the user's effective shortcuts |
 | `ONStatisticsView`, `ONCloudView` | Omitted (no analytics / cloud account). |
 
 Closing the window at any step marks `onboardingCompleted = true`.
 
 ## 4. Migrators
-`HotkeyMigrator`, `DefaultsMigrator` (defaults sample `MGR001…MGR006`) migrate older CleanShot formats; Shotcraft has
+`HotkeyMigrator`, `DefaultsMigrator` (defaults sample `MGR001…MGR006`) migrate older CleanShot formats; Super Screenshot has
 no legacy data so nothing is implemented.

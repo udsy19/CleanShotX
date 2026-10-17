@@ -1,7 +1,7 @@
 import AppKit
 import CoreMedia
 import ImageIO
-import ShotcraftCore
+import SuperScreenshotCore
 import RecordingKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.

@@ -1,6 +1,6 @@
 import CoreGraphics
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 import TextKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.

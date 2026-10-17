@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - multipart/form-data
 
@@ -7,7 +7,7 @@ import ShotcraftCore
 public struct MultipartFormData: Sendable {
     public let boundary: String
 
-    public init(boundary: String = "ShotcraftBoundary-" + UUID().uuidString) { self.boundary = boundary }
+    public init(boundary: String = "SuperScreenshotBoundary-" + UUID().uuidString) { self.boundary = boundary }
 
     public var contentType: String { "multipart/form-data; boundary=\(boundary)" }
 

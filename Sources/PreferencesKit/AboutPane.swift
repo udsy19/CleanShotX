@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct AboutPane: View {
     private var info: [String: Any] { Bundle.main.infoDictionary ?? [:] }
-    private var name: String { (info["CFBundleDisplayName"] ?? info["CFBundleName"]) as? String ?? "Shotcraft" }
+    private var name: String { (info["CFBundleDisplayName"] ?? info["CFBundleName"]) as? String ?? "Super Screenshot" }
     private var version: String {
         let short = info["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = info["CFBundleVersion"] as? String

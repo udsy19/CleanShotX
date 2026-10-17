@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 import QuickLookThumbnailing
-import ShotcraftCore
+import SuperScreenshotCore
 
 // Shared building blocks for Quick Access cards, pins and the history window.
 
@@ -85,7 +85,7 @@ final class CardStrokeView: NSView {
 // MARK: - Temporary hotkeys while an overlay is hovered
 
 /// Keyboard shortcuts for a hovered overlay are registered as global hotkeys only while the pointer is over it,
-/// so they work without activating Shotcraft (the frontmost app keeps focus).
+/// so they work without activating Super Screenshot (the frontmost app keeps focus).
 @MainActor
 final class HoverHotkeys {
     static let shared = HoverHotkeys()

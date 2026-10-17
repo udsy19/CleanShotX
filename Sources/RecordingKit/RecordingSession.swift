@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import ScreenCaptureKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// One recording from the moment the area is confirmed until the file is handed to `MediaPipeline`.
 /// Owns the capture engine and every overlay shown while recording.
@@ -155,7 +155,7 @@ final class RecordingSession {
             throw ScreenCapturer.CaptureError.noDisplay
         }
         // Our decorative overlays (click highlights, keystrokes, camera) are burned into the video; other transient
-        // Shotcraft UI is excluded by the shared rule, while pins and editor windows stay visible like any app.
+        // Super Screenshot UI is excluded by the shared rule, while pins and editor windows stay visible like any app.
         let keep = Set([decoration?.window.windowNumber, camera?.windowNumber].compactMap { $0 }.map { CGWindowID($0) })
         let excluded = CaptureExclusion.excludedWindows(in: content, flagged: CaptureExclusion.flaggedWindowIDs, keeping: keep)
         let filter = SCContentFilter(display: display, excludingWindows: excluded)

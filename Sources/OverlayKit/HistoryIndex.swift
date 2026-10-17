@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// One persisted Capture History record.
 public struct HistoryEntry: Codable, Equatable, Sendable {

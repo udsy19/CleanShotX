@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// GIF player with a trim timeline (the GIFTrimmer equivalent), re-encoded frame by frame.
 @MainActor

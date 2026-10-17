@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct UploadPane: View {
     @Default(.uploadDestination) private var destination
@@ -115,7 +115,7 @@ struct UploadPane: View {
                     Keychain.set(new, for: Keychain.s3SecretKeyAccount)
                     storedSecretKey = new
                 }
-            TextField(text: $s3PathPrefix, prompt: Text("shotcraft/")) {
+            TextField(text: $s3PathPrefix, prompt: Text("super-screenshot/")) {
                 Text("Path prefix")
                 Text("Folder inside the bucket.")
             }

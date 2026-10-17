@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Logs cursor positions (~60 Hz), clicks, scrolls and keystrokes during a Studio recording
 /// (FLMouseTracker + FLKeyboardTracker). Positions are normalized to the recorded area (top-left origin);
@@ -11,7 +11,7 @@ final class InputTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var events = StudioEvents()
     private var timer: DispatchSourceTimer?
-    private let pollQueue = DispatchQueue(label: "shotcraft.studio.cursor", qos: .userInteractive)
+    private let pollQueue = DispatchQueue(label: "superscreenshot.studio.cursor", qos: .userInteractive)
     private var monitors: [Any] = []
     private var kindTimer: Timer?
     private var currentKind: CursorKind = .arrow

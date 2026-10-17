@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Standard menu bar, visible while a document window (Annotate, Studio, video editor) shows the Dock icon.
 /// Editors handle their own ⌘-shortcuts at the window level first, so these items are the fallback path.
@@ -8,17 +8,17 @@ enum MainMenu {
     static func install() {
         let main = NSMenu()
 
-        let app = NSMenu(title: "Shotcraft")
-        app.addItem(withTitle: "About Shotcraft", action: #selector(MenuActions.about), keyEquivalent: "").target = MenuActions.shared
+        let app = NSMenu(title: "Super Screenshot")
+        app.addItem(withTitle: "About Super Screenshot", action: #selector(MenuActions.about), keyEquivalent: "").target = MenuActions.shared
         app.addItem(.separator())
         app.addItem(withTitle: "Settings…", action: #selector(MenuActions.settings), keyEquivalent: ",").target = MenuActions.shared
         app.addItem(.separator())
-        app.addItem(withTitle: "Hide Shotcraft", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: "Hide Super Screenshot", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let others = app.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         others.keyEquivalentModifierMask = [.command, .option]
         app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         app.addItem(.separator())
-        app.addItem(withTitle: "Quit Shotcraft", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.addItem(withTitle: "Quit Super Screenshot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         add(app, to: main)
 
         let file = NSMenu(title: "File")

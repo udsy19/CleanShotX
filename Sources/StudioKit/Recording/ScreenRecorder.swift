@@ -1,6 +1,6 @@
 import AVFoundation
 import ScreenCaptureKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Studio Mode screen capture (the "Motion" recorder with recordInStudioMode = true): ScreenCaptureKit at
 /// native resolution with the cursor hidden, system audio and microphone on separate tracks of screen.mov.
@@ -34,7 +34,7 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
 
     let config: Config
     let clock: RecordingClock
-    private let queue = DispatchQueue(label: "shotcraft.studio.screen", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "superscreenshot.studio.screen", qos: .userInteractive)
     private let hostClock = CMClockGetHostTimeClock()
     private var stream: SCStream?
     private var micSession: AVCaptureSession?

@@ -1,8 +1,8 @@
 import Foundation
 
-/// On-disk layout of a `.shotcraftvideo` project package (FLDocument):
+/// On-disk layout of a `.superscreenshotvideo` project package (FLDocument):
 ///
-///     <name>.shotcraftvideo/
+///     <name>.superscreenshotvideo/
 ///       screen.mov      screen video (no cursor) + system-audio and microphone tracks
 ///       camera.mov      optional camera recording on the same timeline
 ///       events.json     cursor / click / scroll / key events (StudioEvents)
@@ -10,7 +10,9 @@ import Foundation
 ///       autosave.json   unsaved edits (crash recovery), removed on save / discard
 ///       background.*    optional user-chosen background image
 public struct StudioPackage: Sendable {
-    public static let fileExtension = "shotcraftvideo"
+    public static let fileExtension = "superscreenshotvideo"
+    /// Packages recorded before the app was renamed from Shotcraft: same layout, still opened.
+    public static let legacyFileExtension = "shotcraftvideo"
     public static let screenFile = "screen.mov"
     public static let cameraFile = "camera.mov"
     public static let eventsFile = "events.json"

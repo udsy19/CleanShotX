@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Editor window: Space plays/pauses, I / O set the trim start / end at the playhead (unless a text
 /// field is being edited).

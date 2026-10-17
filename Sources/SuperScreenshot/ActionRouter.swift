@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Maps every `AppAction` to the module service that implements it.
 @MainActor

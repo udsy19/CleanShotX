@@ -1,7 +1,7 @@
 import AppKit
 import ImageIO
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct WallpaperPane: View {
     @Default(.wallpaperSource) private var source

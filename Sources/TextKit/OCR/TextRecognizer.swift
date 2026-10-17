@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 import Vision
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Vision-backed text + barcode recognition. All functions are synchronous and meant to run off the main thread.
 public enum TextRecognizer {

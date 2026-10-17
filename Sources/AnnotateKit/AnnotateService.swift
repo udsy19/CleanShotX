@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import ImageIO
 import UniformTypeIdentifiers
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// `AnnotateServicing` implementation: opens editor windows and keeps them alive while open
 /// (CleanShot `AnnotateController(projectsHistory, annotates)`).
@@ -22,10 +22,16 @@ public final class AnnotateService: AnnotateServicing {
         }.store(in: &cancellables)
     }
 
-    /// UTType for `.shotcraft` projects that works whether or not the app bundle declares it.
+    /// UTType for `.superscreenshot` projects that works whether or not the app bundle declares it.
     public nonisolated static var projectType: UTType {
-        UTType(ShotcraftDocument.typeIdentifier)
-            ?? UTType(filenameExtension: ShotcraftDocument.fileExtension, conformingTo: .data) ?? .data
+        UTType(SuperScreenshotDocument.typeIdentifier)
+            ?? UTType(filenameExtension: SuperScreenshotDocument.fileExtension, conformingTo: .data) ?? .data
+    }
+
+    /// Projects saved before the rename (still openable).
+    nonisolated static var legacyProjectType: UTType {
+        UTType(SuperScreenshotDocument.legacyTypeIdentifier)
+            ?? UTType(filenameExtension: SuperScreenshotDocument.legacyFileExtension, conformingTo: .data) ?? .data
     }
 
     // MARK: AnnotateServicing
@@ -48,7 +54,7 @@ public final class AnnotateService: AnnotateServicing {
     }
 
     public func open(fileURL: URL) {
-        if fileURL.pathExtension.lowercased() == ShotcraftDocument.fileExtension { openDocument(fileURL); return }
+        if SuperScreenshotDocument.isDocument(fileURL) { openDocument(fileURL); return }
         if let existing = editors.first(where: { $0.media?.url.standardizedFileURL == fileURL.standardizedFileURL }) { focus(existing); return }
         guard let img = ImageTools.load(fileURL) else {
             Alerts.error("The file couldn't be opened because it isn't an image.")
@@ -72,7 +78,7 @@ public final class AnnotateService: AnnotateServicing {
     public func openDocument(_ url: URL) {
         if let existing = editors.first(where: { $0.projectURL?.standardizedFileURL == url.standardizedFileURL }) { focus(existing); return }
         do {
-            let loaded = try ShotcraftDocument.decode(Data(contentsOf: url))
+            let loaded = try SuperScreenshotDocument.decode(Data(contentsOf: url))
             RecentProjects.add(url)
             present(AnnotateEditorController(state: loaded.state, origin: .project, media: nil, projectURL: url, createdAt: loaded.createdAt))
         } catch {
@@ -82,10 +88,10 @@ public final class AnnotateService: AnnotateServicing {
 
     public func openWithPanel() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, Self.projectType]
+        panel.allowedContentTypes = [.image, Self.projectType, Self.legacyProjectType]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.message = "Choose an image or a Shotcraft project to annotate"
+        panel.message = "Choose an image or a Super Screenshot project to annotate"
         panel.prompt = "Annotate"
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK else { return }
@@ -145,10 +151,10 @@ public final class AnnotateService: AnnotateServicing {
     }
 
     /// Loads a capture's sidecar project when it still matches the image file (same source, not older).
-    static func loadSidecar(_ project: URL, for imageURL: URL) -> ShotcraftDocument.Loaded? {
+    static func loadSidecar(_ project: URL, for imageURL: URL) -> SuperScreenshotDocument.Loaded? {
         let fm = FileManager.default
         guard fm.fileExists(atPath: project.path), let data = try? Data(contentsOf: project),
-              let loaded = try? ShotcraftDocument.decode(data) else { return nil }
+              let loaded = try? SuperScreenshotDocument.decode(data) else { return nil }
         if let src = loaded.sourceURL, src.standardizedFileURL != imageURL.standardizedFileURL { return nil }
         let projectDate = (try? fm.attributesOfItem(atPath: project.path)[.modificationDate] as? Date) ?? .distantPast
         let imageDate = (try? fm.attributesOfItem(atPath: imageURL.path)[.modificationDate] as? Date) ?? .distantPast

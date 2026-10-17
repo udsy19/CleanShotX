@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Font, attributes and measurement for text objects (shared by the renderer and the inline editor).
 enum TextLayout {

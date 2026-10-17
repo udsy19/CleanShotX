@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 import ImageIO
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Everything that makes up an Annotate document. A value: the undo history stores whole snapshots
 /// (CGImage and Data are reference-backed, so snapshots are cheap).
@@ -91,20 +91,28 @@ public struct UndoStack<State> {
     }
 }
 
-// MARK: - .shotcraft documents
+// MARK: - .superscreenshot documents
 
-/// `.shotcraft` project files: a single JSON document with the PNG base image embedded (base64).
-public enum ShotcraftDocument {
-    public static let typeIdentifier = "com.udsy.shotcraft.document"
-    public static let fileExtension = "shotcraft"
+/// `.superscreenshot` project files: a single JSON document with the PNG base image embedded (base64).
+public enum SuperScreenshotDocument {
+    public static let typeIdentifier = "com.udsy.superscreenshot.document"
+    public static let fileExtension = "superscreenshot"
+    /// Projects saved before the app was renamed from Shotcraft: same format, still opened, never written.
+    public static let legacyTypeIdentifier = "com.udsy.shotcraft.document"
+    public static let legacyFileExtension = "shotcraft"
     public static let currentVersion = 1
+
+    /// Whether `url` is a project file (current or legacy extension).
+    public static func isDocument(_ url: URL) -> Bool {
+        [fileExtension, legacyFileExtension].contains(url.pathExtension.lowercased())
+    }
 
     public enum DocumentError: LocalizedError {
         case notAProject, newerVersion(Int), badImage, encodeFailed
         public var errorDescription: String? {
             switch self {
-            case .notAProject: "The file isn't a Shotcraft project."
-            case .newerVersion(let v): "The project was created by a newer version of Shotcraft (format \(v))."
+            case .notAProject: "The file isn't a Super Screenshot project."
+            case .newerVersion(let v): "The project was created by a newer version of Super Screenshot (format \(v))."
             case .badImage: "The project's image data is damaged."
             case .encodeFailed: "The image couldn't be encoded."
             }
@@ -163,7 +171,8 @@ public enum ShotcraftDocument {
         dec.dateDecodingStrategy = .iso8601
         // Peek at the header first so a newer format gives a helpful error instead of a decoding failure.
         struct Header: Decodable { var format: String?; var version: Int? }
-        guard let header = try? dec.decode(Header.self, from: data), header.format == typeIdentifier else {
+        guard let header = try? dec.decode(Header.self, from: data), let format = header.format,
+              [typeIdentifier, legacyTypeIdentifier].contains(format) else {
             throw DocumentError.notAProject
         }
         if let v = header.version, v > currentVersion { throw DocumentError.newerVersion(v) }

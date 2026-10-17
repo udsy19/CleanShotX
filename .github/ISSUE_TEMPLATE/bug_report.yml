@@ -21,7 +21,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Shotcraft version
+      label: Super Screenshot version
       placeholder: "1.0.0 (Settings → About)"
     validations:
       required: true
@@ -36,4 +36,4 @@ body:
     id: extra
     attributes:
       label: Screenshots, recordings or logs
-      description: Console.app logs filtered by `com.udsy.shotcraft` help a lot.
+      description: Console.app logs filtered by `com.udsy.superscreenshot` help a lot.

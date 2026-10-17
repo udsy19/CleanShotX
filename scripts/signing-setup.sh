@@ -4,7 +4,7 @@
 # Nothing is added to the login keychain or the keychain search list.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DIR="$ROOT/.signing"; KC="$DIR/shotcraft.keychain-db"; PASS="shotcraft"
+DIR="$ROOT/.signing"; KC="$DIR/superscreenshot.keychain-db"; PASS="superscreenshot"
 [ -f "$KC" ] && { echo "$KC exists"; exit 0; }
 mkdir -p "$DIR"; cd "$DIR"
 cat > cert.cnf <<CNF
@@ -13,7 +13,7 @@ distinguished_name=dn
 x509_extensions=ext
 prompt=no
 [dn]
-CN=Shotcraft Local Signing
+CN=Super Screenshot Local Signing
 [ext]
 basicConstraints=critical,CA:false
 keyUsage=critical,digitalSignature

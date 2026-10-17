@@ -16,6 +16,6 @@ jobs:
       - name: Build
         run: swift build
       - name: Self-tests
-        run: swift run ShotcraftSelfTest
+        run: swift run SuperScreenshotSelfTest
       - name: Extensions
         run: ./scripts/build-extensions.sh

@@ -80,7 +80,7 @@ public enum Permissions {
         if requestScreenRecording() { return true }
         let a = NSAlert()
         a.messageText = "Screen Recording permission required"
-        a.informativeText = "In order to continue working properly, Shotcraft needs Screen Recording permission. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch Shotcraft."
+        a.informativeText = "In order to continue working properly, Super Screenshot needs Screen Recording permission. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch Super Screenshot."
         a.addButton(withTitle: "Open System Settings")
         a.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
@@ -223,7 +223,7 @@ public enum ScreenGeometry {
 
 // MARK: - Dock icon
 
-/// Shotcraft is a menu-bar (accessory) app; document-style windows (Annotate, Studio, video editor) show the Dock
+/// Super Screenshot is a menu-bar (accessory) app; document-style windows (Annotate, Studio, video editor) show the Dock
 /// icon while open. Owners register by name; the icon hides when the last owner releases it.
 @MainActor
 public enum DockIcon {

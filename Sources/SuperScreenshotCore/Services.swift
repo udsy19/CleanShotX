@@ -4,7 +4,7 @@ import AppKit
 
 public enum MediaKind: String, Codable, Sendable {
     case image, video, gif
-    /// A Studio Mode project package (`.shotcraftvideo`).
+    /// A Studio Mode project package (`.superscreenshotvideo`).
     case studioProject
 }
 
@@ -68,9 +68,9 @@ public final class CapturedMedia: Identifiable, Hashable, Codable, @unchecked Se
     public static func == (a: CapturedMedia, b: CapturedMedia) -> Bool { a.id == b.id }
     public func hash(into h: inout Hasher) { h.combine(id) }
 
-    public static let didChange = Notification.Name("ShotcraftMediaDidChange")
+    public static let didChange = Notification.Name("SuperScreenshotMediaDidChange")
     /// Posted by the upload service for every progress tick: `object` = media, `userInfo["fraction"]` = Double 0…1.
-    public static let uploadProgress = Notification.Name("ShotcraftUploadProgress")
+    public static let uploadProgress = Notification.Name("SuperScreenshotUploadProgress")
     /// Call after mutating (e.g. file replaced by annotate, uploaded) so overlays/history refresh.
     public func notifyChanged() { NotificationCenter.default.post(name: Self.didChange, object: self) }
 }

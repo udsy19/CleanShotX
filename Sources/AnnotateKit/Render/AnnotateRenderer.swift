@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// The single renderer for an Annotate composition. The canvas view and every export path call `draw`,
 /// which guarantees WYSIWYG output. The context must be in *output points*, y-down, origin top-left.

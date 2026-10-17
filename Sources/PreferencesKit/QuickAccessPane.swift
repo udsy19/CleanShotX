@@ -1,5 +1,5 @@
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct QuickAccessPane: View {
     @Default(.quickAccessSide) private var side

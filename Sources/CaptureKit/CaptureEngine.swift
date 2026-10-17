@@ -1,6 +1,6 @@
 import AppKit
 import ScreenCaptureKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// The screen showing the largest part of `rect` (the active screen when it is off-screen).
 @MainActor

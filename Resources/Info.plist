@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Shotcraft</string>
+	<string>Super Screenshot</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -39,25 +39,27 @@
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Shotcraft Document</string>
+			<string>Super Screenshot Document</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
+				<string>com.udsy.superscreenshot.document</string>
 				<string>com.udsy.shotcraft.document</string>
 			</array>
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Shotcraft Video Project</string>
+			<string>Super Screenshot Video Project</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
+				<string>com.udsy.superscreenshot.videoproject</string>
 				<string>com.udsy.shotcraft.videoproject</string>
 			</array>
 			<key>LSTypeIsPackage</key>
@@ -65,15 +67,15 @@
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
-	<string>Shotcraft</string>
+	<string>SuperScreenshot</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.udsy.shotcraft</string>
+	<string>com.udsy.superscreenshot</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Shotcraft</string>
+	<string>Super Screenshot</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -82,10 +84,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.udsy.shotcraft</string>
+			<string>com.udsy.superscreenshot</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>shotcraft</string>
+				<string>superscreenshot</string>
 			</array>
 		</dict>
 	</array>
@@ -98,15 +100,15 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Shotcraft uses Apple Events to scroll content during scrolling capture.</string>
+	<string>Super Screenshot uses Apple Events to scroll content during scrolling capture.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Shotcraft uses the camera only to show your camera overlay during recordings.</string>
+	<string>Super Screenshot uses the camera only to show your camera overlay during recordings.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Shotcraft — an independent reimplementation.</string>
+	<string>Super Screenshot — an independent reimplementation.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Shotcraft records your microphone only during screen recordings when you enable it.</string>
+	<string>Super Screenshot records your microphone only during screen recordings when you enable it.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>UTExportedTypeDeclarations</key>
@@ -117,7 +119,44 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Shotcraft Document</string>
+			<string>Super Screenshot Document</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.udsy.superscreenshot.document</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>superscreenshot</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Super Screenshot Video Project</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.udsy.superscreenshot.videoproject</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>superscreenshotvideo</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Super Screenshot Document</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.udsy.shotcraft.document</string>
 			<key>UTTypeTagSpecification</key>
@@ -134,7 +173,7 @@
 				<string>com.apple.package</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Shotcraft Video Project</string>
+			<string>Super Screenshot Video Project</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.udsy.shotcraft.videoproject</string>
 			<key>UTTypeTagSpecification</key>

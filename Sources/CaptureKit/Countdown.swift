@@ -1,6 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Self-Timer countdown (CleanShot: `SelfTimerOverlay` – `seconds`, `secondsLabel`, `cancelButton`,
 /// `intervalTimer`; same look as `CountDownOverlay`). A black disc with the remaining seconds and a progress

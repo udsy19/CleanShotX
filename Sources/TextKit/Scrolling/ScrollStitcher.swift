@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 
 public enum ScrollAxis: String, Codable, Sendable { case vertical, horizontal }
 

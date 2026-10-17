@@ -1,6 +1,6 @@
 import AppKit
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 enum CameraShape: String, Codable, CaseIterable {
     case circle, square, rectangle
@@ -75,7 +75,7 @@ enum DeviceAccess {
             let isMic = media == .audio
             let a = NSAlert()
             a.messageText = isMic ? "Microphone access required" : "Camera access required"
-            a.informativeText = "Allow Shotcraft in System Settings → Privacy & Security → \(isMic ? "Microphone" : "Camera")."
+            a.informativeText = "Allow Super Screenshot in System Settings → Privacy & Security → \(isMic ? "Microphone" : "Camera")."
             a.addButton(withTitle: "Open System Settings")
             a.addButton(withTitle: "Cancel")
             NSApp.activate(ignoringOtherApps: true)

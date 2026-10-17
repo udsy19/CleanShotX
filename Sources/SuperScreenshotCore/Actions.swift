@@ -79,7 +79,7 @@ public enum AppAction: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Opposite mapping used by the URL scheme (`shotcraft://capture-area`).
+    /// Opposite mapping used by the URL scheme (`superscreenshot://capture-area`).
     public var urlCommand: String {
         rawValue.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1-$2", options: .regularExpression).lowercased()
     }

@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import ShotcraftCore
+import SuperScreenshotCore
 import AnnotateKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
@@ -230,24 +230,31 @@ func registerAnnotateKitTests() {
         s.background.fill = .gradient("lagoon"); s.background.padding = 32; s.background.alignment = .bottomRight
         s.spotlightOpacity = 0.7; s.counterStart = 5
         do {
-            let data = try ShotcraftDocument.encode(s, sourceURL: URL(fileURLWithPath: "/tmp/a.png"))
-            let back = try ShotcraftDocument.decode(data)
+            let data = try SuperScreenshotDocument.encode(s, sourceURL: URL(fileURLWithPath: "/tmp/a.png"))
+            let back = try SuperScreenshotDocument.decode(data)
             check(back.state.objects == s.objects, "objects round-trip")
             check(back.state.background == s.background && back.state.cropRect == s.cropRect, "background + crop round-trip")
             check(back.state.scale == 2 && back.state.image.width == 8 && back.state.image.height == 6, "image + scale round-trip")
             check(back.state.spotlightOpacity == 0.7 && back.state.counterStart == 5, "document settings round-trip")
             check(back.sourceURL?.path == "/tmp/a.png", "source path round-trip")
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            check(json?["format"] as? String == ShotcraftDocument.typeIdentifier, "format header")
+            var json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            check(json?["format"] as? String == SuperScreenshotDocument.typeIdentifier, "format header")
+            // Projects saved before the rename carry the legacy format id and extension.
+            json?["format"] = SuperScreenshotDocument.legacyTypeIdentifier
+            let legacy = try SuperScreenshotDocument.decode(JSONSerialization.data(withJSONObject: json ?? [:]))
+            check(legacy.state.objects == s.objects, "legacy-format project opens")
+            check(SuperScreenshotDocument.isDocument(URL(fileURLWithPath: "/tmp/p.\(SuperScreenshotDocument.legacyFileExtension)"))
+                  && SuperScreenshotDocument.isDocument(URL(fileURLWithPath: "/tmp/p.SUPERSCREENSHOT"))
+                  && !SuperScreenshotDocument.isDocument(URL(fileURLWithPath: "/tmp/p.png")), "project extensions")
         } catch {
             check(false, "document round-trip threw \(error)")
         }
         var threw = false
-        do { _ = try ShotcraftDocument.decode(Data("{\"hello\":1}".utf8)) } catch { threw = true }
+        do { _ = try SuperScreenshotDocument.decode(Data("{\"hello\":1}".utf8)) } catch { threw = true }
         check(threw, "non-project JSON is rejected")
         var newer = false
-        let future = "{\"format\":\"\(ShotcraftDocument.typeIdentifier)\",\"version\":99}"
-        do { _ = try ShotcraftDocument.decode(Data(future.utf8)) } catch ShotcraftDocument.DocumentError.newerVersion(99) { newer = true } catch {}
+        let future = "{\"format\":\"\(SuperScreenshotDocument.typeIdentifier)\",\"version\":99}"
+        do { _ = try SuperScreenshotDocument.decode(Data(future.utf8)) } catch SuperScreenshotDocument.DocumentError.newerVersion(99) { newer = true } catch {}
         check(newer, "newer format versions give a specific error")
         check(RecentProjects.updated(["/a", "/b", "/c"], adding: "/b", limit: 3) == ["/b", "/a", "/c"], "recent projects de-duplicate")
         check(RecentProjects.updated(["/a", "/b", "/c"], adding: "/d", limit: 3) == ["/d", "/a", "/b"], "recent projects are capped")

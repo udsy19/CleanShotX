@@ -1,6 +1,6 @@
 import CoreGraphics
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Pure geometry for the Quick Access stack (no AppKit state), so it can be self-tested.
 /// All rects are global Cocoa coordinates (origin bottom-left). Values are read from CleanShot X's binary unless noted.
@@ -13,7 +13,7 @@ public enum QuickAccessLayout {
     public static let bottomMargin: CGFloat = 100
     /// Vertical gap between stacked cards.
     public static let spacing: CGFloat = 10
-    /// Close All / Save All header (Shotcraft's own; as wide as a card).
+    /// Close All / Save All header (Super Screenshot's own; as wide as a card).
     public static let headerHeight: CGFloat = 30
     /// How much of the newest card stays visible while the stack is temporarily slid down.
     public static let slideDownPeek: CGFloat = 14

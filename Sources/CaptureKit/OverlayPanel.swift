@@ -1,12 +1,12 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Window level of the selection overlay: above the menu bar, Dock and floating panels, but one below
 /// pop-up menus so the aspect-ratio menu can open on top of it.
 let overlayWindowLevel = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue - 1)
 
 /// Full-screen, borderless, non-activating panel for one display (CleanShot: `FSWindow`). It can become key
-/// without activating Shotcraft, so the frontmost app keeps its active look while we receive keys.
+/// without activating Super Screenshot, so the frontmost app keeps its active look while we receive keys.
 @MainActor
 final class OverlayPanel: NSPanel {
     let overlayView: OverlayView

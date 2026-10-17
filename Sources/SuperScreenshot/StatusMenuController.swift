@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Menu bar icon + menu (item order and wording follow CleanShot X 5.0, see docs/specs/ui-reference.md §1).
 /// Turns into a stop button with elapsed time while recording; accepts images dropped onto the icon.
@@ -54,7 +54,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
                 : Self.menuBarGlyph
             button.image?.isTemplate = true
             button.contentTintColor = nil
-            button.toolTip = "Shotcraft"
+            button.toolTip = "Super Screenshot"
             button.title = progress.map { " \(Int($0 * 100))%" } ?? ""
             button.imagePosition = .imageLeading
         }
@@ -76,7 +76,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
             return true
         }
         img.isTemplate = true
-        img.accessibilityDescription = "Shotcraft"
+        img.accessibilityDescription = "Super Screenshot"
         return img
     }()
 
@@ -119,7 +119,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSWindowDelegate, NS
         addUploadItems()
         menu.addItem(.separator())
 
-        plain("About Shotcraft…", #selector(showAbout))
+        plain("About Super Screenshot…", #selector(showAbout))
         plain("Settings…", #selector(showSettings)).keyEquivalent = ","
         menu.addItem(.separator())
         plain("Quit", #selector(NSApplication.terminate(_:)), target: NSApp)

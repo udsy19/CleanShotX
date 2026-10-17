@@ -1,4 +1,4 @@
-// Renders the Shotcraft app icon into an .iconset directory.
+// Renders the Super Screenshot app icon into an .iconset directory.
 // Design: a warm paper squircle with ink viewfinder corners and a red "capture" dot — the same palette as the website.
 // Usage: swift scripts/make-icon.swift <out.iconset>
 import AppKit

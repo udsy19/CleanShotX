@@ -1,6 +1,6 @@
 import AppKit
 import ScreenCaptureKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Drives one Studio recording end to end: area → pre-record bar → countdown → capture → project package → editor.
 @MainActor
@@ -82,7 +82,7 @@ final class StudioRecordingSession {
         case .notDetermined: Permissions.request(.video) { ok in if ok { open() } else { self.options.cameraID = nil } }
         default:
             options.cameraID = nil
-            if Alerts.confirm("Camera access required", info: "Allow Shotcraft to use the camera in System Settings → Privacy & Security → Camera.",
+            if Alerts.confirm("Camera access required", info: "Allow Super Screenshot to use the camera in System Settings → Privacy & Security → Camera.",
                               confirmTitle: "Open System Settings") { Permissions.openSettings(.camera) }
         }
     }

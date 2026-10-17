@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Hides desktop icons by covering the desktop of every screen with a wallpaper window placed just above
 /// the icon layer (CleanShot: `IconOverlayController` / `IconOverlay`).

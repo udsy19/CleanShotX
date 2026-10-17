@@ -1,5 +1,5 @@
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 struct AnnotatePane: View {
     @Default(.annotateAlwaysOnTop) private var alwaysOnTop

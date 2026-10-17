@@ -1,5 +1,5 @@
 import Foundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// "Upload" by copying into a (typically synced) folder; the link is built from a URL prefix.
 struct FolderConfiguration: Sendable {
@@ -31,7 +31,7 @@ struct FolderConfiguration: Sendable {
         let partial = destination.deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString.prefix(8)).partial")
         guard fm.createFile(atPath: partial.path, contents: nil) else {
-            throw UploadError.failed("Shotcraft can't write to “\(folder.path)”. Check the folder's permissions.")
+            throw UploadError.failed("Super Screenshot can't write to “\(folder.path)”. Check the folder's permissions.")
         }
         do {
             let input = try FileHandle(forReadingFrom: source)

@@ -2,9 +2,9 @@ import Foundation
 import CoreGraphics
 import CoreMedia
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
-/// Pure, side-effect-free helpers for the recording pipeline (covered by ShotcraftSelfTest).
+/// Pure, side-effect-free helpers for the recording pipeline (covered by SuperScreenshotSelfTest).
 public enum RecordingMath {
 
     // MARK: Time

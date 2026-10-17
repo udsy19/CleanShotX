@@ -1,5 +1,5 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
 extension Defaults.Keys {
     /// All-In-One area restored when "Remember last selection" is on (CleanShot: `lastOneOverlayArea`).

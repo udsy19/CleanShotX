@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import Combine
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Video thumbnails for the clip track (FLThumbnailGenerator), generated lazily for visible tiles.
 @MainActor

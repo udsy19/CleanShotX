@@ -10,7 +10,7 @@ for (i, c) in colors.enumerated() {
 ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 150, y: 250, width: 900, height: 300))
 let ns = NSGraphicsContext(cgContext: ctx, flipped: false); NSGraphicsContext.current = ns
 let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 64, weight: .bold), .foregroundColor: NSColor.black]
-("Shotcraft E2E 4721" as NSString).draw(at: NSPoint(x: 200, y: 420), withAttributes: attrs)
+("Super Screenshot E2E 4721" as NSString).draw(at: NSPoint(x: 200, y: 420), withAttributes: attrs)
 ("The quick brown fox" as NSString).draw(at: NSPoint(x: 200, y: 300), withAttributes: [.font: NSFont.systemFont(ofSize: 56), .foregroundColor: NSColor.darkGray])
 let rep = NSBitmapImageRep(cgImage: ctx.makeImage()!)
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[1]))

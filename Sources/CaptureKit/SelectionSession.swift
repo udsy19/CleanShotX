@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import QuartzCore
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// How the overlay behaves after the mouse is released.
 enum SelectionStyle {

@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ShotcraftCore
+import SuperScreenshotCore
 
 // MARK: - Window
 
@@ -23,7 +23,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.title = "Welcome to Shotcraft"
+        window.title = "Welcome to Super Screenshot"
         window.delegate = self
         let hosting = NSHostingController(rootView: OnboardingView { [weak self] in self?.window.close() })
         hosting.sizingOptions = []   // fixed-size window; slides never resize it
@@ -51,14 +51,14 @@ enum OnboardingStep: Int, CaseIterable {
 }
 
 enum ShortcutChoice: CaseIterable, Identifiable {
-    case systemDefaults, allInOneOnly, keepShotcraft
+    case systemDefaults, allInOneOnly, keepSuperScreenshot
     var id: Self { self }
 
     var title: String {
         switch self {
         case .systemDefaults: "Use the same shortcuts as macOS"
         case .allInOneOnly: "Use ⇧⌘5 for All-In-One only"
-        case .keepShotcraft: "Keep Shotcraft's shortcuts"
+        case .keepSuperScreenshot: "Keep Super Screenshot's shortcuts"
         }
     }
 
@@ -66,7 +66,7 @@ enum ShortcutChoice: CaseIterable, Identifiable {
         switch self {
         case .systemDefaults: "⇧⌘3 Capture Fullscreen · ⇧⌘4 Capture Area · ⇧⌘5 All-In-One"
         case .allInOneOnly: "Like macOS's screenshot toolbar; ⇧⌘3 and ⇧⌘4 keep working as before."
-        case .keepShotcraft: "⌥⇧3 Fullscreen · ⌥⇧4 Area · ⌥⇧5 All-In-One — no conflicts with macOS."
+        case .keepSuperScreenshot: "⌥⇧3 Fullscreen · ⌥⇧4 Area · ⌥⇧5 All-In-One — no conflicts with macOS."
         }
     }
 
@@ -74,7 +74,7 @@ enum ShortcutChoice: CaseIterable, Identifiable {
         switch self {
         case .systemDefaults: "command"
         case .allInOneOnly: "square.dashed.inset.filled"
-        case .keepShotcraft: "option"
+        case .keepSuperScreenshot: "option"
         }
     }
 
@@ -82,7 +82,7 @@ enum ShortcutChoice: CaseIterable, Identifiable {
         switch self {
         case .systemDefaults: ShortcutPlanner.systemDefaultAssignments
         case .allInOneOnly: ShortcutPlanner.allInOneOnlyAssignment
-        case .keepShotcraft: []
+        case .keepSuperScreenshot: []
         }
     }
 }
@@ -98,7 +98,7 @@ struct OnboardingView: View {
         self.close = close
         _step = State(initialValue: start)
     }
-    @State private var shortcutChoice: ShortcutChoice = .keepShotcraft
+    @State private var shortcutChoice: ShortcutChoice = .keepSuperScreenshot
     @StateObject private var permissions = PermissionsModel()
     @StateObject private var system = SystemHotkeysModel()
 
@@ -135,7 +135,7 @@ struct OnboardingView: View {
     @ViewBuilder private var content: some View {
         switch step {
         case .welcome:
-            StepLayout(title: "Welcome to Shotcraft",
+            StepLayout(title: "Welcome to Super Screenshot",
                        message: "Let's walk you through a quick configuration. It takes less than a minute, and you can change everything later in Settings.") {
                 AppIconImage(size: 96)
             } accessory: {
@@ -143,7 +143,7 @@ struct OnboardingView: View {
             }
         case .privacy:
             StepLayout(title: "Private by design",
-                       message: "Shotcraft is a local app. Screenshots, recordings, annotations and text recognition all happen on your Mac — nothing leaves it unless you set up an upload destination yourself.") {
+                       message: "Super Screenshot is a local app. Screenshots, recordings, annotations and text recognition all happen on your Mac — nothing leaves it unless you set up an upload destination yourself.") {
                 IconTile(symbol: "lock.shield.fill", tint: PreferencesPane.quickAccess.tint, size: 72)
             } accessory: {
                 PrivacyPoints()
@@ -151,7 +151,7 @@ struct OnboardingView: View {
         case .screenRecording:
             let granted = permissions.states[.screenRecording] == .granted
             StepLayout(title: "Allow Screen Recording",
-                       message: "Shotcraft needs Screen Recording permission to take screenshots and record your screen. Nothing leaves your Mac unless you upload it.") {
+                       message: "Super Screenshot needs Screen Recording permission to take screenshots and record your screen. Nothing leaves your Mac unless you upload it.") {
                 IconTile(symbol: granted ? "checkmark" : "rectangle.dashed.badge.record",
                          tint: granted ? PreferencesPane.quickAccess.tint : PreferencesPane.recording.tint, size: 72)
             } accessory: {
@@ -161,7 +161,7 @@ struct OnboardingView: View {
                     } else {
                         Button("Grant Access…") { permissions.request(.screenRecording) }
                             .controlSize(.large)
-                        HelpText("Enable Shotcraft under Privacy & Security → Screen & System Audio Recording. macOS may ask you to reopen the app.")
+                        HelpText("Enable Super Screenshot under Privacy & Security → Screen & System Audio Recording. macOS may ask you to reopen the app.")
                             .multilineTextAlignment(.center)
                         Button("Open System Settings") { Permissions.openSettings(.screenRecording) }
                             .buttonStyle(.link)
@@ -171,13 +171,13 @@ struct OnboardingView: View {
         case .shortcuts:
             StepLayout(title: "Set as default screenshot tool?",
                        message: "Choose how you'd like to trigger captures. You can change any shortcut later.") {
-                KeycapsIllustration(keys: shortcutChoice == .keepShotcraft ? ["⌥", "⇧", "4"] : ["⇧", "⌘", "4"])
+                KeycapsIllustration(keys: shortcutChoice == .keepSuperScreenshot ? ["⌥", "⇧", "4"] : ["⇧", "⌘", "4"])
             } accessory: {
                 VStack(spacing: 8) {
                     ForEach(ShortcutChoice.allCases) { choice in
                         ChoiceCard(choice: choice, selected: shortcutChoice == choice) { shortcutChoice = choice }
                     }
-                    if shortcutChoice != .keepShotcraft && system.systemShortcutsEnabled {
+                    if shortcutChoice != .keepSuperScreenshot && system.systemShortcutsEnabled {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                             VStack(alignment: .leading, spacing: 2) {
@@ -199,7 +199,7 @@ struct OnboardingView: View {
             }
         case .launchAtLogin:
             StepLayout(title: "Launch at login?",
-                       message: "Would you like to have Shotcraft ready every time you log in, so your shortcuts always work?") {
+                       message: "Would you like to have Super Screenshot ready every time you log in, so your shortcuts always work?") {
                 MenuBarIllustration(highlight: false)
             } accessory: {
                 EmptyView()
@@ -212,7 +212,7 @@ struct OnboardingView: View {
                 OnboardingAfterCapture()
             }
         case .finish:
-            StepLayout(title: "Shotcraft is ready to use!",
+            StepLayout(title: "Super Screenshot is ready to use!",
                        message: "You can access the app through the menu bar icon or by using the defined keyboard shortcuts.") {
                 AppIconImage(size: 88)
             } accessory: {
@@ -320,7 +320,7 @@ private struct AppIconImage: View {
     }
 }
 
-/// Welcome slide: what Shotcraft does, as a 2 × 3 grid of feature tiles.
+/// Welcome slide: what Super Screenshot does, as a 2 × 3 grid of feature tiles.
 /// The "Private by design" slide: what stays on the Mac, and why macOS asked before the first launch.
 private struct PrivacyPoints: View {
     private let points: [(symbol: String, text: String)] = [
@@ -338,8 +338,8 @@ private struct PrivacyPoints: View {
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Why did macOS ask before opening Shotcraft?").font(.callout.weight(.semibold))
-                    Text("Shotcraft is an independent, open-source app that isn't notarized by Apple, so macOS asked you to confirm it under Privacy & Security → Open Anyway. That's expected and only needed once.")
+                    Text("Why did macOS ask before opening Super Screenshot?").font(.callout.weight(.semibold))
+                    Text("Super Screenshot is an independent, open-source app that isn't notarized by Apple, so macOS asked you to confirm it under Privacy & Security → Open Anyway. That's expected and only needed once.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -550,7 +550,7 @@ private struct DesktopIllustration: View {
     }
 }
 
-/// A miniature menu bar with the Shotcraft status item; `highlight` points an arrow at it.
+/// A miniature menu bar with the Super Screenshot status item; `highlight` points an arrow at it.
 private struct MenuBarIllustration: View {
     let highlight: Bool
 
@@ -577,7 +577,7 @@ private struct MenuBarIllustration: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
         .padding(.bottom, highlight ? 40 : 0)
-        .accessibilityLabel("The Shotcraft icon in the menu bar")
+        .accessibilityLabel("The Super Screenshot icon in the menu bar")
     }
 }
 

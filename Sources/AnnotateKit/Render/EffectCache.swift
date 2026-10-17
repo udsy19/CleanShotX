@@ -1,7 +1,7 @@
 import AppKit
 import CoreImage
 import ImageIO
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Full-image CoreImage results for the pixelate tool, cached per base image + style + intensity
 /// (CleanShot: `ANPixelateInstance(ciImage, pixelatedImage, retinaFactor, style)`).

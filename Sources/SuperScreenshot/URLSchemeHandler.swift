@@ -1,8 +1,8 @@
 import AppKit
-import ShotcraftCore
+import SuperScreenshotCore
 
-/// `shotcraft://<command>?<params>` — command names and parameters mirror CleanShot X's public URL scheme API
-/// so existing automations (Raycast, Alfred, Shortcuts) can be pointed at Shotcraft by swapping the scheme.
+/// `superscreenshot://<command>?<params>` — command names and parameters mirror CleanShot X's public URL scheme API
+/// so existing automations (Raycast, Alfred, Shortcuts) can be pointed at Super Screenshot by swapping the scheme.
 ///
 /// Coordinates (`x`, `y`, `width`, `height`) are in points with the origin at the bottom-left of the display;
 /// `display` is 1-based (1 = main display). `action` is one of copy | save | annotate | upload | pin.
@@ -68,8 +68,8 @@ enum URLSchemeHandler {
     /// "Allow URL scheme API" gate; the first unapproved call asks the user.
     private static func authorize() -> Bool {
         if Defaults[.allowURLSchemeAPI] { return true }
-        let ok = Alerts.confirm("An external application wants to control Shotcraft",
-                                info: "Allow apps to capture your screen through the shotcraft:// URL scheme? You can change this later in Settings → Advanced.",
+        let ok = Alerts.confirm("An external application wants to control Super Screenshot",
+                                info: "Allow apps to capture your screen through the superscreenshot:// URL scheme? You can change this later in Settings → Advanced.",
                                 confirmTitle: "Allow", cancelTitle: "Don't Allow")
         if ok { Defaults[.allowURLSchemeAPI] = true }
         return ok

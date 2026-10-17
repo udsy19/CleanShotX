@@ -1,5 +1,5 @@
 import AVFoundation
-import ShotcraftCore
+import SuperScreenshotCore
 
 /// Records the camera to its own file on the shared recording timeline (FLCameraRecorder).
 /// The capture session runs as soon as the recorder is created (for the live preview bubble); frames are
@@ -18,7 +18,7 @@ final class CameraRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     let session = AVCaptureSession()
     let deviceName: String
     private let output = AVCaptureVideoDataOutput()
-    private let queue = DispatchQueue(label: "shotcraft.studio.camera", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "superscreenshot.studio.camera", qos: .userInitiated)
     private let hostClock = CMClockGetHostTimeClock()
 
     // Queue-confined state.
