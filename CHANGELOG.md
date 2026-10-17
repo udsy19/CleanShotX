@@ -3,6 +3,14 @@
 All notable changes to Shotcraft are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.0.1] — 2026-10-17
+
+### Changed
+- New app icon: ink viewfinder with a red capture dot on warm paper.
+- Onboarding adds a "Private by design" step explaining that Shotcraft is a local app and why macOS asks before
+  the first launch of a downloaded copy.
+- Settings switches expose their labels to VoiceOver.
+
 ## [1.0.0] — 2026-10-16
 
 First public release.
@@ -21,4 +29,5 @@ First public release.
 - Global shortcuts for every action, a `shotcraft://` URL scheme, share-menu and Quick Look extensions.
 - One-line installer and a universal (Apple silicon + Intel) DMG.
 
+[1.0.1]: https://github.com/udsy19/CleanShotX/releases/tag/v1.0.1
 [1.0.0]: https://github.com/udsy19/CleanShotX/releases/tag/v1.0.0

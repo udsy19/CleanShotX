@@ -3,227 +3,265 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Shotcraft — Screenshots & screen recording for macOS</title>
-  <meta name="description" content="Shotcraft is a free, open-source screenshot and screen recording app for macOS. Capture, annotate, record, recognize text and share — all on your Mac.">
-  <meta name="theme-color" content="#0b0b10">
+  <title>Shotcraft — the screenshot app that stays on your Mac</title>
+  <meta name="description" content="Shotcraft is a free, open-source screenshot and screen recording app for macOS. Capture, annotate, record, recognize text and share — nothing leaves your Mac.">
+  <meta name="theme-color" content="#f5f3ee">
   <link rel="icon" type="image/png" href="assets/icon-128.png">
   <link rel="apple-touch-icon" href="assets/icon-256.png">
-  <meta property="og:title" content="Shotcraft — Screenshots & screen recording for macOS">
-  <meta property="og:description" content="Free, open-source and local-first. Capture, annotate, record and share — nothing leaves your Mac.">
+  <meta property="og:title" content="Shotcraft — the screenshot app that stays on your Mac">
+  <meta property="og:description" content="Free and open source. Capture, mark up and record — nothing leaves your Mac.">
   <meta property="og:image" content="https://udsy19.github.io/CleanShotX/assets/og.png">
   <meta property="og:url" content="https://udsy19.github.io/CleanShotX/">
   <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="glow" aria-hidden="true"></div>
+  <div class="frame">
 
-  <header class="nav">
-    <a class="brand" href="#top"><img src="assets/icon-64.png" alt="" width="28" height="28"> Shotcraft</a>
-    <nav>
+  <header class="top">
+    <a class="brand" href="#top"><img src="assets/icon-64.png" alt="" width="26" height="26">Shotcraft</a>
+    <nav class="mono">
       <a href="#features">Features</a>
       <a href="#privacy">Privacy</a>
       <a href="#install">Install</a>
-      <a href="https://github.com/udsy19/CleanShotX" class="gh">GitHub</a>
+      <a href="https://github.com/udsy19/CleanShotX">Source ↗</a>
     </nav>
-    <a class="btn btn-small" href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">Download</a>
+    <a class="btn" href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">Download</a>
   </header>
 
   <main id="top">
+    <!-- 01 · Hero -->
     <section class="hero">
-      <img class="hero-icon" src="assets/icon-256.png" alt="Shotcraft app icon" width="112" height="112">
-      <p class="eyebrow">Free · Open source · MIT</p>
-      <h1>Screenshots and recordings,<br><span class="grad">crafted beautifully.</span></h1>
-      <p class="lead">Capture anything, annotate in seconds, record your screen, pull text out of images and share it —
-        from a tiny app in your menu bar. Everything happens on your Mac.</p>
-
-      <div class="cta">
-        <a class="btn" href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.9-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.7 2.5 3 2.4 1.2 0 1.6-.8 3.1-.8s1.8.8 3.1.8c1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.7-4.1zM14.1 5.8c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z"/></svg>
-          Download for Mac
-        </a>
-        <div class="cmd" role="group" aria-label="Install from Terminal">
-          <code id="install-cmd">curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash</code>
-          <button class="copy" data-copy="install-cmd" aria-label="Copy install command">Copy</button>
+      <p class="label mono">Shotcraft 1.0 &nbsp;/&nbsp; free &amp; open source &nbsp;/&nbsp; macOS 14+</p>
+      <h1>Capture it.<br><span class="hl">Mark it up.</span><br><em>Keep it local.</em></h1>
+      <div class="hero-row">
+        <p class="lede">Shotcraft is a screenshot and screen-recording app for your menu bar. Area, window and scrolling
+          captures, a proper annotation editor, video and GIF recording, text recognition — and not a single byte
+          sent anywhere you didn't choose.</p>
+        <div class="actions">
+          <a class="btn btn-lg" href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.9-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.7 2.5 3 2.4 1.2 0 1.6-.8 3.1-.8s1.8.8 3.1.8c1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.7-4.1zM14.1 5.8c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z"/></svg>
+            Download for Mac</a>
+          <div class="term">
+            <code id="cmd1">curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash</code>
+            <button class="copy mono" data-copy="cmd1">Copy</button>
+          </div>
+          <p class="note hand" aria-hidden="true">
+            <svg viewBox="0 0 70 40"><path d="M62 37C52 22 36 10 14 6M14 6l9-5M14 6l8 7"/></svg>
+            one line — installs &amp; opens it
+          </p>
         </div>
       </div>
-      <p class="fine">macOS 14 Sonoma or later · Apple silicon & Intel · ~8 MB</p>
 
-      <figure class="shot hero-shot">
-        <img src="assets/screens/hero.jpg" alt="Shotcraft's Annotate editor with arrows, a highlight and a gradient background, next to Quick Access thumbnails" loading="eager">
+      <figure class="fig fig-hero">
+        <div class="crop"><img src="assets/screens/hero.jpg" alt="Shotcraft's Annotate editor with an arrow, counters and a highlight, beside a stack of Quick Access thumbnails" width="2000" height="1111"></div>
+        <figcaption class="mono"><span>Fig. 1</span> Annotate editor, with the Quick Access overlay on the left</figcaption>
       </figure>
     </section>
 
-    <section id="features" class="section">
-      <p class="eyebrow center">Everything in one place</p>
-      <h2 class="center">One shortcut away from the perfect capture</h2>
-
-      <div class="bento">
-        <article class="card wide">
-          <img class="top" src="assets/screens/annotate.png" alt="Annotate editor" loading="lazy">
-          <div class="card-text">
-            <h3>Annotate in seconds</h3>
-            <p>Arrows, shapes, text, counters, highlighter, blur and pixelate, spotlight — plus a background tool with
-              gradients, padding and shadows for share-ready images.</p>
-          </div>
-        </article>
-        <article class="card">
-          <img class="bottom" src="assets/screens/capture.jpg" alt="All-In-One capture toolbar" loading="lazy">
-          <div class="card-text">
-            <h3>Every kind of capture</h3>
-            <p>Area, window, fullscreen, previous area, self-timer and All-In-One — with a magnifier, window snapping
-              and frozen-screen mode.</p>
-          </div>
-        </article>
-        <article class="card">
-          <img src="assets/screens/quick-access.jpg" alt="Quick Access overlay" loading="lazy">
-          <div class="card-text">
-            <h3>Quick Access overlay</h3>
-            <p>Every capture lands in a floating thumbnail: copy, save, annotate, pin, upload — or just drag it into any app.</p>
-          </div>
-        </article>
-        <article class="card">
-          <img src="assets/screens/recording.jpg" alt="Recording controls" loading="lazy">
-          <div class="card-text">
-            <h3>Record video & GIF</h3>
-            <p>Microphone, system audio, camera bubble, click highlights and keystrokes. Trim and export in the built-in editor.</p>
-          </div>
-        </article>
-        <article class="card">
-          <img src="assets/screens/pin.jpg" alt="Pinned screenshot floating over other windows" loading="lazy">
-          <div class="card-text">
-            <h3>Pin to screen</h3>
-            <p>Keep references floating above everything, resize them, fade them, or make them click-through.</p>
-          </div>
-        </article>
-        <article class="card wide">
-          <img class="top" src="assets/screens/studio.png" alt="Studio Mode editor" loading="lazy">
-          <div class="card-text">
-            <h3>Studio Mode</h3>
-            <p>Polished product demos without editing skills: automatic zoom on clicks, a smooth cursor, backgrounds,
-              padding and rounded corners, on a real timeline.</p>
-          </div>
-        </article>
-        <article class="card">
-          <img src="assets/screens/text.jpg" alt="Text recognized from the screen" loading="lazy">
-          <div class="card-text">
-            <h3>Capture text</h3>
-            <p>Copy any text on screen — even from images and videos — with on-device OCR and QR detection.</p>
-          </div>
-        </article>
+    <!-- 02 · Features -->
+    <section id="features" class="block">
+      <div class="block-head">
+        <p class="label mono">02 &nbsp;/&nbsp; What it does</p>
+        <h2>Everything between <kbd>⌥⇧4</kbd> and <em>send.</em></h2>
       </div>
 
-      <div class="grid4">
-        <div class="mini"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg></span><h3>Scrolling capture</h3><p>Grab entire pages and long chats; frames are stitched pixel-perfectly, vertically or horizontally.</p></div>
-        <div class="mini"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2"/></svg></span><h3>Capture history</h3><p>Every recent capture, one shortcut away. Restore anything you closed too early.</p></div>
-        <div class="mini"><span class="ico"><svg viewBox="0 0 24 24"><path d="M9 9V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V9"/></svg></span><h3>Built for the keyboard</h3><p>A global shortcut for every action, and a <code>shotcraft://</code> URL scheme for Raycast, Alfred and Shortcuts.</p></div>
-        <div class="mini"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span><h3>Share your way</h3><p>Upload to your own S3-compatible bucket, HTTP endpoint or synced folder — the link is copied instantly.</p></div>
-      </div>
+      <article class="feat">
+        <div class="feat-text">
+          <span class="num">01</span>
+          <h3>Capture anything</h3>
+          <p>Drag an area, click a window, grab the whole screen, or open All-In-One for every mode in one toolbar.
+            A magnifier, window snapping and a frozen-screen mode make pixel-exact selections easy.</p>
+          <ul class="spec mono"><li>Area</li><li>Window</li><li>Fullscreen</li><li>Previous area</li><li>Self-timer</li><li>All-In-One</li></ul>
+        </div>
+        <figure class="fig"><div class="crop"><img src="assets/screens/capture.jpg" alt="All-In-One selection with its capture toolbar" loading="lazy"></div>
+          <figcaption class="mono"><span>Fig. 2</span> All-In-One toolbar</figcaption></figure>
+      </article>
+
+      <article class="feat flip">
+        <div class="feat-text">
+          <span class="num">02</span>
+          <h3>Mark it up in seconds</h3>
+          <p>Arrows, shapes, text, numbered steps, highlighter, blur and pixelate, spotlight — then drop the shot on a
+            clean background with padding and shadow. Everything stays editable.</p>
+          <ul class="spec mono"><li>14 tools</li><li>Backgrounds</li><li>Undo history</li><li>.shotcraft files</li></ul>
+        </div>
+        <figure class="fig"><div class="crop"><img src="assets/screens/annotate.png" alt="Annotate editor" loading="lazy"></div>
+          <figcaption class="mono"><span>Fig. 3</span> Annotate</figcaption></figure>
+      </article>
+
+      <article class="feat">
+        <div class="feat-text">
+          <span class="num">03</span>
+          <h3>Never hunt for a file again</h3>
+          <p>Each capture waits in a small floating card. Drag it straight into Slack or Figma, copy it, annotate it,
+            pin it above your windows, or upload it — no Save dialog in sight.</p>
+          <ul class="spec mono"><li>Drag &amp; drop</li><li>Pin to screen</li><li>Capture history</li></ul>
+        </div>
+        <figure class="fig"><div class="crop"><img src="assets/screens/quick-access.jpg" alt="Quick Access overlay with capture thumbnails" loading="lazy"></div>
+          <figcaption class="mono"><span>Fig. 4</span> Quick Access overlay</figcaption></figure>
+      </article>
+
+      <article class="feat flip">
+        <div class="feat-text">
+          <span class="num">04</span>
+          <h3>Record video or GIF</h3>
+          <p>Record any part of the screen with microphone, system audio, a camera bubble, click highlights and
+            keystrokes. Trim and export in the built-in editor.</p>
+          <ul class="spec mono"><li>MP4 · GIF</li><li>60 fps</li><li>Mic + system audio</li><li>Camera</li></ul>
+        </div>
+        <figure class="fig"><div class="crop"><img src="assets/screens/recording.jpg" alt="Recording setup panel" loading="lazy"></div>
+          <figcaption class="mono"><span>Fig. 5</span> Recording setup</figcaption></figure>
+      </article>
+
+      <article class="feat">
+        <div class="feat-text">
+          <span class="num">05</span>
+          <h3>Studio Mode for demos</h3>
+          <p>Shotcraft records where you click and move, then zooms in automatically, smooths the cursor and frames
+            the result on a background — product demos without an editing degree.</p>
+          <ul class="spec mono"><li>Auto zoom</li><li>Smooth cursor</li><li>Timeline</li><li>4K export</li></ul>
+        </div>
+        <figure class="fig"><div class="crop"><img src="assets/screens/studio.png" alt="Studio Mode editor with timeline" loading="lazy"></div>
+          <figcaption class="mono"><span>Fig. 6</span> Studio Mode editor</figcaption></figure>
+      </article>
+
+      <article class="feat flip">
+        <div class="feat-text">
+          <span class="num">06</span>
+          <h3>Copy text from anything</h3>
+          <p>Select any part of the screen — an image, a video, a locked PDF — and the text lands on your clipboard.
+            Recognition runs on-device, in many languages, and reads QR codes too.</p>
+          <ul class="spec mono"><li>On-device OCR</li><li>QR codes</li><li>Scrolling capture</li></ul>
+        </div>
+        <figure class="fig"><div class="crop"><img src="assets/screens/text.jpg" alt="Selecting text to recognise" loading="lazy"></div>
+          <figcaption class="mono"><span>Fig. 7</span> Capture Text</figcaption></figure>
+      </article>
     </section>
 
-    <section id="privacy" class="section privacy">
-      <div class="privacy-card">
-        <div>
-          <p class="eyebrow">Private by design</p>
-          <h2>Your screen stays on your Mac.</h2>
-          <p class="lead left">Shotcraft is a local app. Screenshots, recordings, annotations and text recognition all
-            run on-device — no accounts, no analytics, no servers. Files only leave your Mac when you upload them to a
-            destination <em>you</em> configured.</p>
-          <a class="link" href="https://github.com/udsy19/CleanShotX/blob/main/PRIVACY.md">Read the privacy note →</a>
-        </div>
+    <!-- 03 · Spec sheet -->
+    <section class="block">
+      <div class="block-head">
+        <p class="label mono">03 &nbsp;/&nbsp; The full list</p>
+        <h2>The details, <em>all of them.</em></h2>
+      </div>
+      <dl class="sheet">
+        <div><dt class="mono">Capture</dt><dd>Area, previous area, window with shadow and backgrounds, fullscreen, self-timer, All-In-One, multi-display, freeze screen, crosshair and magnifier, colour picker, hide desktop icons</dd></div>
+        <div><dt class="mono">Annotate</dt><dd>Crop, rectangle, ellipse, line, five arrow styles, text styles, pen, highlighter, pixelate, blur, redact, spotlight, counters, images, background tool with gradients, padding, shadow and aspect ratios</dd></div>
+        <div><dt class="mono">Overlay</dt><dd>Quick Access cards with copy, save, annotate, pin, upload and Quick Look; drag and drop; auto-close; restore recently closed</dd></div>
+        <div><dt class="mono">Record</dt><dd>Video (H.264 / HEVC) or GIF, 30 / 60 fps, microphone and system audio, camera bubble, click highlights, keystrokes, countdown, pause and restart, trimming editor</dd></div>
+        <div><dt class="mono">Studio</dt><dd>Cursor-tracked recording, automatic zoom on clicks, manual zoom segments, cuts and splits, smooth cursor, backgrounds, MP4 / GIF export up to 4K</dd></div>
+        <div><dt class="mono">Text</dt><dd>On-device OCR with language detection and line-break control, QR and barcodes, scrolling capture (vertical and horizontal)</dd></div>
+        <div><dt class="mono">Share</dt><dd>Your own S3-compatible bucket, HTTP endpoint or synced folder — link copied the moment the upload starts</dd></div>
+        <div><dt class="mono">Automate</dt><dd>A global shortcut for every action, a <code>shotcraft://</code> URL scheme, share-menu extensions, Quick Look previews</dd></div>
+      </dl>
+    </section>
+
+    <!-- 04 · Privacy -->
+    <section id="privacy" class="block privacy">
+      <div class="block-head">
+        <p class="label mono">04 &nbsp;/&nbsp; Privacy</p>
+        <h2>Your screen is <em>yours.</em></h2>
+      </div>
+      <div class="privacy-grid">
+        <p class="lede">Shotcraft is a local app. Screenshots, recordings, annotations and text recognition all run on
+          your Mac. There's no account, no analytics and no server to send anything to. Files leave only when you
+          upload them — to a destination you set up yourself.</p>
+        <div class="stamp mono" aria-label="Nothing leaves this Mac">Nothing leaves<br>this Mac</div>
         <ul class="checks">
           <li>No account or sign-in</li>
-          <li>No telemetry, analytics or crash reporting</li>
-          <li>On-device OCR with Apple Vision</li>
-          <li>Upload secrets stored in your Keychain</li>
-          <li>100% open source — read every line</li>
+          <li>No telemetry, analytics or crash reports</li>
+          <li>Text recognition with on-device Vision</li>
+          <li>Upload keys stored in your Keychain</li>
+          <li>MIT-licensed source — read every line</li>
         </ul>
       </div>
     </section>
 
-    <section id="install" class="section">
-      <p class="eyebrow center">Get started</p>
-      <h2 class="center">Installed in one line</h2>
-      <div class="steps">
-        <div class="step">
-          <span class="num">1</span>
-          <h3>Run the installer</h3>
-          <p>Paste into Terminal. It downloads the latest release, puts Shotcraft in Applications and opens it.</p>
-          <div class="cmd small">
-            <code id="install-cmd-2">curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash</code>
-            <button class="copy" data-copy="install-cmd-2" aria-label="Copy install command">Copy</button>
-          </div>
-        </div>
-        <div class="step">
-          <span class="num">2</span>
-          <h3>Allow Screen Recording</h3>
-          <p>The welcome guide walks you through the one permission macOS requires to capture your screen.</p>
-        </div>
-        <div class="step">
-          <span class="num">3</span>
-          <h3>Press ⌥⇧4</h3>
-          <p>Drag over anything. Or pick your own shortcuts — even macOS's ⇧⌘3/4/5 — during setup.</p>
-        </div>
+    <!-- 05 · Install -->
+    <section id="install" class="block">
+      <div class="block-head">
+        <p class="label mono">05 &nbsp;/&nbsp; Install</p>
+        <h2>Three steps. <em>One minute.</em></h2>
       </div>
-      <p class="fine center">Prefer a disk image? <a href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">Download the DMG</a>,
-        drag Shotcraft to Applications, and on first launch choose <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</p>
+      <ol class="steps">
+        <li>
+          <span class="dot">1</span>
+          <h3>Paste this into Terminal</h3>
+          <p>It downloads the latest release, places Shotcraft in Applications and opens it.</p>
+          <div class="term">
+            <code id="cmd2">curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash</code>
+            <button class="copy mono" data-copy="cmd2">Copy</button>
+          </div>
+        </li>
+        <li>
+          <span class="dot">2</span>
+          <h3>Allow Screen Recording</h3>
+          <p>A short welcome guide walks you through the one permission macOS needs before any app can capture the screen.</p>
+        </li>
+        <li>
+          <span class="dot">3</span>
+          <h3>Press <kbd>⌥⇧4</kbd></h3>
+          <p>Drag over anything. Prefer macOS's <kbd>⇧⌘4</kbd>? Pick it during setup — every shortcut is yours to change.</p>
+        </li>
+      </ol>
+      <p class="aside">Rather use a disk image? <a href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">Download the DMG</a>,
+        drag Shotcraft into Applications, then on first launch open <b>System Settings → Privacy &amp; Security</b> and
+        click <b>Open Anyway</b>. Shotcraft isn't notarized by Apple, so macOS asks once.</p>
     </section>
 
-    <section class="section faq">
-      <h2 class="center">Questions</h2>
+    <!-- 06 · FAQ -->
+    <section class="block faq">
+      <div class="block-head">
+        <p class="label mono">06 &nbsp;/&nbsp; Questions</p>
+      </div>
       <details>
-        <summary>Is Shotcraft really free?</summary>
-        <p>Yes. It's open source under the MIT license — no subscription, no trial, no account.</p>
-      </details>
-      <details>
-        <summary>Why does macOS ask before opening the DMG version?</summary>
-        <p>Shotcraft is an independent app that isn't notarized by Apple, so the first launch of a browser-downloaded
-          copy needs <b>System Settings → Privacy &amp; Security → Open Anyway</b>. That's needed only once — and the
-          one-line installer avoids it entirely.</p>
+        <summary>Is it really free?</summary>
+        <p>Yes — MIT-licensed open source. No subscription, trial or account.</p>
       </details>
       <details>
         <summary>Does anything get uploaded?</summary>
-        <p>Never by default. Uploading only happens when you configure your own destination in Settings → Upload and
-          choose to upload a capture.</p>
+        <p>Never by default. Uploading only happens after you add your own destination in Settings → Upload and choose to upload a capture.</p>
+      </details>
+      <details>
+        <summary>Why does macOS ask before opening the DMG version?</summary>
+        <p>Shotcraft is an independent app without Apple notarization, so a browser-downloaded copy needs one confirmation under Privacy &amp; Security → Open Anyway. The one-line installer doesn't.</p>
       </details>
       <details>
         <summary>How do I update or uninstall?</summary>
-        <p>Run the install command again to update. To uninstall:
-          <code>curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash -s -- --uninstall</code></p>
+        <p>Run the install command again to update. To uninstall: <code>curl -fsSL https://udsy19.github.io/CleanShotX/install.sh | bash -s -- --uninstall</code></p>
       </details>
       <details>
-        <summary>How does it relate to CleanShot X?</summary>
-        <p>Shotcraft is an independent, from-scratch open-source project inspired by CleanShot X's workflow. It isn't
-          affiliated with or endorsed by CleanShot X or MTW, and shares none of its code or assets.</p>
+        <summary>Is this CleanShot X?</summary>
+        <p>No. Shotcraft is an independent, from-scratch project inspired by CleanShot X's workflow. It isn't affiliated with CleanShot X or MTW and shares none of their code or assets.</p>
       </details>
-    </section>
-
-    <section class="section final">
-      <img src="assets/icon-128.png" alt="" width="72" height="72">
-      <h2>Give your screenshots some craft.</h2>
-      <div class="cta">
-        <a class="btn" href="https://github.com/udsy19/CleanShotX/releases/latest/download/Shotcraft.dmg">Download for Mac</a>
-        <a class="btn btn-ghost" href="https://github.com/udsy19/CleanShotX">Star on GitHub</a>
-      </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <span>© 2026 Udaya Vijay Anand · MIT License</span>
-    <span>
-      <a href="https://github.com/udsy19/CleanShotX">Source</a> ·
-      <a href="https://github.com/udsy19/CleanShotX/releases">Releases</a> ·
-      <a href="https://github.com/udsy19/CleanShotX/blob/main/PRIVACY.md">Privacy</a> ·
-      <a href="https://github.com/udsy19/CleanShotX/blob/main/CHANGELOG.md">Changelog</a>
-    </span>
+  <footer class="foot">
+    <div class="foot-row mono">
+      <span>© 2026 Udaya Vijay Anand · MIT License</span>
+      <span>
+        <a href="https://github.com/udsy19/CleanShotX">Source</a>
+        <a href="https://github.com/udsy19/CleanShotX/releases">Releases</a>
+        <a href="https://github.com/udsy19/CleanShotX/blob/main/PRIVACY.md">Privacy</a>
+        <a href="https://github.com/udsy19/CleanShotX/blob/main/CHANGELOG.md">Changelog</a>
+      </span>
+    </div>
+    <p class="wordmark" aria-hidden="true">Shotcraft</p>
   </footer>
+
+  </div>
 
   <script>
     document.querySelectorAll('.copy').forEach(btn => btn.addEventListener('click', async () => {
       const text = document.getElementById(btn.dataset.copy).textContent;
       try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
-      catch { btn.textContent = 'Select & copy'; }
-      setTimeout(() => (btn.textContent = 'Copy'), 1600);
+      catch { btn.textContent = 'Select ↑'; }
+      setTimeout(() => (btn.textContent = 'Copy'), 1500);
     }));
   </script>
 </body>
