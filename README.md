@@ -14,6 +14,8 @@ Requirements: macOS 14+, Swift 6 toolchain (Command Line Tools are enough — no
 ./scripts/build-app.sh            # → build/Shotcraft.app   (add --debug for a faster build)
 open build/Shotcraft.app
 swift run ShotcraftSelfTest       # headless logic tests
+./scripts/e2e.sh                  # end-to-end suite against the running app (see docs/TESTING.md)
+./scripts/make-dmg.sh             # universal, signed DMG in dist/
 ```
 
 On first launch Shotcraft walks you through Screen Recording permission (and optional Accessibility for
@@ -44,7 +46,14 @@ keystroke display / auto-scroll). It lives in the menu bar.
 `shotcraft://toggle-desktop-icons`, `shotcraft://open-settings?tab=shortcuts`.
 Screen-reading commands require enabling **Settings → Advanced → Allow URL scheme API** (you're asked on first use).
 
+## Installing from the DMG
+
+Open `Shotcraft-<version>.dmg`, drag Shotcraft to Applications, then open it. The app is self-signed (not notarized),
+so the first launch shows a warning: open System Settings → Privacy & Security and click **Open Anyway**. Requires
+macOS 14+ on Apple silicon or Intel.
+
 ## Project docs
 
 - `docs/ARCHITECTURE.md` — module layout and contracts
 - `docs/re/*.md` — reverse-engineered feature specs per area, with evidence
+- `docs/TESTING.md` — test layers, what was verified end to end, bugs found

@@ -27,6 +27,7 @@ struct QuickAccessPane: View {
                     Text("Move to active screen")
                     Text("Active screen is the screen where your cursor is pointing.")
                 }
+                .accessibilityLabel("Move to active screen")
                 LabeledContent("Overlay size") {
                     // Five ticks: 60 %, 80 %, 100 %, 120 %, 140 %.
                     Slider(value: $size, in: 0.6...1.4, step: 0.2) {
@@ -43,7 +44,7 @@ struct QuickAccessPane: View {
             }
 
             Section("Behavior") {
-                Toggle("Auto-close", isOn: $autoClose)
+                SettingToggle("Auto-close", isOn: $autoClose)
                 Picker("Action", selection: $autoCloseAction) {
                     Text("Close").tag(AfterCaptureAction?.none)
                     ForEach(Self.autoCloseActions, id: \.self) { Text(label(for: $0)).tag(AfterCaptureAction?.some($0)) }
@@ -60,8 +61,8 @@ struct QuickAccessPane: View {
             Section {
                 SettingToggle("Close after dragging", isOn: $closeAfterDragging,
                               help: "Removes the item from the overlay once it's dropped into another app.")
-                Toggle("Close after uploading", isOn: $closeAfterUploading)
-                Toggle("Show upload button", isOn: $showUploadButton)
+                SettingToggle("Close after uploading", isOn: $closeAfterUploading)
+                SettingToggle("Show upload button", isOn: $showUploadButton)
                 Picker("Save button behavior", selection: $saveBehavior) {
                     ForEach(SaveButtonBehavior.allCases, id: \.self) { Text(saveLabel(for: $0)).tag($0) }
                 }

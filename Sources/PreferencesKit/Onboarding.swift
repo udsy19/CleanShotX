@@ -422,7 +422,7 @@ private struct OnboardingAfterCapture: View {
 private struct DesktopIconsSwitch: View {
     @Default(.hideDesktopIconsWhileCapturing) private var hide
     var body: some View {
-        Toggle("Hide desktop icons while capturing", isOn: $hide)
+        SettingToggle("Hide desktop icons while capturing", isOn: $hide)
             .toggleStyle(.switch)
     }
 }

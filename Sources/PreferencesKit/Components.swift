@@ -46,6 +46,9 @@ struct SettingToggle: View {
             Text(title)
             if let help { Text(help) }
         }
+        // Grouped forms expose the label and the switch as separate elements; name the switch for VoiceOver.
+        .accessibilityLabel(title)
+        .accessibilityHint(help ?? "")
     }
 }
 

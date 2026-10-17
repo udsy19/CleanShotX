@@ -41,7 +41,7 @@ struct ScreenshotsPane: View {
                               help: "Gives consistent colors in browsers and apps that ignore display profiles.")
                 SettingToggle("Scale Retina screenshots to 1x", isOn: $scaleRetina,
                               help: "Saves screenshots at their point size, producing smaller files.")
-                Toggle("Add 1px border to all screenshots", isOn: $addBorder)
+                SettingToggle("Add 1px border to all screenshots", isOn: $addBorder)
             }
 
             Section("Capture") {
@@ -52,7 +52,7 @@ struct ScreenshotsPane: View {
                 }
                 SettingToggle("Show cursor on screenshots", isOn: $showCursor,
                               help: "This works in Fullscreen or Self-Timer modes only.")
-                Toggle("Freeze screen when taking a screenshot", isOn: $freezeScreen)
+                SettingToggle("Freeze screen when taking a screenshot", isOn: $freezeScreen)
             }
 
             Section {
@@ -77,7 +77,7 @@ struct ScreenshotsPane: View {
                     }
                 }
                 .disabled(backgroundStyle == .transparent)
-                Toggle("Capture window shadow", isOn: $windowShadow)
+                SettingToggle("Capture window shadow", isOn: $windowShadow)
             } header: { Text("Window Screenshots") } footer: {
                 HStack {
                     Spacer()
@@ -99,6 +99,7 @@ struct ScreenshotsPane: View {
                     Text("Show magnifier")
                     if !crosshair { Text("To enable magnifier, you must enable Crosshair Mode first.") }
                 }
+                .accessibilityLabel("Show magnifier")
                 .disabled(!crosshair)
             }
         }

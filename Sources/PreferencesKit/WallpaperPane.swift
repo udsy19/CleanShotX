@@ -26,7 +26,7 @@ struct WallpaperPane: View {
 
                 switch source {
                 case .desktop:
-                    Toggle("Update wallpaper when switching Spaces", isOn: $updateOnSpaceChange)
+                    SettingToggle("Update wallpaper when switching Spaces", isOn: $updateOnSpaceChange)
                 case .custom:
                     LabeledContent("Image") {
                         HStack {

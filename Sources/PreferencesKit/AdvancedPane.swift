@@ -32,7 +32,7 @@ struct AdvancedPane: View {
     var body: some View {
         PaneForm(pane: .advanced) {
             Section("File Name") {
-                Toggle("Ask for name after every capture", isOn: $askForName)
+                SettingToggle("Ask for name after every capture", isOn: $askForName)
                 LabeledContent {
                     Button("Customize…") { editingTemplate = true }
                 } label: {
@@ -92,7 +92,7 @@ struct AdvancedPane: View {
                         Text(languages.map(languageName).joined(separator: ", ")).lineLimit(2)
                     }
                 }
-                Toggle("Keep line breaks", isOn: $keepLineBreaks)
+                SettingToggle("Keep line breaks", isOn: $keepLineBreaks)
                 SettingToggle("Detect links", isOn: $openLinks,
                               help: "When the recognized text is a single link, open it in your browser.")
             }
@@ -103,8 +103,8 @@ struct AdvancedPane: View {
             }
 
             Section("Pinned Screenshots") {
-                Toggle("Lock and hide screenshot on mouse over", isOn: $pinLockAndHide)
-                Toggle("Shadow", isOn: $pinShadow)
+                SettingToggle("Lock and hide screenshot on mouse over", isOn: $pinLockAndHide)
+                SettingToggle("Shadow", isOn: $pinShadow)
             }
 
             Section {

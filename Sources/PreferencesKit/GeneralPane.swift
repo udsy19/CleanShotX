@@ -15,22 +15,23 @@ struct GeneralPane: View {
     var body: some View {
         PaneForm(pane: .general) {
             Section("App") {
-                Toggle("Launch at login", isOn: $launchAtLogin)
+                SettingToggle("Launch at login", isOn: $launchAtLogin)
                 Toggle(isOn: menuBarIconBinding) {
                     Text("Show menu bar icon")
                     if !showMenuBarIcon { Text("Open Shotcraft again (e.g. from Finder or Spotlight) to show this window.") }
                 }
+                .accessibilityLabel("Show menu bar icon")
                 .id(menuBarIconRevision)
             }
 
             Section {
-                Toggle("Hide desktop icons while capturing", isOn: $hideDesktopIcons)
+                SettingToggle("Hide desktop icons while capturing", isOn: $hideDesktopIcons)
             } header: { Text("Capture") } footer: {
                 HelpText("You can set a custom wallpaper to hide desktop icons in [wallpaper settings](settings://wallpaper).")
             }
 
             Section("Sounds") {
-                Toggle("Play sounds", isOn: $playSounds)
+                SettingToggle("Play sounds", isOn: $playSounds)
                 LabeledContent("Shutter sound") {
                     HStack(spacing: 6) {
                         Picker("Shutter sound", selection: shutterBinding) {

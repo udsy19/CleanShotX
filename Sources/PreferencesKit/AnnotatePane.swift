@@ -19,15 +19,15 @@ struct AnnotatePane: View {
                 SettingToggle("Inverse arrow direction", isOn: $inverseArrow,
                               help: "New arrows point back to where you started drawing.")
                 SettingToggle("Smooth drawing", isOn: $smoothDrawing, help: "Smooths freehand pencil and highlighter strokes.")
-                Toggle("Remember if background tool was opened", isOn: $rememberBackground)
-                Toggle("Draw shadow on objects", isOn: $drawShadow)
+                SettingToggle("Remember if background tool was opened", isOn: $rememberBackground)
+                SettingToggle("Draw shadow on objects", isOn: $drawShadow)
                 SettingToggle("Automatically expand canvas", isOn: $expandCanvas,
                               help: "Ensures all annotations fit by dynamically resizing canvas.")
-                Toggle("Snap crop to content edges", isOn: $snapCrop)
+                SettingToggle("Snap crop to content edges", isOn: $snapCrop)
             }
 
             Section("Window") {
-                Toggle("Always on top", isOn: $alwaysOnTop)
+                SettingToggle("Always on top", isOn: $alwaysOnTop)
                 SettingToggle("Show Dock icon", isOn: $showDockIcon,
                               help: "Makes the editor reachable from the Dock and ⌘-Tab.")
                 Picker("Save button behavior", selection: $saveBehavior) {
@@ -36,7 +36,7 @@ struct AnnotatePane: View {
             }
 
             Section("Accessibility") {
-                Toggle("Show color names", isOn: $showColorNames)
+                SettingToggle("Show color names", isOn: $showColorNames)
             }
         }
     }

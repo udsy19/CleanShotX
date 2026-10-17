@@ -8,7 +8,7 @@ if [ "${UNIVERSAL:-0}" = 1 ]; then
   # Build each architecture separately (the CLT toolchain has no multi-arch build) and merge with lipo.
   for arch in arm64 x86_64; do swift build -c "$CONFIG" --product Shotcraft --triple "$arch-apple-macosx14.0"; done
   BIN="$ROOT/build/universal"; mkdir -p "$BIN"
-  lipo -create -output "$BIN/Shotcraft" "$ROOT/.build/arm64-apple-macosx14.0/$CONFIG/Shotcraft" "$ROOT/.build/x86_64-apple-macosx14.0/$CONFIG/Shotcraft"
+  lipo -create -output "$BIN/Shotcraft" "$(swift build -c "$CONFIG" --triple arm64-apple-macosx14.0 --show-bin-path)/Shotcraft" "$(swift build -c "$CONFIG" --triple x86_64-apple-macosx14.0 --show-bin-path)/Shotcraft"
 else
   swift build -c "$CONFIG" --product Shotcraft
   BIN="$(swift build -c "$CONFIG" --show-bin-path)"

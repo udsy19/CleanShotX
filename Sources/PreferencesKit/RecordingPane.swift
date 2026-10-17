@@ -39,11 +39,11 @@ struct RecordingPane: View {
     var body: some View {
         PaneForm(pane: .recording) {
             Section("General") {
-                Toggle("Show controls while recording", isOn: $showControls)
-                Toggle("Remember last selection", isOn: $rememberArea)
-                Toggle("Display recording time in menu bar", isOn: $showTime)
-                Toggle("Dim screen while recording", isOn: $dimScreen)
-                Toggle("Show countdown", isOn: $countdown)
+                SettingToggle("Show controls while recording", isOn: $showControls)
+                SettingToggle("Remember last selection", isOn: $rememberArea)
+                SettingToggle("Display recording time in menu bar", isOn: $showTime)
+                SettingToggle("Dim screen while recording", isOn: $dimScreen)
+                SettingToggle("Show countdown", isOn: $countdown)
                 Picker("Countdown", selection: $countdownSeconds) {
                     ForEach(PickerChoices.including(countdownSeconds, in: Self.countdownChoices), id: \.self) {
                         Text($0 == 1 ? "1 second" : "\($0) seconds").tag($0)
@@ -52,19 +52,19 @@ struct RecordingPane: View {
                 .disabled(!countdown)
                 SettingToggle("“Do Not Disturb” while recording", isOn: $doNotDisturb,
                               help: "Keeps notification banners out of your recordings.")
-                Toggle("Record in Studio Mode by default", isOn: $studioMode)
+                SettingToggle("Record in Studio Mode by default", isOn: $studioMode)
             }
 
             Section("Cursor") {
-                Toggle("Show cursor", isOn: $showCursor)
-                Toggle("Hide cursor when not moving", isOn: $hideIdleCursor).disabled(!showCursor)
+                SettingToggle("Show cursor", isOn: $showCursor)
+                SettingToggle("Hide cursor when not moving", isOn: $hideIdleCursor).disabled(!showCursor)
                 LabeledContent {
                     HStack(spacing: 8) {
                         OptionsButton {
                             ColorPicker("Highlight color", selection: $clickColor.color, supportsOpacity: true)
                         }
                         .disabled(!highlightClicks)
-                        Toggle("Highlight clicks", isOn: $highlightClicks)
+                        SettingToggle("Highlight clicks", isOn: $highlightClicks)
                             .labelsHidden().toggleStyle(.switch).controlSize(.mini)
                     }
                 } label: { Text("Highlight clicks") }
@@ -91,12 +91,12 @@ struct RecordingPane: View {
                     Text("Quality")
                     Text("Lower quality reduces file size and upload time.")
                 }
-                Toggle("Scale Retina videos to 1x", isOn: $scaleRetina)
+                SettingToggle("Scale Retina videos to 1x", isOn: $scaleRetina)
             }
 
             Section {
-                Toggle("Record audio in mono", isOn: $mono).disabled(!microphone && !systemAudio)
-                Toggle("Record microphone", isOn: $microphone)
+                SettingToggle("Record audio in mono", isOn: $mono).disabled(!microphone && !systemAudio)
+                SettingToggle("Record microphone", isOn: $microphone)
                 if microphone {
                     DevicePicker(title: "Microphone", devices: devices.microphones, selection: $microphoneID)
                     if permissions.states[.microphone] != .granted { PermissionRow(kind: .microphone, model: permissions) }
@@ -106,7 +106,7 @@ struct RecordingPane: View {
             } header: { Text("Audio") }
 
             Section("Camera") {
-                Toggle("Record camera", isOn: $camera)
+                SettingToggle("Record camera", isOn: $camera)
                 if camera {
                     DevicePicker(title: "Camera", devices: devices.cameras, selection: $cameraID)
                     if permissions.states[.camera] != .granted { PermissionRow(kind: .camera, model: permissions) }
