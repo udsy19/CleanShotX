@@ -547,14 +547,15 @@ struct BackgroundPanel: View {
                 ForEach(Self.colors, id: \.self) { c in
                     Swatch(selected: bg == .color(c), help: "Color", size: 20, radius: 5, action: { set(.color(c)) }) { Color(cgColor: c.cgColor) }
                 }
-                ColorPicker("", selection: Binding(
-                    get: { if case .color(let c) = bg { return Color(cgColor: c.cgColor) }; return .gray },
-                    set: { col in
-                        let ns = NSColor(col).usingColorSpace(.sRGB) ?? .gray
-                        model.update(coalesce: "bg-color") { $0.style.background = .color(RGBAColor(r: ns.redComponent, g: ns.greenComponent, b: ns.blueComponent)) }
-                    }), supportsOpacity: false)
-                .labelsHidden().frame(width: 20, height: 20).help("Custom Color")
             }
+            // Outside the grid: on macOS 26 the system color well is a wide capsule that overflows a 20 pt cell.
+            ColorPicker("Custom", selection: Binding(
+                get: { if case .color(let c) = bg { return Color(cgColor: c.cgColor) }; return .gray },
+                set: { col in
+                    let ns = NSColor(col).usingColorSpace(.sRGB) ?? .gray
+                    model.update(coalesce: "bg-color") { $0.style.background = .color(RGBAColor(r: ns.redComponent, g: ns.greenComponent, b: ns.blueComponent)) }
+                }), supportsOpacity: false)
+            .font(.system(size: 11)).foregroundStyle(.secondary).help("Custom Color")
         }
         PanelSection(title: "Aspect Ratio") {
             Picker("", selection: model.binding(\.style.aspectRatio, "aspect")) {

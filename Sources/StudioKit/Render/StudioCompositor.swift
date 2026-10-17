@@ -89,7 +89,14 @@ struct ProjectMedia: @unchecked Sendable {
         guard let video = try await asset.loadTracks(withMediaType: .video).first else {
             throw StudioPackage.PackageError.unreadable("The source file does not contain a video track.")
         }
-        let (range, fps) = try await video.load(.timeRange, .nominalFrameRate)
+        let (trackRange, fps, segments) = try await video.load(.timeRange, .nominalFrameRate, .segments)
+        // The writer's session starts at the shared clock's zero and the first screen frame arrives a few
+        // milliseconds later, leaving a leading empty edit. Composition time mapped onto it has no source frame,
+        // so the paused preview (and an export's first frame) showed only the background. Start at the first sample.
+        var range = trackRange
+        if let first = segments.first, first.isEmpty, segments.count > 1 {
+            range = CMTimeRange(start: first.timeMapping.target.end, end: trackRange.end)
+        }
         let audio = try await asset.loadTracks(withMediaType: .audio).sorted { $0.trackID < $1.trackID }
         var audioRanges: [(AVAssetTrack, CMTimeRange)] = []
         for a in audio { audioRanges.append((a, try await a.load(.timeRange))) }

@@ -335,7 +335,7 @@ private final class RecorderSettingsPanel: NSView {
     let primary: RecordingKind
     var alternate: RecordingKind { primary == .video ? .gif : .video }
 
-    private static let width: CGFloat = 227
+    private static let width: CGFloat = 236
     private static let gridRow: CGFloat = 35
     private static let actionRow: CGFloat = 37
     private static let gap: CGFloat = 10
@@ -790,15 +790,19 @@ private final class ActionRow: NSView {
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
         titleLabel.textColor = .white
-        let views: [NSView] = [iconView, titleLabel, NSView()] + (shortcut.map { s -> [NSView] in
+        titleLabel.lineBreakMode = .byTruncatingTail
+        // Rows without a shortcut (Studio Mode) give the title the full width instead of a trailing spacer.
+        let views: [NSView] = [iconView, titleLabel] + (shortcut.map { s -> [NSView] in
             let l = NSTextField(labelWithString: s)
             l.font = .systemFont(ofSize: 13, weight: .regular)
             l.textColor = NSColor.white.withAlphaComponent(0.5)
-            return [l]
+            return [NSView(), l]
         } ?? [])
         let stack = NSStackView(views: views)
         stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: shortcut == nil ? 4 : 14)
+        stack.alignment = .centerY
+        stack.distribution = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         iconView.widthAnchor.constraint(equalToConstant: 22).isActive = true
         addSubview(stack)

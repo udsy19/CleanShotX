@@ -122,8 +122,12 @@ public struct WindowInfo: Sendable {
     public let layer: Int
     public var cocoaFrame: CGRect { ScreenGeometry.cocoaRect(fromCG: cgFrame) }
 
-    /// Normal-layer, on-screen windows front-to-back, excluding our own process.
-    public static func onScreen(includeOwn: Bool = false) -> [WindowInfo] {
+    /// On-screen windows front-to-back. Our own windows are included only when they are capturable per
+    /// `CaptureExclusion` (pins, editors), so window selection matches what a screenshot would show.
+    @MainActor
+    public static func onScreen() -> [WindowInfo] {
+        let flagged = CaptureExclusion.flaggedWindowIDs
+        let floating = Int(CGWindowLevelForKey(.floatingWindow))
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
         let me = ProcessInfo.processInfo.processIdentifier
         return list.compactMap { d in
@@ -131,7 +135,7 @@ public struct WindowInfo: Sendable {
                   let b = d[kCGWindowBounds as String] as? [String: CGFloat],
                   let pid = d[kCGWindowOwnerPID as String] as? pid_t,
                   let layer = d[kCGWindowLayer as String] as? Int else { return nil }
-            if !includeOwn && pid == me { return nil }
+            if pid == me && (layer > floating || flagged.contains(id)) { return nil }
             let alpha = d[kCGWindowAlpha as String] as? Double ?? 1
             guard alpha > 0.01 else { return nil }
             let frame = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
