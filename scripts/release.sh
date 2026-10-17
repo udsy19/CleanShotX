@@ -7,7 +7,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 VERSION="${1:?usage: release.sh <version>}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
-BUILD=$(git rev-list --count HEAD); /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" Resources/Info.plist
+BUILD=$(( $(git rev-list --count HEAD) + 1 )); /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" Resources/Info.plist
+git add Resources/Info.plist
+git diff --cached --quiet || git commit -q -m "Release $VERSION"
+git push -q origin HEAD
 ./scripts/make-dmg.sh
 cp "dist/Shotcraft-$VERSION.dmg" dist/Shotcraft.dmg
 SHA=$(shasum -a 256 dist/Shotcraft.dmg | cut -d' ' -f1)

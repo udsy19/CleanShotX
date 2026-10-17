@@ -6,10 +6,10 @@
 ./scripts/release.sh x.y.z
 ```
 
-`release.sh` stamps the version into `Resources/Info.plist`, builds the universal app and DMG, creates a signed tag
+`release.sh` stamps the version and build number into `Resources/Info.plist`, commits that as "Release x.y.z", builds the universal app and DMG, creates a signed tag
 and publishes a GitHub release with two assets: `Shotcraft-x.y.z.dmg` and a stable `Shotcraft.dmg`. The one-line
 installer and the website always download `releases/latest/download/Shotcraft.dmg`, so they pick up new releases
-automatically. Commit the updated `Info.plist` afterwards.
+automatically.
 
 ## Keep the signing identity stable
 
