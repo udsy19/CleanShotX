@@ -55,6 +55,7 @@ enum URLSchemeHandler {
         case "toggle-desktop-icons": Services.capture.setDesktopIconsHidden(!Services.capture.desktopIconsHidden)
         case "hide-desktop-icons": Services.capture.setDesktopIconsHidden(true)
         case "show-desktop-icons": Services.capture.setDesktopIconsHidden(false)
+        case "pick-color": Services.capture.pickColor()
         case "open-history": Services.history.showWindow()
         case "restore-recently-closed": Services.history.restoreLast()
         case "open-settings": Services.preferences.show(pane: q["tab"])
