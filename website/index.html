@@ -3,884 +3,244 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Super Screenshot — free screenshots and screen recordings for Mac</title>
-  <meta name="description" content="Super Screenshot is a free, open-source screenshot and screen recording app for macOS. Capture, annotate, record and copy text from your screen — your captures stay on your Mac.">
-  <meta name="theme-color" content="#ffffff">
+  <title>Super Screenshot — screenshots and screen recordings for the Mac</title>
+  <meta name="description" content="Super Screenshot is a free, open-source screenshot and screen recording app for macOS. Capture, mark up, record and copy text from your screen. Captures stay on your Mac.">
+  <meta name="theme-color" content="#EEF0F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0F1115" media="(prefers-color-scheme: dark)">
   <link rel="icon" type="image/svg+xml" href="assets/icon.svg?v=3">
   <link rel="icon" type="image/png" sizes="128x128" href="assets/icon-128.png?v=3">
   <link rel="apple-touch-icon" href="assets/icon-256.png?v=3">
-  <meta property="og:title" content="Super Screenshot — free screenshots and screen recordings for Mac">
-  <meta property="og:description" content="Free and open source. Capture, mark up and record — your captures stay on your Mac.">
+  <meta property="og:title" content="Super Screenshot — screenshots and screen recordings for the Mac">
+  <meta property="og:description" content="Free and open source. Capture, mark up and record. Captures stay on your Mac.">
   <meta property="og:image" content="https://udsy19.github.io/super-screenshot/assets/og.png">
   <meta property="og:url" content="https://udsy19.github.io/super-screenshot/">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400..700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500&family=Mona+Sans:wdth,wght@100..125,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add('js')</script>
+  <script src="app.js" defer></script>
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="i-apple" viewBox="0 0 24 24"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.9-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.7 2.5 3 2.4 1.2 0 1.6-.8 3.1-.8s1.8.8 3.1.8c1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.7-4.1zM14.1 5.8c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z"/></symbol>
-    <symbol id="i-github" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
-    <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6"/></symbol>
-    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 19.6 8.9 16.2a4.6 4.6 0 0 1 6.2 0zM6.4 13.5a8.3 8.3 0 0 1 11.2 0l1.7-1.9a10.8 10.8 0 0 0-14.6 0zM3.1 9.9a13.2 13.2 0 0 1 17.8 0l1.7-1.9a15.7 15.7 0 0 0-21.2 0z"/></symbol>
-    <symbol id="i-batt" viewBox="0 0 30 14"><rect x="0.8" y="0.8" width="25" height="12.4" rx="3.6" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.2"/><rect x="2.8" y="2.8" width="17" height="8.4" rx="1.8"/><path d="M27.6 4.8v4.4a2.2 2.2 0 0 0 0-4.4z" fill-opacity=".45"/></symbol>
-    <!-- Line icons on a 20 pt grid -->
-    <symbol id="i-refresh" viewBox="0 0 20 20"><path d="M4.4 8.6a5.8 5.8 0 0 1 10.3-2.9l1.3 1.6M16 3.4v3.9h-3.9M15.6 11.4a5.8 5.8 0 0 1-10.3 2.9L4 12.7M4 16.6v-3.9h3.9"/></symbol>
-    <symbol id="i-chev-r" viewBox="0 0 20 20"><path d="m8 5.5 4.5 4.5L8 14.5"/></symbol>
-    <symbol id="i-arr-l" viewBox="0 0 20 20"><path d="M16 10H4.5m4.5-4.5L4.5 10 9 14.5"/></symbol>
-    <symbol id="i-arr-r" viewBox="0 0 20 20"><path d="M4 10h11.5M11 5.5l4.5 4.5-4.5 4.5"/></symbol>
-    <symbol id="i-playo" viewBox="0 0 20 20"><path d="M6.5 4.6v10.8a.6.6 0 0 0 .9.5l8.6-5.4a.6.6 0 0 0 0-1L7.4 4.1a.6.6 0 0 0-.9.5z"/></symbol>
-    <symbol id="i-lock" viewBox="0 0 20 20"><rect x="4.5" y="9" width="11" height="8.2" rx="2"/><path d="M7 9V6.6a3 3 0 0 1 6 0V9"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 20 20"><path d="M10 2.6 4 4.9v4.6c0 3.7 2.6 6.6 6 7.9 3.4-1.3 6-4.2 6-7.9V4.9z"/><path d="m7.3 10 1.9 1.9 3.6-3.7"/></symbol>
-    <symbol id="i-tick" viewBox="0 0 20 20"><path d="m4.8 10.4 3.3 3.3 7.1-7.2"/></symbol>
-    <symbol id="i-doc" viewBox="0 0 20 20"><path d="M5.6 2.6h5.9L15 6.1v10.3a1 1 0 0 1-1 1H5.6a1 1 0 0 1-1-1V3.6a1 1 0 0 1 1-1z"/><path d="M11.4 2.7v3.5h3.5M7.6 10h4.8M7.6 13h4.8"/></symbol>
-    <symbol id="i-laptop" viewBox="0 0 20 20"><rect x="4" y="4.4" width="12" height="8.6" rx="1.4"/><path d="M2 15.6h16"/></symbol>
-    <symbol id="i-cpu" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="1.6"/><path d="M8 2.6v2.9m4-2.9v2.9M8 14.5v2.9m4-2.9v2.9M2.6 8h2.9m-2.9 4h2.9m9-4h2.9m-2.9 4h2.9"/></symbol>
-    <symbol id="i-heart" viewBox="0 0 20 20"><path d="M10 16.4s-6.4-3.8-6.4-8.3A3.6 3.6 0 0 1 10 6.2a3.6 3.6 0 0 1 6.4 1.9c0 4.5-6.4 8.3-6.4 8.3z"/></symbol>
-    <symbol id="i-qr" viewBox="0 0 20 20"><rect x="3" y="3" width="5.4" height="5.4" rx="1"/><rect x="11.6" y="3" width="5.4" height="5.4" rx="1"/><rect x="3" y="11.6" width="5.4" height="5.4" rx="1"/><path d="M11.6 11.6h2.2v2.2h-2.2zM14.8 14.8H17V17h-2.2zM15.4 11.6H17M11.6 15.4V17"/></symbol>
-    <symbol id="i-pause" viewBox="0 0 20 20"><path d="M7.6 5.2v9.6m4.8-9.6v9.6" stroke-width="2.2"/></symbol>
-    <symbol id="i-restart" viewBox="0 0 20 20"><path d="M4.6 10.2a5.5 5.5 0 1 0 1.7-4.1L4.6 7.7M4.4 3.8v3.9h3.9"/></symbol>
-    <symbol id="i-trash" viewBox="0 0 20 20"><path d="M4.4 5.8h11.2M8 5.8V4.2h4v1.6M6 5.8l.8 10.1a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9L14 5.8"/></symbol>
-    <symbol id="i-gear" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.6v2m0 10.8v2M2.6 10h2m10.8 0h2M4.8 4.8l1.4 1.4m7.6 7.6 1.4 1.4m0-10.4-1.4 1.4m-7.6 7.6-1.4 1.4"/></symbol>
-    <symbol id="i-kbd" viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M5.5 8h1m2.5 0h1m2.5 0h1m-7 3.2h6"/></symbol>
-    <symbol id="i-search" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.2"/><path d="m12.4 12.4 4.3 4.3"/></symbol>
-    <symbol id="i-sliders" viewBox="0 0 20 20"><path d="M5 3.5v13m5-13v13m5-13v13"/><path d="M3.3 12.5h3.4m1.6-5.5h3.4m1.6 4h3.4" stroke-width="2.4"/></symbol>
-    <symbol id="i-select" viewBox="0 0 20 20"><path d="M5.5 3.2v12.4l3.2-3 2.2 4.9 2-.9-2.2-4.8 4.4-.3z"/></symbol>
     <symbol id="i-crop" viewBox="0 0 20 20"><path d="M6 2.5V13a1 1 0 0 0 1 1h10.5M2.5 6H13a1 1 0 0 1 1 1v10.5"/></symbol>
     <symbol id="i-rect" viewBox="0 0 20 20"><rect x="3" y="4.5" width="14" height="11" rx="1.6"/></symbol>
-    <symbol id="i-rectf" viewBox="0 0 20 20"><rect x="3" y="4.5" width="14" height="11" rx="1.6" fill="currentColor"/></symbol>
     <symbol id="i-oval" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/></symbol>
-    <symbol id="i-line" viewBox="0 0 20 20"><path d="m4.5 15.5 11-11"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 20 20"><path d="M15.5 4.5 5 15M5 8.5V15h6.5"/></symbol>
     <symbol id="i-text" viewBox="0 0 20 20"><path d="M4.5 16.5 10 3.5l5.5 13M6.6 11.6h6.8"/></symbol>
     <symbol id="i-pixel" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2"/><path fill="currentColor" stroke="none" d="M3.8 3.8H8V8H3.8zM12 3.8h4.2V8H12zM8 8h4v4H8zm-4.2 4H8v4.2H3.8zm8.2 0h4.2v4.2H12z"/></symbol>
     <symbol id="i-spot" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2"/><rect x="6.5" y="7.5" width="7" height="5" rx="1" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-num" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M10 2.5a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zM9.3 6.2H11v7.6H9.3V8.3l-1.6 1V7.6z"/></symbol>
     <symbol id="i-marker" viewBox="0 0 20 20"><path d="m12 3.5 4.5 4.5-6.8 6.8H5.2v-4.5zM3.5 17.2H11"/></symbol>
-    <symbol id="i-pen" viewBox="0 0 20 20"><path d="M13.4 3.6a2 2 0 0 1 2.9 2.9l-9.1 9.1-3.8 1 1-3.8z"/></symbol>
-    <symbol id="i-chev" viewBox="0 0 20 20"><path d="M6.5 8 10 11.5 13.5 8"/></symbol>
-    <symbol id="i-grip" viewBox="0 0 20 20"><path d="M5 7.5h10M5 10h10M5 12.5h10"/></symbol>
-    <symbol id="i-share" viewBox="0 0 20 20"><path d="M10 2.8v9.4M7 5.8l3-3 3 3M7 8.3H5.8a1.3 1.3 0 0 0-1.3 1.3v6.6a1.3 1.3 0 0 0 1.3 1.3h8.4a1.3 1.3 0 0 0 1.3-1.3V9.6a1.3 1.3 0 0 0-1.3-1.3H13"/></symbol>
-    <symbol id="i-pin" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" d="M6.6 2.6h6.8a.6.6 0 0 1 .4 1l-.8.9v3.6l2.3 2.6c.2.2.2.4.2.6v.6a.6.6 0 0 1-.6.6h-4.1V17l-.8 1.2-.8-1.2v-4.5H5.1a.6.6 0 0 1-.6-.6v-.6c0-.2 0-.4.2-.6L7 8.1V4.5l-.8-.9a.6.6 0 0 1 .4-1z"/></symbol>
-    <symbol id="i-copy" viewBox="0 0 20 20"><rect x="6.5" y="6.5" width="10" height="11" rx="2"/><path d="M13.5 6.5v-2a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1"/></symbol>
-    <symbol id="i-cloud" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M5.8 16.2a3.8 3.8 0 0 1-.7-7.5 5.2 5.2 0 0 1 9.9-1.2 4.4 4.4 0 0 1-.2 8.7zM10 7.4l-3.1 3.1h2.2v3.6h1.8v-3.6h2.2z"/></symbol>
-    <symbol id="i-x" viewBox="0 0 20 20"><path d="m5.5 5.5 9 9m0-9-9 9"/></symbol>
-    <symbol id="i-pencil" viewBox="0 0 20 20"><path d="m13 4 3 3-8.7 8.7-3.6.6.6-3.6zm-1.6 1.6 3 3"/></symbol>
-    <symbol id="i-area" viewBox="0 0 20 20"><path d="M3 7V4.8A1.8 1.8 0 0 1 4.8 3H7m6 0h2.2A1.8 1.8 0 0 1 17 4.8V7m0 6v2.2a1.8 1.8 0 0 1-1.8 1.8H13m-6 0H4.8A1.8 1.8 0 0 1 3 15.2V13"/></symbol>
-    <symbol id="i-display" viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="10.5" rx="1.8"/><path d="M7.5 16.8h5M10 14v2.8"/></symbol>
-    <symbol id="i-window" viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="13" rx="2.2"/><path d="M2.5 7.3h15"/></symbol>
-    <symbol id="i-scroll" viewBox="0 0 20 20"><path d="M10 3v9.2M6.2 8.6l3.8 3.8 3.8-3.8M4.5 16.3h11"/></symbol>
-    <symbol id="i-timer" viewBox="0 0 20 20"><circle cx="10" cy="11" r="6.3"/><path d="M10 7.6V11l2.3 1.6M8 2.6h4"/></symbol>
-    <symbol id="i-ocr" viewBox="0 0 20 20"><path d="M2.4 15.5 6.5 4.6l4.1 10.9M3.9 11.7h5.2m8.3 3.8v-4.6a2.3 2.3 0 0 0-4.1-1.4m4.1 2.9c-2.6 0-4.4.6-4.4 1.8 0 .9.7 1.4 1.8 1.4 1.5 0 2.6-1.1 2.6-2.6"/></symbol>
-    <symbol id="i-video" viewBox="0 0 20 20"><rect x="2.5" y="5" width="10.5" height="10" rx="2.2"/><path d="m13 8.8 4.5-2.6v7.6L13 11.2"/></symbol>
-    <symbol id="i-gif" viewBox="0 0 20 20"><rect x="2" y="4.5" width="16" height="11" rx="2.4"/><text x="10" y="12.4" text-anchor="middle" font-size="6.4" font-weight="800" fill="currentColor" stroke="none" font-family="-apple-system, BlinkMacSystemFont, Inter, sans-serif">GIF</text></symbol>
     <symbol id="i-mic" viewBox="0 0 20 20"><rect x="7.2" y="2.5" width="5.6" height="9.5" rx="2.8" fill="currentColor"/><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.6"/></symbol>
     <symbol id="i-speaker" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" d="M2.8 7.6h2.7L9.6 4v12l-4.1-3.6H2.8z"/><path d="M12.4 7.4a3.7 3.7 0 0 1 0 5.2m2.3-7.5a7 7 0 0 1 0 9.8"/></symbol>
-    <symbol id="i-rays" viewBox="0 0 20 20"><path d="m9 9 7.2 3-3.1 1.1-1.1 3.1z"/><path d="M8.6 2.8v2.1M4.1 4.6l1.5 1.5M2.8 9h2.1m8.2-4.4-1.5 1.5m-7.5 6.8 1.5-1.5"/></symbol>
-    <symbol id="i-cmd" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="15" height="15" rx="3.4"/><path stroke-width="1.2" d="M8.4 8.4h3.2v3.2H8.4zm0 0V7.1a1.3 1.3 0 1 0-1.3 1.3zm3.2 0h1.3a1.3 1.3 0 1 0-1.3-1.3zm0 3.2v1.3a1.3 1.3 0 1 0 1.3-1.3zm-3.2 0H7.1a1.3 1.3 0 1 0 1.3 1.3z"/></symbol>
-    <symbol id="i-clapper" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" d="M3 8.6h14v6.2a2.2 2.2 0 0 1-2.2 2.2H5.2A2.2 2.2 0 0 1 3 14.8zm-.4-1.3 13.7-3.7.6 2.2L3.2 9.5z"/></symbol>
-    <symbol id="i-scissors" viewBox="0 0 20 20"><circle cx="5.5" cy="6" r="2.5"/><circle cx="5.5" cy="14" r="2.5"/><path d="m7.7 7.3 8.8 6.3m-8.8-.9 8.8-6.3"/></symbol>
-    <symbol id="i-back" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" d="M4.6 4.5h1.8v11H4.6zm11 .5v10a.6.6 0 0 1-.9.5l-7.3-5a.6.6 0 0 1 0-1l7.3-5a.6.6 0 0 1 .9.5z"/></symbol>
-    <symbol id="i-play" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" d="M6 4.1v11.8a.8.8 0 0 0 1.2.7l9.4-5.9a.8.8 0 0 0 0-1.4L7.2 3.4A.8.8 0 0 0 6 4.1z"/></symbol>
-    <symbol id="i-fwd" viewBox="0 0 20 20"><use href="#i-back" width="20" height="20" transform="matrix(-1 0 0 1 20 0)"/></symbol>
-    <symbol id="i-photo" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2.2"/><path d="m3 14.2 4.1-4.2 3.2 3.2 2.3-2.3 4.4 4.3"/><circle cx="13.2" cy="7.6" r="1.2"/></symbol>
-    <symbol id="i-dash" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" stroke-dasharray="2.6 2.4"/></symbol>
-    <symbol id="i-zoom" viewBox="0 0 20 20"><circle cx="8.6" cy="8.6" r="5.6"/><path d="m12.7 12.7 4.3 4.3M8.6 6.4v4.4M6.4 8.6h4.4"/></symbol>
-    <symbol id="i-upload" viewBox="0 0 20 20"><path d="M6 15.5a3.5 3.5 0 0 1-.6-6.9 4.9 4.9 0 0 1 9.4-1 3.9 3.9 0 0 1-.2 7.9M10 9v7.5m-2.4-5.2L10 8.9l2.4 2.4"/></symbol>
-    <symbol id="i-check" viewBox="0 0 20 20"><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M10 2.5a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zm3.9 4.6-4.8 5.1-2.3-2.3-1 1.1 3.3 3.3 5.8-6.2z"/></symbol>
-    <symbol id="i-cursor" viewBox="0 0 18 26"><path d="M1.5 1.5v19.2l4.6-4.4 3.1 7.2 3.3-1.4-3.1-7h6.4z" fill="#000" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></symbol>
-    <defs>
-      <linearGradient id="nw-bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5db694"/><stop offset="1" stop-color="#2f7d62"/></linearGradient>
-      <linearGradient id="cap-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9cb6f1"/><stop offset="1" stop-color="#d2e5f7"/></linearGradient>
-      <clipPath id="cap-clip"><rect x="44" y="40" width="776" height="484" rx="10"/></clipPath>
-      <filter id="cap-sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#1b2a4a" flood-opacity=".22"/></filter>
-      <filter id="mk-sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity=".3"/></filter>
-    </defs>
-    <!-- "Northwind": the fictional dashboard every capture on this page is taken of -->
-    <symbol id="nw" viewBox="0 0 1200 760">
-      <g font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, sans-serif" fill="#111827">
-        <rect width="1200" height="760" fill="#f4f5f7"/>
-        <path fill="#fbfbfc" d="M0 0h200v760H0z"/><path d="M200.5 0v760" stroke="#e5e7eb"/>
-        <circle cx="22" cy="22" r="6" fill="#ff5f57"/><circle cx="42" cy="22" r="6" fill="#febc2e"/><circle cx="62" cy="22" r="6" fill="#28c840"/>
-        <rect x="20" y="52" width="26" height="26" rx="7" fill="#2f7d62"/>
-        <path d="M27.5 71V59l11 12V59" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-        <text x="56" y="70" font-size="16" font-weight="700">Northwind</text>
-        <rect x="12" y="98" width="176" height="34" rx="8" fill="#e4f0e9"/>
-        <rect x="26" y="108" width="14" height="14" rx="4" fill="#2f7d62"/>
-        <g fill="#cfd4dc"><rect x="26" y="148" width="14" height="14" rx="4"/><rect x="26" y="188" width="14" height="14" rx="4"/><rect x="26" y="228" width="14" height="14" rx="4"/><rect x="26" y="268" width="14" height="14" rx="4"/><rect x="26" y="308" width="14" height="14" rx="4"/></g>
-        <text x="52" y="120" font-size="13.5" font-weight="600" fill="#174d3b">Overview</text>
-        <g font-size="13.5" fill="#4b5563"><text x="52" y="160">Revenue</text><text x="52" y="200">Customers</text><text x="52" y="240">Campaigns</text><text x="52" y="280">Reports</text><text x="52" y="320">Settings</text></g>
-        <circle cx="36" cy="722" r="15" fill="#e0e7ff"/><text x="36" y="726" font-size="11" font-weight="600" fill="#4338ca" text-anchor="middle">MK</text>
-        <text x="60" y="719" font-size="12.5" font-weight="600">Maya Kim</text><text x="60" y="734" font-size="11" fill="#9ca3af">Admin</text>
-        <text x="232" y="58" font-size="26" font-weight="700" letter-spacing="-.5">Overview</text>
-        <text x="232" y="80" font-size="13" fill="#6b7280">Q3 performance across all regions</text>
-        <rect x="874.5" y="38.5" width="154" height="32" rx="8" fill="#fff" stroke="#e5e7eb"/>
-        <text x="951.5" y="59" font-size="12.5" fill="#374151" text-anchor="middle">Jul 1 – Sep 30, 2026</text>
-        <rect x="1040" y="38" width="136" height="33" rx="8" fill="#2f7d62"/>
-        <text x="1108" y="59" font-size="12.5" font-weight="600" fill="#fff" text-anchor="middle">Export report</text>
-        <g fill="#fff" stroke="#e6e8ec"><rect x="232.5" y="104.5" width="218" height="96" rx="12"/><rect x="474.5" y="104.5" width="218" height="96" rx="12"/><rect x="716.5" y="104.5" width="218" height="96" rx="12"/><rect x="958.5" y="104.5" width="218" height="96" rx="12"/><rect x="232.5" y="224.5" width="702" height="464" rx="12"/><rect x="958.5" y="224.5" width="218" height="464" rx="12"/></g>
-        <g font-size="13" fill="#6b7280"><text x="250" y="132">Revenue</text><text x="492" y="132">Active users</text><text x="734" y="132">Churn</text><text x="976" y="132">NPS</text></g>
-        <g font-size="28" font-weight="700" letter-spacing="-.6"><text x="250" y="168">$482,190</text><text x="492" y="168">38,204</text><text x="734" y="168">2.3%</text><text x="976" y="168">64</text></g>
-        <g font-size="12" font-weight="600" fill="#16a34a"><text x="250" y="189">+12.4%<tspan fill="#9ca3af" font-weight="400"> vs Q2</tspan></text><text x="492" y="189">+8.1%<tspan fill="#9ca3af" font-weight="400"> vs Q2</tspan></text><text x="734" y="189">−0.6%<tspan fill="#9ca3af" font-weight="400"> vs Q2</tspan></text><text x="976" y="189">+5<tspan fill="#9ca3af" font-weight="400"> vs Q2</tspan></text></g>
-        <text x="254" y="258" font-size="15" font-weight="600">Monthly revenue</text>
-        <text x="254" y="277" font-size="12" fill="#9ca3af">Last 12 months, USD</text>
-        <path d="M300 310.5h614M300 393h614M300 475.5h614M300 558h614" stroke="#eef0f3"/><path d="M300 640.5h614" stroke="#e1e4e8"/>
-        <g font-size="11" fill="#9ca3af" text-anchor="end"><text x="290" y="644">$0</text><text x="290" y="562">$50k</text><text x="290" y="479">$100k</text><text x="290" y="397">$150k</text><text x="290" y="314">$200k</text></g>
-        <path fill="url(#nw-bar)" d="M310.6 640V451.3a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V429.9a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.1 0V441.4a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V411.7a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V418.3a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V396.9a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.1 0V403.5a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V377.1a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V385.3a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.1 0V363.9a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V368.8a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640zm51.2 0V339.1a6 6 0 0 1 6-6h18a6 6 0 0 1 6 6V640z"/>
-        <g font-size="11" fill="#9ca3af" text-anchor="middle"><text x="325.6" y="662">J</text><text x="376.8" y="662">F</text><text x="427.9" y="662">M</text><text x="479.1" y="662">A</text><text x="530.3" y="662">M</text><text x="581.5" y="662">J</text><text x="632.6" y="662">J</text><text x="683.8" y="662">A</text><text x="735" y="662">S</text><text x="786.1" y="662">O</text><text x="837.3" y="662">N</text><text x="888.5" y="662">D</text></g>
-        <text x="976" y="258" font-size="15" font-weight="600">Top customers</text>
-        <circle cx="992" cy="292" r="15" fill="#fdecc8"/><circle cx="992" cy="354" r="15" fill="#dbe6fd"/><circle cx="992" cy="416" r="15" fill="#fde0e0"/><circle cx="992" cy="478" r="15" fill="#d7f0e3"/><circle cx="992" cy="540" r="15" fill="#dbeefc"/><circle cx="992" cy="602" r="15" fill="#fde3cf"/>
-        <g font-size="13" font-weight="600" text-anchor="middle"><text x="992" y="296.5" fill="#b45309">A</text><text x="992" y="358.5" fill="#1d4ed8">G</text><text x="992" y="420.5" fill="#b91c1c">I</text><text x="992" y="482.5" fill="#047857">U</text><text x="992" y="544.5" fill="#0369a1">H</text><text x="992" y="606.5" fill="#c2410c">S</text></g>
-        <g font-size="13.5" font-weight="600"><text x="1016" y="289">Acme Corp</text><text x="1016" y="351">Globex</text><text x="1016" y="413">Initech</text><text x="1016" y="475">Umbrella</text><text x="1016" y="537">Hooli</text><text x="1016" y="599">Stark Ind.</text></g>
-        <g font-size="11.5" fill="#9ca3af"><text x="1016" y="305">Enterprise</text><text x="1016" y="367">Enterprise</text><text x="1016" y="429">Business</text><text x="1016" y="491">Business</text><text x="1016" y="553">Enterprise</text><text x="1016" y="615">Team</text></g>
-        <g font-size="13" font-weight="600" text-anchor="end"><text x="1160" y="296.5">$84.2k</text><text x="1160" y="358.5">$61.9k</text><text x="1160" y="420.5">$48.3k</text><text x="1160" y="482.5">$40.1k</text><text x="1160" y="544.5">$32.7k</text><text x="1160" y="606.5">$28.4k</text></g>
-        <text x="976" y="662" font-size="12.5" font-weight="600" fill="#2f7d62">View all customers →</text>
-      </g>
-    </symbol>
-    <!-- The capture being marked up: part of Northwind on a gradient background, with annotations -->
-    <symbol id="cap" viewBox="0 0 864 564">
-      <rect width="864" height="564" fill="url(#cap-bg)"/>
-      <rect x="44" y="40" width="776" height="484" rx="10" fill="#f4f5f7" filter="url(#cap-sh)"/>
-      <g clip-path="url(#cap-clip)"><svg x="44" y="40" width="776" height="484" viewBox="216 92 976 608"><use href="#nw" width="1200" height="760"/></svg></g>
-      <g filter="url(#mk-sh)" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, sans-serif" font-weight="700">
-        <path d="M316 301 196.4 126.2" fill="none" stroke="#ff3b30" stroke-width="5" stroke-linecap="round"/>
-        <path d="m184 108 20.7 12.5-16.6 11.3z" fill="#ff3b30" stroke="#ff3b30" stroke-width="2.5" stroke-linejoin="round"/>
-        <rect x="476" y="221" width="124" height="263" rx="6" fill="none" stroke="#ff3b30" stroke-width="4"/>
-        <text x="458" y="246" text-anchor="end" font-size="19" fill="#ff3b30" stroke="#fff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">Best quarter yet</text>
-        <circle cx="228" cy="50" r="13" fill="#ff3b30"/><circle cx="600" cy="221" r="13" fill="#ff3b30"/>
-        <g fill="#fff" font-size="15" text-anchor="middle"><text x="228" y="55.5">1</text><text x="600" y="226.5">2</text></g>
-      </g>
-    </symbol>
-    <!-- Quick Access thumbnails: three recent captures -->
-    <symbol id="th1" viewBox="36 20 290 207"><use href="#cap" width="864" height="564"/></symbol>
-    <symbol id="th2" viewBox="37 0 790 564"><use href="#cap" width="864" height="564"/></symbol>
-    <symbol id="th3" viewBox="930 232 270 193"><use href="#nw" width="1200" height="760"/><rect x="966" y="270" width="204" height="108" rx="5" fill="none" stroke="#ff3b30" stroke-width="3"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 20 20"><path d="M7.6 5.2v9.6m4.8-9.6v9.6" stroke-width="2.2"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 20 20"><path d="M4.6 10.2a5.5 5.5 0 1 0 1.7-4.1L4.6 7.7M4.4 3.8v3.9h3.9"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 20 20"><path d="M4.4 5.8h11.2M8 5.8V4.2h4v1.6M6 5.8l.8 10.1a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9L14 5.8"/></symbol>
+    <symbol id="i-x" viewBox="0 0 20 20"><path d="m5.5 5.5 9 9m0-9-9 9"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 20 20"><rect x="4.5" y="9" width="11" height="8.2" rx="2"/><path d="M7 9V6.6a3 3 0 0 1 6 0V9"/></symbol>
+    <symbol id="i-ocr" viewBox="0 0 20 20"><path d="M3 7V4.8A1.8 1.8 0 0 1 4.8 3H7m6 0h2.2A1.8 1.8 0 0 1 17 4.8V7m0 6v2.2a1.8 1.8 0 0 1-1.8 1.8H13m-6 0H4.8A1.8 1.8 0 0 1 3 15.2V13M7 8h6M7 12h4"/></symbol>
+    <symbol id="i-cursor" viewBox="0 0 18 26"><path d="M1.5 1.5v19.2l4.6-4.4 3.1 7.2 3.3-1.4-3.1-7h6.4z" fill="#0F1115" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></symbol>
   </svg>
 
   <a class="skip" href="#main">Skip to content</a>
 
-  <header class="hdr" id="hdr">
-    <div class="wrap hdr-in">
-      <a class="logo" href="#top" aria-label="Super Screenshot, back to top"><img src="assets/icon.svg?v=3" alt="" width="36" height="36"><span>Super Screenshot</span></a>
-      <nav aria-label="Sections">
-        <ul class="nav">
-          <li><a href="#features">Features</a></li>
-          <li><a href="#recording">Recording</a></li>
-          <li><a href="#annotate">Annotate</a></li>
-          <li><a href="#privacy">Privacy</a></li>
-        </ul>
-      </nav>
-      <div class="hdr-r">
-        <a class="nav-gh" href="https://github.com/udsy19/super-screenshot" aria-label="Super Screenshot on GitHub"><svg class="ic-fill" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
-        <a class="btn btn-p btn-s" href="https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg">Download</a>
-      </div>
-    </div>
+  <header class="nav wrap">
+    <a class="brand" href="#top" aria-label="Super Screenshot, back to top"><img src="assets/icon.svg?v=3" alt="" width="24" height="24"><span>Super Screenshot</span></a>
+    <nav aria-label="Site">
+      <ul>
+        <li><a href="#modes">Modes</a></li>
+        <li><a href="https://github.com/udsy19/super-screenshot">GitHub</a></li>
+        <li><a href="#download">Download</a></li>
+      </ul>
+    </nav>
   </header>
 
   <main id="main">
-    <!-- Hero -->
-    <section class="hero" id="top">
-      <div class="glow glow-hero" aria-hidden="true"></div>
-      <div class="wrap hero-in">
-        <a class="eyebrow" href="https://github.com/udsy19/super-screenshot/releases/latest"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>New: automatic updates</a>
-        <h1 class="grad">Capture, mark up and record. <br class="br-d">Captures stay on your Mac.</h1>
-        <p class="hero-sub">A free, open-source screenshot and screen-recording app that lives in your menu bar.
-          Native, fast, and private — no account, no cloud, no catch.</p>
-        <div class="hero-cta">
-          <a class="btn btn-p" href="https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg"><svg class="ic-fill" aria-hidden="true"><use href="#i-apple"/></svg>Download for Mac</a>
-          <a class="btn btn-2" href="#features"><svg class="ic" aria-hidden="true"><use href="#i-playo"/></svg>How it works</a>
+    <div class="stage" id="stage">
+      <div class="pad" aria-hidden="true"></div>
+      <section class="hero wrap" aria-labelledby="hero-h">
+        <h1 id="hero-h">Screenshots and screen recordings for the Mac.</h1>
+        <p class="lede">A small menu bar app that captures, marks up and records your screen. Free and open source, for macOS 14 and later.</p>
+        <div class="cmd" data-nocapture>
+          <code id="cmd-hero">curl -fsSL https://udsy19.github.io/super-screenshot/install.sh | bash</code>
+          <button class="cmd-copy" type="button" data-copy="cmd-hero">Copy</button>
         </div>
-        <div class="cmd">
-          <span class="cmd-label">Or paste into Terminal</span>
-          <div class="cmd-box">
-            <code id="cmd-hero">curl -fsSL https://udsy19.github.io/super-screenshot/install.sh | bash</code>
-            <button class="cmd-copy" type="button" data-copy="cmd-hero"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
-          </div>
-        </div>
+        <p class="hint"><span class="h-fine">Drag anywhere to capture.</span><span class="h-touch">Drag across the space above to capture.</span> <button class="try" type="button" id="try">Try a capture</button></p>
+      </section>
+      <div class="cap" aria-hidden="true">
+        <span class="pill cap-xy"></span>
+        <div class="cap-sel"><i class="hd c1"></i><i class="hd c2"></i><i class="hd c3"></i><i class="hd c4"></i><i class="hd e1"></i><i class="hd e2"></i><i class="hd e3"></i><i class="hd e4"></i></div>
+        <span class="pill cap-wh"></span>
+        <i class="cap-flash"></i>
       </div>
+    </div>
 
+    <div class="qa" id="qa" role="status" aria-live="polite"></div>
+
+    <section class="modes" id="modes" aria-labelledby="modes-h">
       <div class="wrap">
-        <figure class="hero-fig">
-          <div class="mock m-hero anim" role="img" aria-label="A Mac desktop: the Annotate editor shows a dashboard capture marked up with an arrow, a red box, numbered counters and a text label, while a new capture springs into the Quick Access stack in the corner and the pointer clicks Copy on it">
-            <div class="stage" aria-hidden="true">
-              <div class="wall"></div>
-              <div class="menubar"><svg class="apple"><use href="#i-apple"/></svg><b>Super Screenshot</b><span>File</span><span>Edit</span><span>Capture</span><span>Window</span><span>Help</span>
-                <span class="end"><svg><use href="#i-shot"/></svg><svg><use href="#i-wifi"/></svg><svg class="batt"><use href="#i-batt"/></svg><svg class="ic"><use href="#i-search"/></svg><span>Sat 17 Oct&ensp;9:41</span></span></div>
-              <div class="win dk ann">
-                <div class="ann-top">
-                  <span class="tl"><i></i><i></i><i></i></span>
-                  <span class="tools"><i><svg class="ic"><use href="#i-crop"/></svg></i><b class="sep"></b><i><svg class="ic"><use href="#i-select"/></svg></i><i><svg class="ic"><use href="#i-rect"/></svg></i><i><svg class="ic"><use href="#i-rectf"/></svg></i><i><svg class="ic"><use href="#i-oval"/></svg></i><i><svg class="ic"><use href="#i-line"/></svg></i><i class="on"><svg class="ic"><use href="#i-arrow"/></svg></i><i><svg class="ic"><use href="#i-text"/></svg></i><i><svg class="ic"><use href="#i-pixel"/></svg></i><i><svg class="ic"><use href="#i-spot"/></svg></i><i><svg class="ic"><use href="#i-num"/></svg></i><i><svg class="ic"><use href="#i-marker"/></svg></i><i><svg class="ic"><use href="#i-pen"/></svg></i></span>
-                  <span class="swatch"><svg class="ic"><use href="#i-chev"/></svg></span>
-                  <span class="acts"><span>Save</span><span>Done</span></span>
-                </div>
-                <div class="canvas"><svg width="660" height="431" viewBox="0 0 864 564"><use href="#cap"/></svg></div>
-                <div class="ann-bot">
-                  <span class="zoom">76%<svg class="ic"><use href="#i-chev"/></svg></span><span class="dims">1728 × 1128 px</span>
-                  <span class="drag"><svg class="ic"><use href="#i-grip"/></svg>Drag me<svg class="ic"><use href="#i-grip"/></svg></span>
-                  <span class="share"><svg class="ic"><use href="#i-share"/></svg><svg class="ic"><use href="#i-pin"/></svg><svg class="ic"><use href="#i-copy"/></svg><svg class="ic"><use href="#i-cloud"/></svg></span>
-                </div>
-              </div>
-              <div class="qa">
-                <div class="qa-head"><span>Close All</span><span>Save All</span></div>
-                <div class="qcard"><svg viewBox="0 0 210 150"><use href="#th1"/></svg></div>
-                <div class="qcard"><svg viewBox="0 0 210 150"><use href="#th3"/></svg></div>
-                <div class="qcard qnew"><svg viewBox="0 0 210 150"><use href="#th2"/></svg>
-                  <div class="qhov">
-                    <div class="qa-pills"><span>Copy</span><span>Save</span></div>
-                    <i class="qb"><svg class="ic"><use href="#i-x"/></svg></i><i class="qb"><svg class="ic"><use href="#i-pin"/></svg></i><i class="qb"><svg class="ic"><use href="#i-pencil"/></svg></i><i class="qb"><svg class="ic"><use href="#i-cloud"/></svg></i>
-                  </div>
-                  <i class="ripple"></i>
-                </div>
-              </div>
-              <svg class="cursor"><use href="#i-cursor"/></svg>
-            </div>
+        <h2 class="label" id="modes-h">Modes</h2>
+        <div class="modes-grid">
+          <div class="mlist" role="tablist" aria-orientation="vertical" aria-labelledby="modes-h">
+            <button class="mtab" role="tab" type="button" id="t-area" aria-controls="p-area" aria-selected="true">Area<kbd>⌥⇧4</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-window" aria-controls="p-window" aria-selected="false" tabindex="-1">Window<kbd>Space</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-full" aria-controls="p-full" aria-selected="false" tabindex="-1">Fullscreen<kbd>⌥⇧3</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-scroll" aria-controls="p-scroll" aria-selected="false" tabindex="-1">Scrolling<kbd>⌥⇧8</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-text" aria-controls="p-text" aria-selected="false" tabindex="-1">Text<kbd>⌥⇧2</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-rec" aria-controls="p-rec" aria-selected="false" tabindex="-1">Recording<kbd>⌥⇧6</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-ann" aria-controls="p-ann" aria-selected="false" tabindex="-1">Annotate<kbd>⌘E</kbd></button>
+            <button class="mtab" role="tab" type="button" id="t-pin" aria-controls="p-pin" aria-selected="false" tabindex="-1">Pin<kbd>⌘P</kbd></button>
           </div>
-        </figure>
-      </div>
 
-      <ul class="wrap facts" aria-label="At a glance">
-        <li><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg>Swift &amp; AppKit</li>
-        <li><svg class="ic" aria-hidden="true"><use href="#i-cpu"/></svg>Apple silicon &amp; Intel</li>
-        <li><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>No account</li>
-        <li><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>No analytics</li>
-        <li><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg>MIT licensed</li>
-      </ul>
-    </section>
+          <div class="mstage" data-mode="area">
+            <div class="mframe" aria-hidden="true"><i class="hd c1"></i><i class="hd c2"></i><i class="hd c3"></i><i class="hd c4"></i><i class="hd e1"></i><i class="hd e2"></i><i class="hd e3"></i><i class="hd e4"></i><i class="br b1"></i><i class="br b2"></i><i class="br b3"></i><i class="br b4"></i><span class="pill mframe-wh"></span></div>
 
-    <!-- Intro: drag and drop -->
-    <section class="sec" id="features">
-      <div class="wrap frow">
-        <div class="frow-text">
-          <h2 class="h2">Drag it straight into the conversation</h2>
-          <p class="lead">Every capture waits in a small card at the corner of your screen. Drop it into Slack, Mail or
-            Figma, copy it, or open it in Annotate. No Save dialogs, no digging through Downloads.</p>
-        </div>
-        <div class="frow-media">
-          <div class="mock m-drag anim" role="img" aria-label="A capture is dragged from the Quick Access card in the corner of the screen into a chat window, where it lands as an image message">
-            <div class="stage" aria-hidden="true">
-              <div class="wall"></div>
-              <div class="win lt chat">
-                <div class="chat-top"><span class="tl"><i></i><i></i><i></i></span><span class="av">MK</span><span class="who"><b>Maya Kim</b><small>Active now</small></span></div>
-                <div class="chat-body">
-                  <p class="bub in">Can you send me the Q3 revenue chart?</p>
-                  <p class="bub out">On it, one sec</p>
-                  <div class="bub out img"><svg viewBox="0 0 210 150"><use href="#th2"/></svg></div>
-                </div>
-                <div class="chat-in"><span>Message</span><i></i></div>
-              </div>
-              <div class="qa">
-                <div class="qcard qsrc"><svg viewBox="0 0 210 150"><use href="#th2"/></svg></div>
-              </div>
-              <div class="dragger">
-                <div class="ghost"><svg viewBox="0 0 210 150"><use href="#th2"/></svg></div>
-                <svg class="cursor"><use href="#i-cursor"/></svg>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Recording bento -->
-    <section class="sec" id="recording">
-      <div class="wrap">
-        <header class="sh">
-          <h2 class="h2">Recordings people actually watch</h2>
-          <div class="sh-row">
-            <p class="lead">Record any part of your screen as a video or a GIF, with your voice, your Mac's audio and your
-              camera. Clicks and shortcuts show up as you go, so viewers can follow along.</p>
-            <a class="btn btn-p" href="https://github.com/udsy19/super-screenshot#recording">Explore recording</a>
-          </div>
-        </header>
-
-        <div class="bento">
-          <article class="bc span2 g-peach">
-            <div class="bc-t"><h3>Put yourself in it</h3><p>A camera bubble rides along on top of your recording, so people see who's talking.</p></div>
-            <div class="bc-v">
-              <div class="mock m-cam anim" role="img" aria-label="A recording in progress with a round camera bubble in the corner and the recording controls showing the elapsed time">
-                <div class="stage" aria-hidden="true">
-                  <div class="win lt">
-                    <div class="lt-top"><span class="tl"><i></i><i></i><i></i></span></div>
-                    <svg class="lt-body" viewBox="200 0 1000 470" preserveAspectRatio="xMinYMin slice"><use href="#nw" width="1200" height="760"/></svg>
-                  </div>
-                  <div class="rc">
-                    <span class="rc-stop"><i></i><b data-clock>0:12</b></span>
-                    <span><svg class="ic"><use href="#i-pause"/></svg></span>
-                    <span><svg class="ic"><use href="#i-restart"/></svg></span>
-                    <span><svg class="ic"><use href="#i-trash"/></svg></span>
-                  </div>
-                  <div class="cam">
-                    <svg viewBox="0 0 160 160">
-                      <defs><linearGradient id="cam-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#cdd6ea"/></linearGradient></defs>
-                      <rect width="160" height="160" fill="url(#cam-bg)"/>
-                      <rect x="104" y="18" width="40" height="52" rx="3" fill="#dfe5f2"/><rect x="110" y="24" width="28" height="40" rx="2" fill="#b9c8e6"/>
-                      <path d="M20 160c3-34 28-50 60-50s57 16 60 50z" fill="#3a56d6"/>
-                      <path d="M68 96h24v18c0 8-24 8-24 0z" fill="#c98e6b"/>
-                      <ellipse cx="80" cy="74" rx="25" ry="29" fill="#e2a982"/>
-                      <path d="M54 72c-3-23 11-38 27-38 17 0 30 13 27 35-4-10-12-16-24-17-11 0-20 5-30 20z" fill="#2b201b"/>
-                      <path d="M70 84q10 8 20 0" fill="none" stroke="#9c5b43" stroke-width="2.6" stroke-linecap="round"/>
-                      <circle cx="71" cy="72" r="2.6" fill="#2b201b"/><circle cx="90" cy="72" r="2.6" fill="#2b201b"/>
-                    </svg>
-                  </div>
+            <div class="mpanel" role="tabpanel" id="p-area" aria-labelledby="t-area" tabindex="0">
+              <div class="vg" role="img" aria-label="Crosshair guides meet at the pointer, with a magnifier showing the pixels underneath and their coordinates">
+                <div class="vs v-area">
+                  <div class="target"><i></i><i></i></div>
+                  <i class="gx"></i><i class="gy"></i><i class="plus"></i>
+                  <div class="loupe"><span class="pill">312, 208</span><div class="loupe-px"></div></div>
                 </div>
               </div>
+              <p class="mcap">Drag over any part of the screen. Hold <kbd>⇧</kbd> to constrain, <kbd>⌥</kbd> to resize from the centre, and nudge with the arrow keys.</p>
             </div>
-          </article>
 
-          <article class="bc g-sky">
-            <div class="bc-t"><h3>Clicks you can follow</h3><p>Every click gets a ring, so nobody misses where you pointed.</p></div>
-            <div class="bc-v">
-              <div class="mock m-click anim" role="img" aria-label="A pointer clicks a segmented control and then an Export button, and a ring appears around each click">
-                <div class="stage" aria-hidden="true">
-                  <div class="seg"><span>Month</span><span>Quarter</span><span>Year</span><i class="knob"></i></div>
-                  <div class="xbtn">Export report</div>
-                  <i class="ring r1"></i><i class="ring r2"></i>
-                  <svg class="cursor"><use href="#i-cursor"/></svg>
+            <div class="mpanel" role="tabpanel" id="p-window" aria-labelledby="t-window" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="A window highlighted under the pointer, labelled Terminal">
+                <div class="vs v-window">
+                  <div class="win"><div class="win-bar"><i></i><i></i><i></i></div><div class="win-body"><i></i><i></i><i></i><i></i></div><span class="pill pill-name">Terminal</span></div>
                 </div>
               </div>
+              <p class="mcap">Press <kbd>Space</kbd> while selecting to pick a whole window. It is saved with its shadow on a transparent, wallpaper or colour background.</p>
             </div>
-          </article>
 
-          <article class="bc g-sky2">
-            <div class="bc-t"><h3>Shortcuts on screen</h3><p>Keystrokes appear as you press them, made for tutorials.</p></div>
-            <div class="bc-v">
-              <div class="mock m-keys anim" role="img" aria-label="A keystroke overlay showing the shortcut Option Shift 5">
-                <div class="stage" aria-hidden="true">
-                  <span class="kst">⌥⇧5</span><span class="kst k2">⌘C</span><span class="kst k3">⇧⌘S</span>
+            <div class="mpanel" role="tabpanel" id="p-full" aria-labelledby="t-full" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="A whole desktop captured, with the new capture waiting in a card in the corner">
+                <div class="vs v-full">
+                  <div class="desk"><div class="menubar"><i></i><i></i><i></i><i></i><span>9:41</span></div><div class="dock"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+                  <div class="mini-card"><div class="desk"><div class="menubar"></div><div class="dock"><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
                 </div>
               </div>
+              <p class="mcap">Captures the display under the pointer. Every capture waits in a card in the corner, ready to drag into any app.</p>
             </div>
-          </article>
 
-          <article class="bc dark g-navy">
-            <div class="bc-t"><h3>Voice and Mac audio</h3><p>Microphone and system audio, recorded on separate tracks.</p></div>
-            <div class="bc-v">
-              <div class="mock m-wave anim" role="img" aria-label="An audio waveform with Microphone and System audio both switched on">
-                <div class="stage" aria-hidden="true">
-                  <div class="bars"><i style="--h:.34;--d:-.1s"></i><i style="--h:.5;--d:-.5s"></i><i style="--h:.3;--d:-.3s"></i><i style="--h:.62;--d:-.8s"></i><i style="--h:.42;--d:-.2s"></i><i style="--h:.78;--d:-.6s"></i><i style="--h:.5;--d:-.9s"></i><i style="--h:.92;--d:-.4s"></i><i style="--h:.6;--d:-.7s"></i><i style="--h:.38;--d:-.15s"></i><i style="--h:.7;--d:-.55s"></i><i style="--h:1;--d:-.35s"></i><i style="--h:.66;--d:-.85s"></i><i style="--h:.84;--d:-.25s"></i><i style="--h:.46;--d:-.65s"></i><i style="--h:.72;--d:-.05s"></i><i style="--h:.96;--d:-.45s"></i><i style="--h:.58;--d:-.75s"></i><i style="--h:.8;--d:-.2s"></i><i style="--h:.4;--d:-.6s"></i><i style="--h:.68;--d:-.95s"></i><i style="--h:.88;--d:-.3s"></i><i style="--h:.52;--d:-.7s"></i><i style="--h:.74;--d:-.1s"></i><i style="--h:.36;--d:-.5s"></i><i style="--h:.6;--d:-.8s"></i><i style="--h:.44;--d:-.25s"></i><i style="--h:.3;--d:-.65s"></i><i style="--h:.5;--d:-.4s"></i><i style="--h:.26;--d:-.9s"></i></div>
-                  <div class="chips"><span><svg class="ic"><use href="#i-mic"/></svg>Microphone</span><span><svg class="ic"><use href="#i-speaker"/></svg>System audio</span></div>
+            <div class="mpanel" role="tabpanel" id="p-scroll" aria-labelledby="t-scroll" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="A long page scrolls inside the selection while the stitched capture grows beside it">
+                <div class="vs v-scroll">
+                  <div class="sc-view"><div class="sc-page"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+                  <div class="sc-out"><div class="sc-page"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
                 </div>
               </div>
+              <p class="mcap">Scroll by hand or let it scroll for you. Frames are stitched pixel for pixel, vertically or horizontally.</p>
             </div>
-          </article>
 
-          <article class="bc dark g-indigo">
-            <div class="bc-t"><h3>Video or GIF</h3><p>An MP4 for detail, or a GIF that plays anywhere.</p></div>
-            <div class="bc-v">
-              <div class="mock m-gif anim" role="img" aria-label="The recording menu with Record GIF, Record Video and Record in Studio Mode">
-                <div class="stage" aria-hidden="true">
-                  <div class="menu">
-                    <i class="hl"></i>
-                    <div class="rrow glass"><svg class="ic"><use href="#i-gif"/></svg>Record GIF<kbd>⌥↩</kbd></div>
-                    <div class="rrow glass"><span class="rdot"></span>Record Video<kbd>↩</kbd></div>
-                    <div class="rrow glass"><svg class="ic"><use href="#i-clapper"/></svg>Studio Mode<small>?</small></div>
-                  </div>
+            <div class="mpanel" role="tabpanel" id="p-text" aria-labelledby="t-text" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="Text in an alert is recognised and copied">
+                <div class="vs v-text">
+                  <div class="alert"><b class="sel-text">Couldn’t connect to the server.</b><span class="sel-text">Check your network connection and try again. Error −1004.</span></div>
+                  <div class="hud"><svg class="ic" aria-hidden="true"><use href="#i-ocr"/></svg>Text has been copied</div>
                 </div>
               </div>
+              <p class="mcap">Select text in any image, video or PDF on screen and it is copied as text. Recognition runs on your Mac.</p>
             </div>
-          </article>
 
-          <article class="bc span2 dark g-slate">
-            <div class="bc-t"><h3>Zooms that follow you</h3><p>Studio Mode zooms in on your clicks and eases back out on its own. No keyframes required.</p></div>
-            <div class="bc-v">
-              <div class="mock m-zoom anim" role="img" aria-label="The Studio Mode editor: the preview zooms into the chart while the playhead crosses an automatic zoom segment on the timeline">
-                <div class="stage" aria-hidden="true">
-                  <div class="win dk zed">
-                    <div class="zprev"><div class="zshot"><svg viewBox="0 0 1200 760"><use href="#nw"/></svg></div><span class="zoom-badge"><svg class="ic"><use href="#i-zoom"/></svg>Auto zoom</span></div>
-                    <div class="timeline">
-                      <div class="ruler"><span>0:00</span><span>0:02</span><span>0:04</span><span>0:06</span><span>0:08</span><span>0:10</span></div>
-                      <div class="track"><span class="zseg" style="left:12%;width:30%"><svg class="ic"><use href="#i-zoom"/></svg>Zoom 1.8×</span><span class="zseg auto" style="left:58%;width:28%">Auto zoom</span></div>
-                      <div class="clip"><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg></div>
-                      <i class="playhead"></i>
+            <div class="mpanel" role="tabpanel" id="p-rec" aria-labelledby="t-rec" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="A recording in progress with camera bubble, click highlight and the recording controls">
+                <div class="vs v-rec">
+                  <i class="click"></i><svg class="cur" aria-hidden="true"><use href="#i-cursor"/></svg>
+                  <div class="cam"><i></i></div>
+                  <div class="rbar"><span class="stop"></span><span class="time">0:14</span><i class="sep"></i><svg class="ic" aria-hidden="true"><use href="#i-mic"/></svg><svg class="ic" aria-hidden="true"><use href="#i-speaker"/></svg><i class="sep"></i><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic" aria-hidden="true"><use href="#i-restart"/></svg><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></div>
+                </div>
+              </div>
+              <p class="mcap">Record MP4 or GIF with microphone and system audio, your camera, click highlights and keystrokes.</p>
+            </div>
+
+            <div class="mpanel" role="tabpanel" id="p-ann" aria-labelledby="t-ann" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="The Annotate editor with an arrow, two numbered counters and a pixelated line">
+                <div class="vs v-ann">
+                  <div class="ed">
+                    <div class="ed-bar">
+                      <span class="tools"><svg class="ic"><use href="#i-crop"/></svg><i class="sep"></i><svg class="ic"><use href="#i-rect"/></svg><svg class="ic"><use href="#i-oval"/></svg><svg class="ic on"><use href="#i-arrow"/></svg><svg class="ic"><use href="#i-text"/></svg><svg class="ic"><use href="#i-pixel"/></svg><svg class="ic"><use href="#i-spot"/></svg><svg class="ic"><use href="#i-num"/></svg><svg class="ic"><use href="#i-marker"/></svg></span>
+                      <span class="done">Done</span>
+                    </div>
+                    <div class="ed-canvas">
+                      <div class="shot"><i class="l1"></i><i class="l2"></i><i class="blk"></i><i class="l3 px"></i><i class="l4"></i></div>
+                      <svg class="arw" viewBox="0 0 130 80" aria-hidden="true"><path d="M122 72 C 92 70, 40 56, 10 12"/><path d="M11 28 L10 12 L24 19"/></svg>
+                      <span class="ctr k1">1</span><span class="ctr k2">2</span>
                     </div>
                   </div>
                 </div>
               </div>
+              <p class="mcap">Arrows, shapes, text, counters, highlighter, blur and pixelate, spotlight, crop and backgrounds. Open it from any capture with <kbd>⌘E</kbd>.</p>
             </div>
-          </article>
-        </div>
-      </div>
-    </section>
 
-    <!-- Annotate carousel -->
-    <section class="sec" id="annotate">
-      <div class="wrap">
-        <header class="sh">
-          <h2 class="h2">Explain it in a few strokes</h2>
-          <div class="sh-row">
-            <p class="lead">Arrows, text, numbered steps, blur, spotlight, and a background tool that makes any screenshot
-              ready to share. Everything stays editable until you hit Done.</p>
-            <a class="btn btn-p" href="https://github.com/udsy19/super-screenshot#annotate">Explore Annotate</a>
-          </div>
-        </header>
-      </div>
-      <div data-rail>
-        <div class="rail-track" tabindex="0" role="region" aria-label="Annotate tools, scroll sideways for more">
-        <ul class="rail-list">
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg><h3>Markup</h3></div>
-            <div class="mock m-mark anim" role="img" aria-label="An arrow and the label Best quarter yet drawn onto a revenue card">
-              <div class="stage" aria-hidden="true">
-                <div class="paper"><svg viewBox="226 98 470 341"><use href="#nw" width="1200" height="760"/></svg></div>
-                <svg class="ink" viewBox="0 0 380 380"><path class="mk-arrow" d="M250 250 L132 152"/><path class="mk-head" d="m118 140 22 3-8 19z"/><text class="mk-text" x="186" y="292">Best quarter yet</text></svg>
-              </div>
-            </div>
-          </li>
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-pixel"/></svg><h3>Pixelate</h3></div>
-            <div class="mock m-pix anim" role="img" aria-label="A secret access key field hidden behind a pixelated block">
-              <div class="stage" aria-hidden="true">
-                <div class="keycard">
-                  <span class="kc-h">Upload destination</span>
-                  <span class="kc-l">Bucket</span><span class="kc-v">northwind-captures</span>
-                  <span class="kc-l">Access key ID</span><span class="kc-v">AKIA4NW7Q2XR</span>
-                  <span class="kc-l">Secret access key</span>
-                  <span class="kc-v secret">wJal9rX7uTnF2kQ8pZcE<span class="mosaic"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="hnd"><i></i><i></i><i></i><i></i></span></span>
+            <div class="mpanel" role="tabpanel" id="p-pin" aria-labelledby="t-pin" tabindex="0" hidden>
+              <div class="vg" role="img" aria-label="A capture pinned above a window, with its close and lock controls">
+                <div class="vs v-pin">
+                  <div class="win"><div class="win-bar"><i></i><i></i><i></i></div><div class="win-body"><i></i><i></i><i></i><i></i></div></div>
+                  <div class="pinned"><div class="pin-img"><i></i><i></i><i></i></div><span class="pb x"><svg class="ic"><use href="#i-x"/></svg></span><span class="pb lk"><svg class="ic"><use href="#i-lock"/></svg></span><span class="pill">80%</span></div>
                 </div>
               </div>
-            </div>
-          </li>
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-photo"/></svg><h3>Background</h3></div>
-            <div class="mock m-bg anim" role="img" aria-label="A screenshot framed with padding and a shadow on a colourful gradient background">
-              <div class="stage" aria-hidden="true">
-                <i class="bgl b1"></i><i class="bgl b2"></i><i class="bgl b3"></i>
-                <div class="framed"><svg viewBox="966 236 204 146"><use href="#nw" width="1200" height="760"/></svg></div>
-              </div>
-            </div>
-          </li>
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-crop"/></svg><h3>Crop</h3></div>
-            <div class="mock m-crop anim" role="img" aria-label="A crop frame tightening around the bars of a chart, with the size shown underneath">
-              <div class="stage" aria-hidden="true">
-                <div class="paper"><svg viewBox="236 230 690 440"><use href="#nw" width="1200" height="760"/></svg></div>
-                <div class="cropbox"><i></i><i></i><i></i><i></i><span>1280 × 720</span></div>
-              </div>
-            </div>
-          </li>
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-spot"/></svg><h3>Spotlight</h3></div>
-            <div class="mock m-spot anim" role="img" aria-label="Everything dimmed except a spotlight on one dashboard number">
-              <div class="stage" aria-hidden="true">
-                <div class="paper"><svg viewBox="226 98 470 290"><use href="#nw" width="1200" height="760"/></svg></div>
-                <i class="spotlight"></i>
-              </div>
-            </div>
-          </li>
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-num"/></svg><h3>Counters</h3></div>
-            <div class="mock m-count anim" role="img" aria-label="Numbered steps one, two and three placed next to items in a sidebar">
-              <div class="stage" aria-hidden="true">
-                <div class="paper side"><svg viewBox="0 40 200 300"><use href="#nw" width="1200" height="760"/></svg></div>
-                <b class="ctr c1">1</b><b class="ctr c2">2</b><b class="ctr c3">3</b>
-              </div>
-            </div>
-          </li>
-          <li class="tool">
-            <div class="tool-h"><svg class="ic" aria-hidden="true"><use href="#i-marker"/></svg><h3>Highlighter</h3></div>
-            <div class="mock m-hl anim" role="img" aria-label="Release notes with one sentence swept over by a yellow highlighter">
-              <div class="stage" aria-hidden="true">
-                <div class="note">
-                  <b>Release notes</b>
-                  <p>Captures now open in Annotate twice as fast.</p>
-                  <p><mark>Uploads copy the link before the transfer starts.</mark></p>
-                  <p>Pinned screenshots remember their opacity.</p>
-                </div>
-              </div>
-            </div>
-          </li>
-        </ul>
-        </div>
-        <div class="wrap rail-nav">
-          <button class="nbtn" type="button" data-dir="-1" aria-label="Previous tool"><svg class="ic" aria-hidden="true"><use href="#i-arr-l"/></svg></button>
-          <button class="nbtn" type="button" data-dir="1" aria-label="Next tool"><svg class="ic" aria-hidden="true"><use href="#i-arr-r"/></svg></button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Capture modes -->
-    <section class="sec" id="capture">
-      <div class="wrap">
-        <header class="sh">
-          <h2 class="h2">Every way to capture</h2>
-          <div class="sh-row">
-            <p class="lead">Area, window, fullscreen, a timed shot or a whole scrolling page. Pick a mode from one toolbar
-              and get pixel-exact results on every display.</p>
-            <a class="btn btn-p" href="https://github.com/udsy19/super-screenshot#capture">Explore capture</a>
-          </div>
-        </header>
-
-        <div class="frows">
-          <article class="frow">
-            <div class="frow-text">
-              <h3 class="h3">All-In-One</h3>
-              <p class="lead">Press <kbd>⌥⇧5</kbd> and every mode is one click away: area, window, fullscreen, scrolling,
-                self-timer, text and recording.</p>
-              <ul class="ticks">
-                <li><svg class="ic" aria-hidden="true"><use href="#i-area"/></svg>Area, window and fullscreen</li>
-                <li><svg class="ic" aria-hidden="true"><use href="#i-timer"/></svg>A self-timer for menus and hover states</li>
-                <li><svg class="ic" aria-hidden="true"><use href="#i-display"/></svg>Works across every display</li>
-              </ul>
-            </div>
-            <div class="frow-media">
-              <div class="mock m-aio anim" role="img" aria-label="All-In-One: a 1280 by 720 selection over a dashboard with the capture mode toolbar beneath it; the self-timer counts down from three">
-                <div class="stage" aria-hidden="true">
-                  <div class="wall"></div>
-                  <div class="menubar"><svg class="apple"><use href="#i-apple"/></svg><b>Northwind</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></div>
-                  <div class="win app"><svg viewBox="0 0 1200 760"><use href="#nw"/></svg></div>
-                  <div class="sel"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b class="count"><span>3</span><span>2</span><span>1</span></b></div>
-                  <span class="pill-dim">1280 × 720</span>
-                  <div class="aio glass">
-                    <i class="aio-hl"></i>
-                    <span><svg class="ic"><use href="#i-area"/></svg>Area</span><span><svg class="ic"><use href="#i-display"/></svg>Fullscreen</span><span><svg class="ic"><use href="#i-window"/></svg>Window</span><span><svg class="ic"><use href="#i-scroll"/></svg>Scrolling</span><span><svg class="ic"><use href="#i-timer"/></svg>Timer</span><b class="sep"></b><span><svg class="ic"><use href="#i-ocr"/></svg>OCR</span><b class="sep"></b><span><svg class="ic"><use href="#i-video"/></svg>Record</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="frow rev">
-            <div class="frow-text">
-              <h3 class="h3">Scrolling capture</h3>
-              <p class="lead">Grab a whole web page, a long chat or a spreadsheet as one tall image. Scroll at your own
-                pace, or let auto-scroll do it for you.</p>
-              <ul class="ticks">
-                <li><svg class="ic" aria-hidden="true"><use href="#i-scroll"/></svg>Vertical or horizontal</li>
-                <li><svg class="ic" aria-hidden="true"><use href="#i-photo"/></svg>Pixel-exact stitching, on-device</li>
-                <li><svg class="ic" aria-hidden="true"><use href="#i-playo"/></svg>Auto-scroll for long pages</li>
-              </ul>
-            </div>
-            <div class="frow-media">
-              <div class="mock m-scroll anim" role="img" aria-label="Scrolling capture: a long chat scrolls inside the capture area while a live preview of the stitched image grows beside it">
-                <div class="stage" aria-hidden="true">
-                  <div class="wall dk"></div>
-                  <div class="win lt scrollwin">
-                    <div class="lt-top"><span class="tl"><i></i><i></i><i></i></span><span class="ttl">Launch checklist</span></div>
-                    <div class="sw-view"><div class="sw-page">
-                      <b>Launch checklist</b>
-                      <p>Final pass before Thursday's release. Tick each item once it's verified on a clean Mac.</p>
-                      <ul><li class="ok">Signed build uploaded</li><li class="ok">Release notes reviewed</li><li class="ok">Screenshots refreshed</li><li>Install script tested</li><li>Website copy approved</li><li>Changelog published</li><li>Support macros updated</li><li>Status page scheduled</li><li>Team briefed</li><li>Rollback plan written</li></ul>
-                      <p>Questions go in the launch channel. Thanks, everyone!</p>
-                    </div></div>
-                  </div>
-                  <div class="sframe"></div>
-                  <span class="spill">Slowly scroll down the content</span>
-                  <div class="sprev"><div class="sprev-in"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="frow">
-            <div class="frow-text">
-              <h3 class="h3">Text recognition</h3>
-              <p class="lead">Select anything on screen and its text lands on your clipboard: screenshots, paused videos,
-                PDFs that won't let you select. Recognition runs on your Mac.</p>
-              <ul class="ticks">
-                <li><svg class="ic" aria-hidden="true"><use href="#i-ocr"/></svg>Copy text from any image</li>
-                <li><svg class="ic" aria-hidden="true"><use href="#i-qr"/></svg>Reads QR codes too</li>
-                <li><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>Private, with Apple's Vision</li>
-              </ul>
-            </div>
-            <div class="frow-media">
-              <div class="mock m-ocr anim" role="img" aria-label="Capture Text: two dashboard numbers are selected, a Text copied confirmation appears and a panel shows the recognised text">
-                <div class="stage" aria-hidden="true">
-                  <div class="wall"></div>
-                  <div class="menubar"><svg class="apple"><use href="#i-apple"/></svg><b>Northwind</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></div>
-                  <div class="win app"><svg viewBox="0 0 1200 760"><use href="#nw"/></svg></div>
-                  <div class="sel"></div>
-                  <div class="hud glass"><svg class="ic"><use href="#i-check"/></svg>Text copied</div>
-                  <div class="ocr-panel"><header><span class="tl"><i></i><i></i><i></i></span>Recognized Text<span>Copy</span></header>
-                    <p><span>Revenue</span><mark>$482,190</mark><span>+12.4% vs Q2</span><span>Active users</span><mark>38,204</mark><span>+8.1% vs Q2</span></p></div>
-                </div>
-              </div>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- Studio Mode -->
-    <section class="sec" id="studio">
-      <div class="wrap">
-        <header class="sh">
-          <div class="sh-title"><h2 class="h2">Demos without an editing degree</h2><span class="badge"><svg class="ic" aria-hidden="true"><use href="#i-clapper"/></svg>Studio Mode</span></div>
-          <div class="sh-row">
-            <p class="lead">Studio Mode records every click and cursor move with your screen, then zooms in where the action
-              is, smooths the pointer and frames it on a background. Fine-tune it on the timeline and export up to 4K.</p>
-            <a class="btn btn-p" href="https://github.com/udsy19/super-screenshot#studio-mode">Explore Studio Mode</a>
-          </div>
-        </header>
-        <div class="stage-card">
-          <div class="mock m-studio anim" role="img" aria-label="The Studio Mode editor: background swatches and padding, shadow and corner sliders on the left, a zoomed preview of the recording framed on a gradient, and a timeline with zoom segments under a moving playhead">
-            <div class="stage" aria-hidden="true">
-              <div class="win dk">
-                <div class="st-title"><span class="tl"><i></i><i></i><i></i></span><span class="st-name">Screen Recording 2026-10-17 at 13.50.05<span>Edited</span></span><span class="end"><svg class="ic"><use href="#i-upload"/></svg><span>Export</span></span></div>
-                <div class="st-body">
-                  <div class="st-rail"><i><svg class="ic"><use href="#i-rays"/></svg></i><i><svg class="ic"><use href="#i-cmd"/></svg></i><i><svg class="ic"><use href="#i-speaker"/></svg></i><i><svg class="ic"><use href="#i-video"/></svg></i><i class="on"><svg class="ic"><use href="#i-photo"/></svg></i><i><svg class="ic"><use href="#i-dash"/></svg></i></div>
-                  <div class="st-side">
-                    <span class="st-h">Background</span>
-                    <div class="sw"><i style="background:linear-gradient(135deg,#a78bfa,#6d28d9)"></i><i style="background:linear-gradient(135deg,#60a5fa,#2563eb)"></i><i class="on" style="background:linear-gradient(135deg,#93c5fd,#6366f1 55%,#1e3a8a)"></i><i style="background:linear-gradient(135deg,#fdba74,#f97316)"></i><i style="background:linear-gradient(135deg,#86efac,#15803d)"></i><i style="background:linear-gradient(135deg,#5eead4,#0e7490)"></i><i style="background:linear-gradient(135deg,#fca5a5,#be123c)"></i><i style="background:linear-gradient(135deg,#64748b,#1e293b)"></i><i style="background:linear-gradient(135deg,#fde68a,#f59e0b)"></i><i style="background:#f4f4f5"></i></div>
-                    <span class="st-h">Padding</span><div class="slider" style="--v:27%"><i></i><span>27%</span></div>
-                    <span class="st-h">Shadow</span><div class="slider" style="--v:60%"><i></i><span>60%</span></div>
-                    <span class="st-h">Corners</span><div class="slider" style="--v:40%"><i></i><span>12 pt</span></div>
-                  </div>
-                  <div class="st-main">
-                    <div class="preview"><div class="shot"><div class="shot-in"><svg viewBox="0 0 1200 760"><use href="#nw"/><use href="#i-cursor" x="884" y="352" width="22" height="32"/></svg></div></div><span class="zoom-badge"><svg class="ic"><use href="#i-zoom"/></svg>1.6×</span></div>
-                    <div class="transport"><b>00:04</b>&nbsp;/ 00:12<span><svg class="ic"><use href="#i-back"/></svg><svg class="ic"><use href="#i-play"/></svg><svg class="ic"><use href="#i-fwd"/></svg></span></div>
-                  </div>
-                </div>
-                <div class="timeline">
-                  <svg class="ic st-cut"><use href="#i-scissors"/></svg>
-                  <div class="ruler"><span>0:00</span><span>0:02</span><span>0:04</span><span>0:06</span><span>0:08</span><span>0:10</span></div>
-                  <div class="track"><span class="zseg" style="left:16%;width:27%"><svg class="ic"><use href="#i-zoom"/></svg>Zoom 1.6×</span><span class="zseg auto" style="left:58%;width:25%">Auto zoom</span></div>
-                  <div class="clip"><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg><svg viewBox="0 0 1200 760"><use href="#nw"/></svg></div>
-                  <i class="playhead"></i>
-                </div>
-              </div>
+              <p class="mcap">Keep a capture floating above every window. Resize it, change its opacity, or lock it so clicks pass through. Pin any capture with <kbd>⌘P</kbd>.</p>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Everyday workflows -->
-    <section class="sec" id="workflows">
+    <section class="specs" aria-labelledby="specs-h">
       <div class="wrap">
-        <header class="sh sh-solo"><h2 class="h2">The little things, done right</h2></header>
-        <div class="bento">
-          <article class="bc span2 dark g-plum">
-            <div class="bc-t"><h3>Capture History</h3><p>Closed a capture too soon? Every screenshot, video and GIF waits in History, ready to restore.</p></div>
-            <div class="bc-v">
-              <div class="mock m-hist anim" role="img" aria-label="Capture History with filters for All, Screenshots, Videos and GIFs, and a selected capture with a Restore button">
-                <div class="stage" aria-hidden="true">
-                  <div class="filters"><span class="on">All</span><span>Screenshots</span><span>Videos</span><span>GIFs</span></div>
-                  <div class="hrow">
-                    <div class="hitem"><svg viewBox="0 0 210 150"><use href="#th3"/></svg></div>
-                    <div class="hitem"><svg viewBox="0 0 210 150"><use href="#th1"/></svg><small>0:14</small></div>
-                    <div class="hitem"><svg viewBox="0 0 210 150"><use href="#th2"/></svg></div>
-                    <div class="hitem"><svg viewBox="0 0 210 150"><use href="#th3"/></svg><small>GIF</small></div>
-                    <div class="hitem"><svg viewBox="0 0 210 150"><use href="#th1"/></svg></div>
-                  </div>
-                  <i class="hsel"></i>
-                  <span class="restore"><svg class="ic"><use href="#i-restart"/></svg>Restore</span>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="bc g-lav">
-            <div class="bc-t"><h3>Pin to screen</h3><p>Float a screenshot above your windows while you compare or copy from it.</p></div>
-            <div class="bc-v">
-              <div class="mock m-pin anim" role="img" aria-label="A screenshot pinned above another window, with close and lock buttons">
-                <div class="stage" aria-hidden="true">
-                  <div class="win lt back"><div class="lt-top"><span class="tl"><i></i><i></i><i></i></span></div></div>
-                  <div class="pinned"><svg viewBox="0 0 210 150"><use href="#th3"/></svg><i class="qb"><svg class="ic"><use href="#i-x"/></svg></i><i class="qb"><svg class="ic"><use href="#i-lock"/></svg></i><span class="pz">100%</span></div>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="bc dark g-desk">
-            <div class="bc-t"><h3>Hide desktop icons</h3><p>Clear the clutter for a clean shot, then bring it all back.</p></div>
-            <div class="bc-v">
-              <div class="mock m-desk anim" role="img" aria-label="Desktop folders and files that fade away, leaving a clean desktop">
-                <div class="stage" aria-hidden="true">
-                  <div class="icons">
-                    <span><i class="fold"></i>Invoices</span><span><i class="fold"></i>Design</span>
-                    <span><i class="file"></i>Notes.txt</span><span><i class="fold"></i>Archive</span>
-                    <span><i class="pic"></i>IMG_2048</span><span><i class="file"></i>Budget.csv</span>
-                  </div>
-                  <span class="dhud glass">Desktop icons hidden</span>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="bc dark g-ink">
-            <div class="bc-t"><h3>Native and quick</h3><p>Swift and AppKit. No Electron, no web views, no dependencies.</p></div>
-            <div class="bc-v">
-              <div class="mock m-native anim" role="img" aria-label="The Super Screenshot app icon glowing, labelled Apple silicon, Intel and macOS 14 or later">
-                <div class="stage" aria-hidden="true">
-                  <i class="halo"></i>
-                  <img src="assets/icon.svg?v=3" alt="" width="104" height="104">
-                  <div class="chips"><span>Apple silicon</span><span>Intel</span><span>macOS 14+</span></div>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="bc g-lav2">
-            <div class="bc-t"><h3>Make it yours</h3><p>Change any shortcut, file name or after-capture action.</p></div>
-            <div class="bc-v">
-              <div class="mock m-short anim" role="img" aria-label="Shortcut settings: Capture Area being changed from Option Shift 4 to Shift Command 4">
-                <div class="stage" aria-hidden="true">
-                  <div class="prefs">
-                    <div class="pr"><span>Capture Area</span><span class="rec"><b class="v1">⌥⇧4</b><b class="v2">Type shortcut</b><b class="v3">⇧⌘4</b></span></div>
-                    <div class="pr"><span>All-In-One</span><span class="rec"><b>⌥⇧5</b></span></div>
-                    <div class="pr"><span>Capture Text</span><span class="rec"><b>⌥⇧2</b></span></div>
-                    <div class="pr"><span>Record Screen</span><span class="rec"><b>⌥⇧6</b></span></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article class="bc span2 dark g-deep">
-            <div class="bc-t"><h3>Quick Access, always within reach</h3><p>Captures stack up at the corner of your screen. Copy, save, pin or annotate them, or swipe them away.</p></div>
-            <div class="bc-v">
-              <div class="mock m-qa anim" role="img" aria-label="The Quick Access overlay: a stack of capture cards; the top one shows Copy and Save buttons, is swiped away, and the next card springs into its place">
-                <div class="stage" aria-hidden="true">
-                  <div class="qa">
-                    <div class="qa-head"><span>Close All</span><span>Save All</span></div>
-                    <div class="qcard qa1"><svg viewBox="0 0 210 150"><use href="#th1"/></svg>
-                      <div class="qhov"><div class="qa-pills"><span>Copy</span><span>Save</span></div><i class="qb"><svg class="ic"><use href="#i-x"/></svg></i><i class="qb"><svg class="ic"><use href="#i-pin"/></svg></i><i class="qb"><svg class="ic"><use href="#i-pencil"/></svg></i><i class="qb"><svg class="ic"><use href="#i-cloud"/></svg></i></div>
-                    </div>
-                    <div class="qcard qa2"><svg viewBox="0 0 210 150"><use href="#th3"/></svg></div>
-                  </div>
-                  <div class="win lt notes">
-                    <div class="lt-top"><span class="tl"><i></i><i></i><i></i></span><span class="ttl">Weekly update</span></div>
-                    <div class="notes-b"><b>Weekly update</b><i></i><i></i><i class="s"></i><div class="att"><svg viewBox="0 0 210 150"><use href="#th3"/></svg></div><i></i><i class="s"></i></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </article>
-        </div>
-        <p class="more"><a href="https://github.com/udsy19/super-screenshot#readme">See every feature on GitHub<svg class="ic" aria-hidden="true"><use href="#i-chev-r"/></svg></a></p>
+        <h2 class="label" id="specs-h">Also in the app</h2>
+        <dl class="spec-list">
+          <div><dt>All-In-One <kbd>⌥⇧5</kbd></dt><dd>One overlay with every capture and recording mode.</dd></div>
+          <div><dt>Previous area <kbd>⌥⇧7</kbd></dt><dd>Captures the same region again.</dd></div>
+          <div><dt>Self-timer</dt><dd>Counts down first, so menus and hover states stay open.</dd></div>
+          <div><dt>Quick Access</dt><dd>Drag a capture into any app, or copy, save, pin and annotate it.</dd></div>
+          <div><dt>Capture history <kbd>⌥⇧H</kbd></dt><dd>Finds and restores past screenshots, videos and GIFs.</dd></div>
+          <div><dt>Hide desktop icons</dt><dd>Clears the desktop while you capture, or whenever you like.</dd></div>
+          <div><dt>Studio Mode</dt><dd>Zooms in on clicks for you. Adjust zooms and cuts on a timeline.</dd></div>
+          <div><dt>Backgrounds</dt><dd>Sets a capture on a wallpaper or gradient with padding and shadow.</dd></div>
+          <div><dt>Freeze screen</dt><dd>Holds the screen still while you select.</dd></div>
+          <div><dt>Colour picker</dt><dd>Copies the hex value of any pixel on screen.</dd></div>
+          <div><dt>Uploads</dt><dd>Sends to your own S3 bucket, HTTP endpoint or synced folder.</dd></div>
+          <div><dt>Universal</dt><dd>Runs natively on Apple silicon and Intel Macs.</dd></div>
+        </dl>
       </div>
     </section>
 
-    <!-- Privacy -->
-    <section class="sec" id="privacy">
+    <section class="privacy" aria-labelledby="privacy-h">
       <div class="wrap">
-        <div class="priv">
-          <div class="priv-text">
-            <p class="kicker">Privacy</p>
-            <h2 class="h2">Your screen stays yours</h2>
-            <p class="lead">Super Screenshot is a local app. Captures, text recognition, stitching and video encoding all
-              happen on-device. There's no account and no analytics, and nothing is uploaded until you set up a
-              destination of your own.</p>
-            <ul class="ticks">
-              <li><svg class="ic" aria-hidden="true"><use href="#i-tick"/></svg>No account or sign-in</li>
-              <li><svg class="ic" aria-hidden="true"><use href="#i-tick"/></svg>No analytics, telemetry or crash reports</li>
-              <li><svg class="ic" aria-hidden="true"><use href="#i-tick"/></svg>Uploads only to storage you own</li>
-              <li><svg class="ic" aria-hidden="true"><use href="#i-tick"/></svg>Upload keys kept in your Keychain</li>
-            </ul>
-            <a class="tlink" href="https://github.com/udsy19/super-screenshot/blob/main/PRIVACY.md">Read the privacy policy<svg class="ic" aria-hidden="true"><use href="#i-chev-r"/></svg></a>
-          </div>
-          <div class="priv-media">
-            <div class="mock m-set" role="img" aria-label="Super Screenshot's Upload settings: no destination is set up, so captures stay on this Mac; S3-compatible storage, a custom HTTP endpoint or a synced folder can be added">
-              <div class="stage" aria-hidden="true">
-                <div class="win set">
-                  <div class="set-top"><span class="tl"><i></i><i></i><i></i></span><b>Upload</b></div>
-                  <div class="set-tabs"><span><svg class="ic"><use href="#i-gear"/></svg>General</span><span><svg class="ic"><use href="#i-kbd"/></svg>Shortcuts</span><span><svg class="ic"><use href="#i-video"/></svg>Recording</span><span class="on"><svg class="ic"><use href="#i-upload"/></svg>Upload</span><span><svg class="ic"><use href="#i-sliders"/></svg>Advanced</span></div>
-                  <div class="set-body">
-                    <div class="dest"><i><svg class="ic"><use href="#i-laptop"/></svg></i><span><b>No destination</b><small>Captures stay on this Mac</small></span></div>
-                    <span class="set-l">Add a destination</span>
-                    <div class="opts"><span><svg class="ic"><use href="#i-cloud"/></svg>S3-compatible storage</span><span><svg class="ic"><use href="#i-upload"/></svg>Custom HTTP endpoint</span><span><svg class="ic"><use href="#i-doc"/></svg>Synced folder</span></div>
-                    <span class="set-note"><svg class="ic"><use href="#i-lock"/></svg>Secret keys are stored in your Keychain.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Open source -->
-    <section class="sec" id="open-source">
-      <div class="wrap">
-        <header class="os-h">
-          <div><p class="kicker">Open source</p><h2 class="h2">Free, open and built in public</h2></div>
-          <a class="tlink" href="https://github.com/udsy19/super-screenshot">Browse the code on GitHub<svg class="ic" aria-hidden="true"><use href="#i-chev-r"/></svg></a>
-        </header>
-        <ul class="os">
-          <li><span class="ib"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></span><h3>MIT licensed</h3><p>Read every line, fork it, change it. The whole app is on GitHub.</p></li>
-          <li><span class="ib"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg></span><h3>Local-first</h3><p>OCR, stitching and encoding run on your Mac with Apple's own frameworks.</p></li>
-          <li><span class="ib"><svg class="ic" aria-hidden="true"><use href="#i-cpu"/></svg></span><h3>Universal binary</h3><p>One download for Apple silicon and Intel Macs on macOS 14 or later.</p></li>
-          <li><span class="ib"><svg class="ic" aria-hidden="true"><use href="#i-heart"/></svg></span><h3>Free for good</h3><p>No trial, no subscription, no account. New versions install themselves.</p></li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Closing call to action -->
-    <section class="closing" id="download" aria-labelledby="cta-title">
-      <div class="closing-bg" aria-hidden="true"></div>
-      <div class="wrap cta">
-        <img class="cta-icon" src="assets/icon-256.png?v=3" alt="" width="104" height="104" loading="lazy" decoding="async">
-        <h2 class="h2" id="cta-title">Your next screenshot deserves better</h2>
-        <p>Free, open source and private by default. It installs in one line.</p>
-        <div class="cta-btns">
-          <a class="btn btn-w" href="https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg"><svg class="ic-fill" aria-hidden="true"><use href="#i-apple"/></svg>Download for Mac</a>
-          <a class="btn btn-c" href="https://github.com/udsy19/super-screenshot"><svg class="ic-fill" aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
-        </div>
-        <div class="cmd-box dk">
-          <code id="cmd-end">curl -fsSL https://udsy19.github.io/super-screenshot/install.sh | bash</code>
-          <button class="cmd-copy" type="button" data-copy="cmd-end"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
-        </div>
-        <p class="cta-note">Opening the DMG instead? Super Screenshot isn't notarized by Apple, so macOS asks once: open
-          System Settings → Privacy &amp; Security and click Open Anyway. The one-line installer skips this step.</p>
+        <h2 class="statement" id="privacy-h">Captures stay on your Mac.</h2>
+        <p class="fine">No account and no analytics. Text recognition, stitching and encoding run on your Mac. MIT licensed. Super Screenshot updates itself from GitHub releases; you can turn that off in Settings → General.</p>
       </div>
     </section>
   </main>
 
-  <footer class="site-foot">
-    <div class="wrap foot">
-      <div class="foot-cols">
-        <div class="foot-brand"><img src="assets/icon.svg?v=3" alt="" width="32" height="32"><span>Super Screenshot</span></div>
-        <nav aria-label="Product"><h2>Product</h2><ul><li><a href="#features">Features</a></li><li><a href="#recording">Screen recording</a></li><li><a href="#annotate">Annotate</a></li><li><a href="#studio">Studio Mode</a></li></ul></nav>
-        <nav aria-label="Download"><h2>Download</h2><ul><li><a href="https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg">Download DMG</a></li><li><a href="https://github.com/udsy19/super-screenshot/releases">Releases</a></li><li><a href="https://github.com/udsy19/super-screenshot/blob/main/CHANGELOG.md">Changelog</a></li></ul></nav>
-        <nav aria-label="Project"><h2>Project</h2><ul><li><a href="https://github.com/udsy19/super-screenshot">GitHub</a></li><li><a href="https://github.com/udsy19/super-screenshot/blob/main/PRIVACY.md">Privacy</a></li><li><a href="https://github.com/udsy19/super-screenshot/blob/main/LICENSE">License</a></li><li><a href="https://github.com/udsy19/super-screenshot/issues">Report an issue</a></li></ul></nav>
+  <footer class="end" id="download" aria-labelledby="download-h">
+    <div class="wrap">
+      <h2 class="end-h" id="download-h">Free for macOS 14 and later.</h2>
+      <div class="end-row">
+        <div class="cmd">
+          <code id="cmd-end">curl -fsSL https://udsy19.github.io/super-screenshot/install.sh | bash</code>
+          <button class="cmd-copy" type="button" data-copy="cmd-end">Copy</button>
+        </div>
+        <a class="btn" href="https://github.com/udsy19/super-screenshot/releases/latest/download/SuperScreenshot.dmg">Download DMG</a>
       </div>
-      <div class="foot-bot"><span>© 2026 Udaya Vijay Anand · MIT License</span><a class="foot-gh" href="https://github.com/udsy19/super-screenshot" aria-label="Super Screenshot on GitHub"><svg aria-hidden="true"><use href="#i-github"/></svg></a></div>
+      <p class="fine">The DMG isn’t notarized by Apple. The first time you open it, go to System Settings → Privacy &amp; Security and click Open Anyway. The install command doesn’t need this step.</p>
+      <div class="end-foot">
+        <a class="brand" href="#top"><img src="assets/icon.svg?v=3" alt="" width="20" height="20"><span>Super Screenshot</span></a>
+        <ul>
+          <li><a href="https://github.com/udsy19/super-screenshot">GitHub</a></li>
+          <li><a href="https://github.com/udsy19/super-screenshot/blob/main/CHANGELOG.md">Changelog</a></li>
+          <li><a href="https://github.com/udsy19/super-screenshot/blob/main/PRIVACY.md">Privacy</a></li>
+          <li><a href="https://github.com/udsy19/super-screenshot/blob/main/LICENSE">MIT License</a></li>
+        </ul>
+        <p>© Udaya Vijay Anand</p>
+      </div>
     </div>
   </footer>
-
-  <script>
-    // Copy buttons
-    document.querySelectorAll('.cmd-copy').forEach(btn => btn.addEventListener('click', async () => {
-      const label = btn.querySelector('span');
-      try { await navigator.clipboard.writeText(document.getElementById(btn.dataset.copy).textContent); label.textContent = 'Copied'; }
-      catch { label.textContent = 'Select it'; }
-      setTimeout(() => (label.textContent = 'Copy'), 1600);
-    }));
-
-    // Header gains a backdrop once the page scrolls
-    const hdr = document.getElementById('hdr');
-    const onScroll = () => hdr.classList.toggle('scrolled', scrollY > 8);
-    addEventListener('scroll', onScroll, { passive: true }); onScroll();
-
-    // Vignette loops pause while off screen (CSS turns them off for reduced motion); the recording clock ticks with them
-    const still = matchMedia('(prefers-reduced-motion: reduce)');
-    const io = new IntersectionObserver(es => es.forEach(e => e.target.classList.toggle('off', !e.isIntersecting)), { rootMargin: '80px 0px' });
-    document.querySelectorAll('.anim').forEach(el => io.observe(el));
-    const clock = document.querySelector('[data-clock]');
-    let secs = 12;
-    setInterval(() => {
-      if (still.matches || clock.closest('.anim').classList.contains('off')) return;
-      secs = secs >= 59 ? 12 : secs + 1;
-      clock.textContent = '0:' + String(secs).padStart(2, '0');
-    }, 1000);
-
-    // Annotate carousel: arrow buttons page by one card and disable at either end
-    document.querySelectorAll('[data-rail]').forEach(rail => {
-      const track = rail.querySelector('.rail-track');
-      const [prev, next] = rail.querySelectorAll('.nbtn');
-      const list = track.querySelector('.rail-list');
-      const step = () => list.firstElementChild.getBoundingClientRect().width + parseFloat(getComputedStyle(list).columnGap);
-      const sync = () => {
-        prev.disabled = track.scrollLeft < 4;
-        next.disabled = track.scrollLeft > track.scrollWidth - track.clientWidth - 4;
-      };
-      [prev, next].forEach(b => b.addEventListener('click', () =>
-        track.scrollBy({ left: step() * b.dataset.dir, behavior: still.matches ? 'auto' : 'smooth' })));
-      track.addEventListener('scroll', sync, { passive: true });
-      addEventListener('resize', sync); sync();
-    });
-  </script>
 </body>
 </html>
