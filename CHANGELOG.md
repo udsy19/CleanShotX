@@ -3,6 +3,11 @@
 All notable changes to Super Screenshot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.3.1] — 2026-10-18
+
+### Changed
+- Maintenance release; the first update delivered through automatic background updates.
+
 ## [1.3.0] — 2026-10-17
 
 ### Added
