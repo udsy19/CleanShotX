@@ -90,10 +90,3 @@ func symbol(_ name: String, size: CGFloat = 14, weight: NSFont.Weight = .medium)
     let img = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
     return img.withSymbolConfiguration(.init(pointSize: size, weight: weight)) ?? img
 }
-
-/// Carries a non-Sendable reference into a `@Sendable` closure when the caller guarantees safe use
-/// (e.g. thread-safe AVFoundation objects, or objects only touched on one queue).
-final class UncheckedBox<T>: @unchecked Sendable {
-    let value: T
-    init(_ value: T) { self.value = value }
-}

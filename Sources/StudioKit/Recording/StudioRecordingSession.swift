@@ -26,6 +26,9 @@ final class StudioRecordingSession {
     private var recorder: StudioScreenRecorder?
     private var tracker: InputTracker?
     private var workDir: URL?
+    /// In-progress bookkeeping: the package is written in the recovery folder until it is moved to Projects.
+    private var recovery: RecordingRecovery.Token?
+    private var sleepObserver: NSObjectProtocol?
     private var startedAt = Date()
     /// Identifies the current capture start-up, so a restart can't be confused with a late older start.
     private var attempt = 0
@@ -118,13 +121,26 @@ final class StudioRecordingSession {
         state = .recording
         attempt += 1
         let attempt = attempt
-        let dir = AppPaths.temporary.appendingPathComponent("studio-\(UUID().uuidString)", isDirectory: true)
-        AppPaths.ensure(dir)
-        workDir = dir
-        let package = StudioPackage(url: dir)
         clock = RecordingClock()
         let scale = screen.backingScaleFactor
         let local = ScreenGeometry.displayLocalRect(area, on: screen)
+        let pixelSize = CGSize(width: Int((local.width * scale / 2).rounded()) * 2, height: Int((local.height * scale / 2).rounded()) * 2)
+        let name = FileNameTemplate.render(Defaults[.fileNameTemplate], kind: CaptureMode.studio.fileNameKind, advanceCounter: false)
+        var manifest = RecordingRecovery.Manifest(kind: .studioProject, mode: .studio, name: name, file: "", pixelSize: pixelSize, scale: scale)
+        manifest.file = "\(manifest.id.uuidString).\(StudioPackage.fileExtension)/\(StudioPackage.screenFile)"
+        let token: RecordingRecovery.Token
+        do { token = try RecordingRecovery.begin(manifest) } catch {
+            state = .finishing
+            teardownUI()
+            camera?.cancel()
+            Alerts.error("Screen Recording stopped unexpectedly.", error)
+            onFinish(nil)
+            return
+        }
+        recovery = token
+        let dir = token.mediaURL.deletingLastPathComponent()
+        workDir = dir
+        let package = StudioPackage(url: dir)
         let displayID = screen.displayID
         let fps = max(30, min(60, Defaults[.videoFPS]))
         let micID = options.microphoneID
@@ -142,7 +158,7 @@ final class StudioRecordingSession {
                     CaptureExclusion.excludedWindows(in: content, flagged: CaptureExclusion.flaggedWindowIDs))
                 let cfg = StudioScreenRecorder.Config(
                     url: package.screenURL, filter: filter, sourceRect: local,
-                    pixelWidth: Int((local.width * scale / 2).rounded()) * 2, pixelHeight: Int((local.height * scale / 2).rounded()) * 2,
+                    pixelWidth: Int(pixelSize.width), pixelHeight: Int(pixelSize.height),
                     fps: fps, systemAudio: systemAudio, microphoneID: micID, mono: mono)
                 let rec = StudioScreenRecorder(config: cfg, clock: clock)
                 rec.onFailure = { [weak self] error in
@@ -162,6 +178,7 @@ final class StudioRecordingSession {
                 Sound.play(.recordStart)
                 self.outline?.setRecording(true)
                 self.showControls()
+                self.observeSleep()
             } catch {
                 // Stopped/restarted while starting up: that path already cleaned up.
                 guard self.state == .recording, self.attempt == attempt else { return }
@@ -170,11 +187,25 @@ final class StudioRecordingSession {
                 _ = self.tracker?.finish()
                 self.teardownUI()
                 self.camera?.cancel()
-                try? FileManager.default.removeItem(at: dir)
+                self.discardInProgress()
                 Alerts.error("Screen Recording stopped unexpectedly.", error)
                 self.onFinish(nil)
             }
         }
+    }
+
+    /// Finishes cleanly when the Mac goes to sleep instead of leaving a dead stream with overlays on screen.
+    private func observeSleep() {
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil,
+                                                                          queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stop() }
+        }
+    }
+
+    private func discardInProgress() {
+        if let recovery { RecordingRecovery.abandon(recovery) }
+        recovery = nil
+        workDir = nil
     }
 
     private func showControls() {
@@ -242,10 +273,9 @@ final class StudioRecordingSession {
         _ = tracker?.finish(); tracker = nil
         camera?.cancel(stopSession: false)
         let rec = recorder; recorder = nil
-        let dir = workDir; workDir = nil
         Task { @MainActor in
             await rec?.cancel()
-            if let dir { try? FileManager.default.removeItem(at: dir) }
+            self.discardInProgress()
             next()
         }
     }
@@ -302,10 +332,22 @@ final class StudioRecordingSession {
                 try package.write(project: project)
                 let dest = AppPaths.uniqueURL(AppPaths.projects.appendingPathComponent(name).appendingPathExtension(StudioPackage.fileExtension))
                 try FileManager.default.moveItem(at: workDir, to: dest)
+                if let recovery = self.recovery { RecordingRecovery.finish(recovery) }
+                self.recovery = nil
+                self.workDir = nil
                 self.onFinish(dest)
             } catch {
-                try? FileManager.default.removeItem(at: workDir)
-                Alerts.error("Something went wrong saving your recording.", error)
+                // The screen video may still be fine (fragments on disk): keep it as a plain recording.
+                if let recovery = self.recovery, let salvaged = await RecordingRecovery.salvage(recovery, into: AppPaths.recordings) {
+                    self.discardInProgress()
+                    Alerts.info("Recording stopped unexpectedly",
+                                info: "\(error.localizedDescription) The \(TimeFormat.string(salvaged.duration, tenths: false)) recorded before that was kept as a video (without Studio Mode edits).")
+                    MediaPipeline.didFinishRecording(url: salvaged.url, kind: .video, mode: .recording,
+                                                     pixelSize: salvaged.pixelSize, scale: self.screen.backingScaleFactor)
+                } else {
+                    self.discardInProgress()
+                    Alerts.error("Something went wrong saving your recording.", error)
+                }
                 self.onFinish(nil)
             }
         }
@@ -330,6 +372,8 @@ final class StudioRecordingSession {
 
     private func teardownUI() {
         timer?.invalidate(); timer = nil
+        if let sleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver) }
+        sleepObserver = nil
         for w in [preBar, controls] as [NSWindow?] { w?.orderOut(nil) }
         outline?.orderOut(nil)
         cameraBubble?.orderOut(nil)

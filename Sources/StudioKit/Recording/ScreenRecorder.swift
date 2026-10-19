@@ -69,6 +69,8 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
 
     private func makeWriter() throws {
         let w = try AVAssetWriter(outputURL: config.url, fileType: .mov)
+        // Movie fragments: a crash or force quit leaves screen.mov readable up to the last fragment.
+        w.movieFragmentInterval = RecordingRecovery.fragmentInterval
         let bitrate = min(150_000_000, max(10_000_000, Int(Double(config.pixelWidth * config.pixelHeight * config.fps) * 0.12)))
         let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: Self.codec(width: config.pixelWidth, height: config.pixelHeight),
@@ -241,7 +243,8 @@ final class StudioScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AV
                 if videoFrames == 0, writer?.status == .writing { appendPendingFirst() }
                 pendingFirst = nil
                 guard let writer, writer.status == .writing, videoFrames > 0 else {
-                    writer?.cancelWriting()
+                    // A failed writer keeps what it already flushed (salvaged by the session); an empty one is cancelled.
+                    if writer?.status != .failed { writer?.cancelWriting() }
                     cont.resume(throwing: RecorderError.writer(writer?.error?.localizedDescription ?? "No frames were recorded."))
                     return
                 }

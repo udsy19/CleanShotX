@@ -124,7 +124,8 @@ final class UpdateController {
         let anyInput = CGEventType(rawValue: ~0)!
         let activity = AppActivity(
             secondsSinceInput: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput),
-            isRecording: Services.recording?.isRecording == true || Services.studio?.isRecording == true,
+            isRecording: Services.recording?.isRecording == true || Services.recording?.isFinalizing == true
+                || Services.studio?.isRecording == true,
             isUploading: Services.upload?.isUploading == true,
             hasOpenWindows: hasOpenWindows)
         guard UpdateApplyGate.canApplyWhileRunning(activity), handOff(relaunch: true) else { return }

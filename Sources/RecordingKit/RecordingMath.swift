@@ -10,11 +10,7 @@ public enum RecordingMath {
     // MARK: Time
 
     /// "0:07", "1:02", "1:02:03".
-    public static func formatElapsed(_ seconds: TimeInterval) -> String {
-        let total = max(0, Int(seconds.rounded(.down)))
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
-    }
+    public static func formatElapsed(_ seconds: TimeInterval) -> String { RecordingRecovery.formatDuration(seconds) }
 
     // MARK: Dimensions
 

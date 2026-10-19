@@ -187,6 +187,8 @@ public enum RecordingKind: String, Sendable { case video, gif }
     func startRecording(_ kind: RecordingKind, rect: CGRect?)
     func stopRecording()
     var isRecording: Bool { get }
+    /// A stopped recording whose file is still being finalized or converted; quitting now would lose it.
+    var isFinalizing: Bool { get }
     func openVideoEditor(_ media: CapturedMedia)
 }
 

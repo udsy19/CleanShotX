@@ -9,4 +9,5 @@ func registerModuleTests() {
     registerPreferencesKitTests()
     registerUploadKitTests()
     registerUpdateKitTests()
+    registerRecoveryTests()
 }

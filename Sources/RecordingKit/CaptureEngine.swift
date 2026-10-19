@@ -129,7 +129,10 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, AVCapture
         do { w = try AVAssetWriter(outputURL: config.outputURL, fileType: config.fileType) } catch {
             throw CaptureEngineError.writerSetup(error.localizedDescription)
         }
-        w.shouldOptimizeForNetworkUse = config.fileType == .mp4
+        // Movie fragments: a crash, force quit or power loss leaves a file that plays up to the last fragment
+        // (RecordingRecovery salvages it at the next launch). Fragments rule out the network-optimised layout.
+        w.movieFragmentInterval = RecordingRecovery.fragmentInterval
+        w.shouldOptimizeForNetworkUse = false
 
         let isHEVC = config.codec == .hevc
         var compression: [String: Any] = [
@@ -226,7 +229,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, AVCapture
         }
     }
 
-    /// Stops capture and finalizes the file.
+    /// Stops capture and finalizes the file. On failure the output is left on disk: with movie fragments it is
+    /// still readable up to the last fragment, and the owner decides whether to salvage or discard it.
     func finish() async throws -> URL {
         let stopTime = CMClockGetTime(hostClock)
         try? await stream?.stopCapture()
@@ -239,7 +243,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, AVCapture
                 accepting = false
                 guard let writer, sessionStarted, writer.status == .writing else {
                     let error = writer?.status == .failed ? writer?.error : nil
-                    writer?.cancelWriting()
+                    // A failed writer keeps what it already flushed; only an empty one is cancelled.
+                    if writer?.status != .failed { writer?.cancelWriting() }
                     cont.resume(returning: .failure(error ?? CaptureEngineError.noFrames))
                     return
                 }
@@ -256,18 +261,9 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, AVCapture
                 cont.resume(returning: .success(writer))
             }
         }
-        let w: AVAssetWriter
-        switch result {
-        case .success(let writer): w = writer
-        case .failure(let error):
-            try? FileManager.default.removeItem(at: config.outputURL)
-            throw error
-        }
+        let w = try result.get()
         await w.finishWriting()
-        guard w.status == .completed else {
-            try? FileManager.default.removeItem(at: config.outputURL)
-            throw w.error ?? CaptureEngineError.writerSetup("")
-        }
+        guard w.status == .completed else { throw w.error ?? CaptureEngineError.writerSetup("") }
         return config.outputURL
     }
 

@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MediaPipeline.sweepOrphanedMedia()
         statusMenu = StatusMenuController()
         registerHotkeys()
+        recoverInterruptedWork()
         Defaults.changes.filter { $0 == Defaults.Keys.shortcuts.name }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.registerHotkeys(); self?.statusMenu.rebuild() }
@@ -45,6 +46,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Services.preferences.showOnboarding()
         } else if !Permissions.hasScreenRecording {
             Permissions.requestScreenRecording()
+        }
+    }
+
+    /// Work the previous run left behind (crash, force quit, power loss): interrupted recordings become ordinary
+    /// recordings; unsaved annotation edits are offered for reopening.
+    private func recoverInterruptedWork() {
+        Task { @MainActor in
+            await RecordingRecovery.recoverAll()
+            AnnotateKitModule.recoverUnsavedDocuments()
         }
     }
 
@@ -61,8 +71,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Quit order: anything that can veto the quit asks first (unsaved annotations, running uploads); then a running
+    /// recording is stopped and the quit waits until its file is finalized, so ⌘Q never truncates a recording.
+    /// The update swap helper only starts in `applicationWillTerminate`, i.e. after all of this.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        UploadKitModule.confirmTerminationIfUploading() ? .terminateNow : .terminateCancel
+        guard AnnotateKitModule.confirmTerminationIfUnsaved() else { return .terminateCancel }
+        guard UploadKitModule.confirmTerminationIfUploading() else { return .terminateCancel }
+        guard ActionRouter.isRecordingBusy else { return .terminateNow }
+        Services.recording?.stopRecording()
+        Services.studio?.stopRecording()
+        let deadline = Date().addingTimeInterval(30)
+        let timer = Timer(timeInterval: 0.25, repeats: true) { timer in
+            MainActor.assumeIsolated {
+                guard !ActionRouter.isRecordingBusy || Date() > deadline else { return }
+                timer.invalidate()
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {

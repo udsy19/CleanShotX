@@ -15,6 +15,8 @@ final class RecordingSession {
 
     private var engine: CaptureEngine?
     private var engineConfig: CaptureEngineConfig?
+    /// In-progress bookkeeping: the file is written in the recovery folder until it is delivered or discarded.
+    private var recovery: RecordingRecovery.Token?
     private var clock = RecordingClock()
     private(set) var isPaused = false
     /// True once the recording has been stopped, deleted or discarded.
@@ -130,7 +132,15 @@ final class RecordingSession {
         let sleep = workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.stop() }
         }
-        observers = [(center, screens), (workspace, sleep)]
+        // A microphone that goes away keeps the recording going without it; the user is told.
+        let micID = engineConfig?.microphoneID
+        let mic = center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: .main) { n in
+            guard let micID, (n.object as? AVCaptureDevice)?.uniqueID == micID else { return }
+            MainActor.assumeIsolated {
+                HUD.show("Microphone disconnected — recording continues without it.", symbol: "mic.slash", duration: 3)
+            }
+        }
+        observers = [(center, screens), (workspace, sleep), (center, mic)]
     }
 
     /// Asks a session that is still starting (or running) to stop as soon as possible.
@@ -172,9 +182,13 @@ final class RecordingSession {
         let format = Defaults[.videoFormat]
         let mode: CaptureMode = isVideo ? .recording : .gifRecording
         let name = FileNameTemplate.render(Defaults[.fileNameTemplate], kind: mode.fileNameKind)
-        let url = isVideo
-            ? AppPaths.uniqueURL(AppPaths.recordings.appendingPathComponent(name).appendingPathExtension(format.fileExtension))
-            : AppPaths.temporary.appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
+        let ext = isVideo ? format.fileExtension : "mp4"
+        var manifest = RecordingRecovery.Manifest(kind: isVideo ? .video : .gif, mode: mode, name: name, file: "",
+                                                  pixelSize: pixelSize, scale: outputScale)
+        manifest.file = "\(manifest.id.uuidString).\(ext)"
+        let token = try RecordingRecovery.begin(manifest)
+        recovery = token
+        let url = token.mediaURL
         gifName = name
 
         var micID: String?
@@ -236,6 +250,7 @@ final class RecordingSession {
             } catch {
                 Alerts.error("An error occurred while starting screen recording.", error)
                 tearDownOverlays()
+                discardInProgress()
                 end()
             }
         }
@@ -258,6 +273,7 @@ final class RecordingSession {
         let engine = self.engine
         Task { @MainActor in
             await engine?.cancel()
+            discardInProgress()
             end()
         }
     }
@@ -267,7 +283,13 @@ final class RecordingSession {
         isFinishing = true
         tearDownOverlays()
         notifyStopped()
+        discardInProgress()
         end()
+    }
+
+    private func discardInProgress() {
+        if let recovery { RecordingRecovery.abandon(recovery) }
+        recovery = nil
     }
 
     private func checkDiskSpace() {
@@ -298,12 +320,32 @@ final class RecordingSession {
             do {
                 let url = try await engine.finish()
                 if let failure { HUD.show(failure.localizedDescription, symbol: "exclamationmark.triangle.fill", duration: 3) }
-                if kind == .gif { convertToGIF(url) } else { deliver(url, kind: .video, size: pixelSize, scale: outputScale) }
+                if kind == .gif { convertToGIF(url) } else { deliverVideo(url) }
             } catch {
-                Alerts.error("An error occurred with screen recording.", failure ?? error)
-                end()
+                // The writer failed (disk full, stream died …): keep whatever reached the disk.
+                if let recovery, let salvaged = await RecordingRecovery.salvage(recovery, into: AppPaths.recordings) {
+                    self.recovery = nil
+                    Alerts.info("Recording stopped unexpectedly",
+                                info: "\((failure ?? error).localizedDescription) The \(RecordingMath.formatElapsed(salvaged.duration)) recorded before that was kept.")
+                    deliver(salvaged.url, kind: .video, size: salvaged.pixelSize, scale: outputScale)
+                } else {
+                    discardInProgress()
+                    Alerts.error("An error occurred with screen recording.", failure ?? error)
+                    end()
+                }
             }
         }
+    }
+
+    /// Moves the finished file out of the in-progress folder and hands it on.
+    private func deliverVideo(_ url: URL) {
+        var final = url
+        if let recovery {
+            final = RecordingRecovery.complete(recovery, movingTo: AppPaths.recordings.appendingPathComponent(gifName)
+                .appendingPathExtension(url.pathExtension))
+            self.recovery = nil
+        }
+        deliver(final, kind: .video, size: pixelSize, scale: outputScale)
     }
 
     private func convertToGIF(_ video: URL) {
@@ -313,19 +355,26 @@ final class RecordingSession {
         popup.show()
         let areaWidth = area.width
         gifTask = Task { @MainActor [weak self] in
-            defer { try? FileManager.default.removeItem(at: video) }
             do {
                 let size = try await GIFEncoder.convert(video: video, to: output, fps: Defaults[.gifFPS],
                                                         maxWidth: Defaults[.gifMaxWidth]) { p in
                     DispatchQueue.main.async { MainActor.assumeIsolated { self?.gifPopup?.setProgress(p) } }
                 }
                 popup.close()
+                self?.discardInProgress()   // the source video
                 self?.deliver(output, kind: .gif, size: size, scale: max(1, size.width / max(1, areaWidth)))
             } catch {
                 popup.close()
                 try? FileManager.default.removeItem(at: output)
-                if case GIFError.cancelled = error {} else { Alerts.error("An error occurred while processing the video file.", error) }
-                self?.end()
+                guard let self else { return }
+                if case GIFError.cancelled = error {
+                    self.discardInProgress()
+                    self.end()
+                } else {
+                    // Conversion failed: the recording itself is fine, so keep it as a video.
+                    Alerts.info("Couldn't create the GIF", info: "\(error.localizedDescription) The recording was kept as a video instead.")
+                    self.deliverVideo(video)
+                }
             }
         }
     }

@@ -104,6 +104,17 @@ public enum Alerts {
         a.runModal()
     }
 
+    /// Plain informational notice (something happened that the user should know about, nothing to decide).
+    public static func info(_ message: String, info: String = "") {
+        Log.app.notice("\(message, privacy: .public) \(info, privacy: .public)")
+        let a = NSAlert()
+        a.alertStyle = .informational
+        a.messageText = message
+        a.informativeText = info
+        NSApp.activate(ignoringOtherApps: true)
+        a.runModal()
+    }
+
     /// Confirmation with optional "Don't ask again" suppression (reset via Settings → Advanced).
     public static func confirm(_ message: String, info: String = "", confirmTitle: String = "OK",
                                cancelTitle: String = "Cancel", destructive: Bool = false, suppressionID: String? = nil) -> Bool {
@@ -238,4 +249,11 @@ public enum DockIcon {
         NSApp.setActivationPolicy(wanted)
         if wanted == .regular { NSApp.activate(ignoringOtherApps: true) }
     }
+}
+
+/// Carries a non-Sendable reference into a `@Sendable` closure when the caller guarantees safe use
+/// (e.g. thread-safe AVFoundation objects, or objects only touched on one queue).
+public final class UncheckedBox<T>: @unchecked Sendable {
+    public let value: T
+    public init(_ value: T) { self.value = value }
 }

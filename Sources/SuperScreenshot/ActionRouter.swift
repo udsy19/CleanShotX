@@ -5,6 +5,8 @@ import SuperScreenshotCore
 @MainActor
 enum ActionRouter {
     static var isAnyRecording: Bool { Services.recording.isRecording || Services.studio.isRecording }
+    /// Recording, or still writing / converting a stopped recording (Studio counts until its package is written).
+    static var isRecordingBusy: Bool { isAnyRecording || Services.recording.isFinalizing }
 
     static func stopAnyRecording() {
         if Services.studio.isRecording { Services.studio.stopRecording() } else { Services.recording.stopRecording() }

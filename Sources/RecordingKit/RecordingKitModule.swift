@@ -32,6 +32,8 @@ final class RecordingService: RecordingServicing {
         }
     }
 
+    var isFinalizing: Bool { !finishing.isEmpty }
+
     func startRecording(_ kind: RecordingKind, rect: CGRect?) {
         guard case .idle = phase else {
             if case .setup = phase { NSApp.activate(ignoringOtherApps: true) }
