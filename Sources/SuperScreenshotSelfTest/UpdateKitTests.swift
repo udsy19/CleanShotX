@@ -116,19 +116,6 @@ private func throwsError(_ expected: UpdateError, _ body: () throws -> Void) -> 
     do { try body(); return false } catch { return (error as? UpdateError) == expected }
 }
 
-private final class ResultBox<T>: @unchecked Sendable { var result: Result<T, Error>? }
-
-/// Runs async work to completion from the synchronous self-test loop.
-private func blocking<T>(_ body: @escaping @Sendable () async throws -> T) -> Result<T, Error> {
-    let box = ResultBox<T>(), done = DispatchSemaphore(value: 0)
-    Task.detached {
-        do { box.result = .success(try await body()) } catch { box.result = .failure(error) }
-        done.signal()
-    }
-    done.wait()
-    return box.result!
-}
-
 /// Feed → download → SHA-256 → mount → signature → stage → swap, with the real app from `scripts/build-app.sh`.
 private enum UpdateEndToEnd {
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

@@ -2,11 +2,11 @@ import Foundation
 import SuperScreenshotCore
 
 /// A file ready to be sent (possibly a down-scaled temp copy of the capture).
-struct UploadItem: Sendable {
-    var fileURL: URL
-    var fileName: String
-    var contentType: String
-    var size: Int64
+public struct UploadItem: Sendable {
+    public var fileURL: URL
+    public var fileName: String
+    public var contentType: String
+    public var size: Int64
 }
 
 /// Where a file goes, decided before the transfer. For S3 and folders this already yields the link,

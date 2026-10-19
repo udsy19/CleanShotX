@@ -6,10 +6,10 @@ import SuperScreenshotCore
 /// Turns a capture file into an `UploadItem`, down-scaling images wider than the maximum upload width
 /// into a temporary copy ("Set maximum resolution to reduce file size and upload time.").
 public enum UploadPreparation {
-    struct Prepared: Sendable {
-        var item: UploadItem
-        /// Temp directory holding a processed copy; delete after the upload.
-        var temporaryDirectory: URL?
+    public struct Prepared: Sendable {
+        public var item: UploadItem
+        /// Temp directory holding a processed copy; delete after the upload. Never the capture itself.
+        public var temporaryDirectory: URL?
     }
 
     /// Pixel size after limiting the width to `maxWidth` (aspect preserved), or nil when no scaling is needed.
@@ -33,14 +33,17 @@ public enum UploadPreparation {
         }
     }
 
-    static func prepare(fileURL: URL, isImage: Bool, maxWidth: Int) throws -> Prepared {
+    public static func prepare(fileURL: URL, isImage: Bool, maxWidth: Int) throws -> Prepared {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: fileURL.path) else {
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: fileURL.path, isDirectory: &isDir) else {
             throw UploadError.failed("The file “\(fileURL.lastPathComponent)” no longer exists.")
         }
-        var isDir: ObjCBool = false
-        if fm.fileExists(atPath: fileURL.path, isDirectory: &isDir), isDir.boolValue {
+        if isDir.boolValue {
             throw UploadError.failed("Projects can't be uploaded directly. Export the video first, then upload it.")
+        }
+        guard fm.isReadableFile(atPath: fileURL.path) else {
+            throw UploadError.failed("The file “\(fileURL.lastPathComponent)” can't be read. Check its permissions.")
         }
         let name = fileURL.lastPathComponent
         if isImage, let format = imageFormat(forExtension: fileURL.pathExtension),

@@ -3,8 +3,9 @@ import SuperScreenshotCore
 import UploadKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
-/// Pure logic only — nothing here touches the network or the Keychain.
+/// Nothing here touches the network or the Keychain: transfers go through `StubURLProtocol`, files live in temp folders.
 func registerUploadKitTests() {
+    registerUploadKitFaultTests()
     SelfTest.cases.append(("UploadKit.SigV4.signingKey", {
         // AWS docs "Examples of how to derive a signing key for Signature Version 4".
         let key = AWSSigV4.signingKey(secret: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", dateStamp: "20120215",
@@ -160,5 +161,316 @@ func registerUploadKitTests() {
         check(UploadPreparation.contentType(forFileName: "a.png") == "image/png", "png MIME")
         check(UploadPreparation.contentType(forFileName: "a.mp4") == "video/mp4", "mp4 MIME")
         check(UploadPreparation.contentType(forFileName: "a.unknownext") == "application/octet-stream", "fallback MIME")
+    }))
+}
+
+// MARK: - Fault injection
+
+/// Loopback transport: every request is answered from a script instead of the network. The body stream is
+/// drained so streamed uploads can be measured. The last scripted reply repeats.
+final class StubURLProtocol: URLProtocol {
+    enum Reply {
+        case status(Int, headers: [String: String] = [:], body: Data = Data())
+        case fail(URLError.Code)
+    }
+    struct Seen { var method: String; var url: URL; var bodyBytes: Int }
+
+    nonisolated(unsafe) private static var script: [Reply] = []
+    nonisolated(unsafe) private static var seen: [Seen] = []
+    private static let lock = NSLock()
+
+    static func reset(_ replies: [Reply]) { lock.withLock { script = replies; seen = [] } }
+    static var requests: [Seen] { lock.withLock { seen } }
+
+    /// A transport that talks only to this stub, with no pauses between retries unless asked for.
+    static func transport(delays: [TimeInterval] = [0, 0, 0]) -> UploadTransport {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubURLProtocol.self]
+        return UploadTransport(configuration: config, retryDelays: delays)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var bytes = request.httpBody?.count ?? 0
+        if let stream = request.httpBodyStream {
+            stream.open()
+            var buffer = [UInt8](repeating: 0, count: 1 << 16)
+            while stream.hasBytesAvailable {
+                let n = stream.read(&buffer, maxLength: buffer.count)
+                if n <= 0 { break }
+                bytes += n
+            }
+            stream.close()
+        }
+        let reply: Reply = Self.lock.withLock {
+            Self.seen.append(Seen(method: request.httpMethod ?? "", url: request.url!, bodyBytes: bytes))
+            return Self.script.count > 1 ? Self.script.removeFirst() : (Self.script.first ?? .status(200))
+        }
+        switch reply {
+        case .fail(let code):
+            client?.urlProtocol(self, didFailWithError: URLError(code))
+        case .status(let code, let headers, let body):
+            let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: "HTTP/1.1", headerFields: headers)!
+            if (300..<400).contains(code), let location = headers["Location"].flatMap(URL.init(string:)) {
+                client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: location), redirectResponse: response)
+            }
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+private final class ByteCounter: @unchecked Sendable { var value: Int64 = 0 }
+
+private func scratchDirectory(_ tag: String) -> URL {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("superscreenshot-uploadkit-\(tag)-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+private let stubURL = URL(string: "http://stub.local/upload")!
+
+func registerUploadKitFaultTests() {
+    SelfTest.cases.append(("UploadKit.retryPolicy", {
+        func delay(_ e: Error, _ attempt: Int) -> TimeInterval? { UploadRetryPolicy.shouldRetry(error: e, attempt: attempt) }
+        let lost = URLError(.networkConnectionLost)
+        check(delay(lost, 1) == 1 && delay(lost, 2) == 3 && delay(lost, 3) == 9 && delay(lost, 4) == nil, "1s/3s/9s, then give up")
+        for code: URLError.Code in [.timedOut, .dnsLookupFailed, .cannotFindHost, .cannotConnectToHost, .notConnectedToInternet] {
+            check(delay(URLError(code), 1) == 1, "\(code) is transient")
+        }
+        check(delay(URLError(.cancelled), 1) == nil && delay(CancellationError(), 1) == nil, "cancellation never retries")
+        check(delay(URLError(.fileDoesNotExist), 1) == nil && delay(URLError(.badURL), 1) == nil, "local errors never retry")
+        check(delay(UploadHTTPError(statusCode: 503), 1) == 1 && delay(UploadHTTPError(statusCode: 429), 2) == 3
+              && delay(UploadHTTPError(statusCode: 500), 3) == 9, "429/5xx are transient")
+        for status in [302, 400, 401, 403, 404, 413] { check(delay(UploadHTTPError(statusCode: status), 1) == nil, "HTTP \(status) never retries") }
+        check(delay(UploadError.failed("x"), 1) == nil, "local failures never retry")
+        check(delay(lost, 0) == nil, "attempts are numbered from 1")
+        check(UploadRetryPolicy.shouldRetry(error: lost, attempt: 1, delays: [0.5]) == 0.5
+              && UploadRetryPolicy.shouldRetry(error: lost, attempt: 2, delays: [0.5]) == nil, "custom delays bound the attempts")
+    }))
+
+    SelfTest.cases.append(("UploadKit.httpErrorMessages", {
+        let auth = UploadHTTPError(statusCode: 403, detail: "SignatureDoesNotMatch: The request signature we calculated does not match")
+        check(auth.isAuthFailure && !auth.isTransient, "403 is an auth failure")
+        check(auth.localizedDescription.contains("HTTP 403") && auth.localizedDescription.contains("SignatureDoesNotMatch")
+              && auth.localizedDescription.contains("Settings → Upload"), "auth message points at Settings (\(auth.localizedDescription))")
+        let busy = UploadHTTPError(statusCode: 503)
+        check(busy.isTransient && !busy.isAuthFailure && busy.localizedDescription.contains("HTTP 503"), "503 is transient")
+        check(UploadHTTPError(statusCode: 302).localizedDescription.contains("sign-in"), "bare redirect hints at a Wi-Fi portal")
+        check(!UploadHTTPError(statusCode: 404, detail: "gone").localizedDescription.contains("Settings"), "plain 4xx doesn't blame credentials")
+    }))
+
+    SelfTest.cases.append(("UploadKit.transport.retriesTransientThenSucceeds", {
+        StubURLProtocol.reset([.fail(.networkConnectionLost), .fail(.timedOut), .status(503), .status(200, body: Data("ok".utf8))])
+        let transport = StubURLProtocol.transport()
+        let result = blocking { try await transport.send(URLRequest(url: stubURL), body: .data(Data("hi".utf8))) }
+        guard case .success(let r) = result else { check(false, "should succeed after retries: \(result)"); return }
+        check(r.1.statusCode == 200 && r.0 == Data("ok".utf8), "final response returned")
+        let seen = StubURLProtocol.requests
+        check(seen.count == 4 && seen.allSatisfy { $0.bodyBytes == 2 }, "three retries, body resent each time (\(seen.count))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.transport.givesUpAfterRetries", {
+        StubURLProtocol.reset([.status(503, body: Data("busy".utf8))])
+        let transport = StubURLProtocol.transport()
+        let result = blocking { try await transport.send(URLRequest(url: stubURL), body: .none) }
+        guard case .failure(let error) = result, let http = error as? UploadHTTPError else { check(false, "should fail: \(result)"); return }
+        check(http.statusCode == 503 && http.detail == "busy", "last 503 surfaces (\(http))")
+        check(StubURLProtocol.requests.count == 4, "1 attempt + 3 retries, no more (\(StubURLProtocol.requests.count))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.transport.authFailureNoRetry", {
+        StubURLProtocol.reset([.status(401, body: Data("bad token".utf8)), .status(200)])
+        let transport = StubURLProtocol.transport()
+        let result = blocking { try await transport.send(URLRequest(url: stubURL), body: .none) }
+        guard case .failure(let error) = result, let http = error as? UploadHTTPError else { check(false, "should fail: \(result)"); return }
+        check(http.isAuthFailure && http.localizedDescription.contains("bad token"), "401 explained with the server's words")
+        check(StubURLProtocol.requests.count == 1, "no retry storm on 401 (\(StubURLProtocol.requests.count))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.transport.redirectIsNotFollowed", {
+        StubURLProtocol.reset([.status(302, headers: ["Location": "http://portal.local/login"], body: Data("<html>".utf8)),
+                               .status(200, body: Data("<html>Sign in</html>".utf8))])
+        let transport = StubURLProtocol.transport()
+        let result = blocking { try await transport.send(URLRequest(url: stubURL), body: .data(Data("x".utf8))) }
+        guard case .failure(let error) = result, let http = error as? UploadHTTPError else { check(false, "a 302 must not pass as success: \(result)"); return }
+        check(http.statusCode == 302 && StubURLProtocol.requests.count == 1, "Wi-Fi portal redirect reported, not followed (\(StubURLProtocol.requests.count))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.transport.cancelDuringBackoff", {
+        StubURLProtocol.reset([.fail(.networkConnectionLost)])
+        let transport = StubURLProtocol.transport(delays: [30, 30, 30])
+        let started = Date()
+        let result = blocking { () -> Void in
+            let task = Task { _ = try await transport.send(URLRequest(url: stubURL), body: .none) }
+            try await Task.sleep(nanoseconds: 200_000_000)
+            task.cancel()
+            try await task.value
+        }
+        guard case .failure(let error) = result else { check(false, "should be cancelled"); return }
+        check(error is CancellationError, "cancel during back-off → CancellationError (\(error))")
+        check(Date().timeIntervalSince(started) < 5, "cancel cuts the back-off short")
+        check(StubURLProtocol.requests.count == 1, "no further attempt after cancel (\(StubURLProtocol.requests.count))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.transport.streamsFileBody", {
+        let dir = scratchDirectory("stream")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("big.bin")
+        let size = 3 * 1024 * 1024
+        try? Data(count: size).write(to: file)
+        StubURLProtocol.reset([.status(200)])
+        let transport = StubURLProtocol.transport()
+        let result = blocking { try await transport.send(URLRequest(url: stubURL), body: .file(file)) }
+        guard case .success = result else { check(false, "file upload failed: \(result)"); return }
+        check(StubURLProtocol.requests.first?.bodyBytes == size, "whole file streamed from disk (\(StubURLProtocol.requests.first?.bodyBytes ?? -1))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.s3.multipartReadsToEOF", {
+        let dir = scratchDirectory("multipart")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("big.bin")
+        let size = Int(S3Client.multipartThreshold) + 1024
+        try? Data(count: size).write(to: file)
+        let initiate = Data("<InitiateMultipartUploadResult><Bucket>b</Bucket><Key>k</Key><UploadId>up-1</UploadId></InitiateMultipartUploadResult>".utf8)
+        let part = StubURLProtocol.Reply.status(200, headers: ["ETag": "\"e\""])
+        let complete = Data("<CompleteMultipartUploadResult><Location>http://stub.local/b/k/big.bin</Location></CompleteMultipartUploadResult>".utf8)
+        StubURLProtocol.reset([.status(200, body: initiate), part, part, part, .status(200, body: complete)])
+        let transport = StubURLProtocol.transport()
+        let client = S3Client(config: S3Configuration(endpoint: "http://stub.local", bucket: "b", accessKeyID: "a", secretAccessKey: "s"),
+                              transport: transport)
+        // `size` is what preparation measured; the file has grown since (re-saved while queued) and must still go up whole.
+        let result = blocking {
+            try await client.upload(file: file, size: Int64(size - 512), key: "k/big.bin", contentType: "application/octet-stream") { _ in }
+        }
+        guard case .success = result else { check(false, "multipart upload failed: \(result)"); return }
+        let seen = StubURLProtocol.requests
+        check(seen.map(\.method) == ["POST", "PUT", "PUT", "PUT", "POST"], "create, 3 parts, complete (\(seen.map(\.method)))")
+        check(seen.filter { $0.method == "PUT" }.map(\.bodyBytes) == [8 << 20, 8 << 20, 1024], "8 MB parts, remainder last")
+        check(seen.last?.url.query == "uploadId=up-1" && seen.first?.url.query == "uploads", "upload id threaded through")
+    }))
+
+    SelfTest.cases.append(("UploadKit.s3.multipartAbortsOnFailure", {
+        let dir = scratchDirectory("abort")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("big.bin")
+        let size = Int(S3Client.multipartThreshold) + 1024
+        try? Data(count: size).write(to: file)
+        let initiate = Data("<InitiateMultipartUploadResult><UploadId>up-2</UploadId></InitiateMultipartUploadResult>".utf8)
+        let denied = Data("<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>".utf8)
+        StubURLProtocol.reset([.status(200, body: initiate), .status(200, headers: ["ETag": "\"e1\""]), .status(403, body: denied), .status(204)])
+        let transport = StubURLProtocol.transport()
+        let client = S3Client(config: S3Configuration(endpoint: "http://stub.local", bucket: "b", accessKeyID: "a", secretAccessKey: "s"),
+                              transport: transport)
+        let result = blocking { try await client.upload(file: file, size: Int64(size), key: "k/big.bin", contentType: "application/octet-stream") { _ in } }
+        guard case .failure(let error) = result, let http = error as? UploadHTTPError else { check(false, "should fail: \(result)"); return }
+        check(http.statusCode == 403 && http.isAuthFailure && http.detail?.contains("AccessDenied") == true, "S3 error document explained (\(http))")
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while transport.hasBackgroundWork && Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+        check(!transport.hasBackgroundWork, "abort finished")
+        let seen = StubURLProtocol.requests
+        check(seen.map(\.method) == ["POST", "PUT", "PUT", "DELETE"], "create, part 1, refused part 2 (no retry), abort (\(seen.map(\.method)))")
+        check(seen.last?.url.query == "uploadId=up-2", "abort targets the multipart upload (\(seen.last?.url.query ?? ""))")
+    }))
+
+    SelfTest.cases.append(("UploadKit.folder.atomicCopy", {
+        let fm = FileManager.default
+        let base = scratchDirectory("folder")
+        let folder = base.appendingPathComponent("Synced", isDirectory: true)
+        defer {
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+            try? fm.removeItem(at: base)
+        }
+        let source = base.appendingPathComponent("Shot.png")
+        let payload = Data((0..<2_500_000).map { UInt8(truncatingIfNeeded: $0) })
+        try? payload.write(to: source)
+        let cfg = FolderConfiguration(folder: folder, urlPrefix: "")
+        func entries() -> [String] { (try? fm.contentsOfDirectory(atPath: folder.path))?.sorted() ?? [] }
+
+        guard let dest = try? cfg.reserveDestination(fileName: "Shot.png") else { check(false, "reserve"); return }
+        check(dest.lastPathComponent == "Shot.png" && fm.fileExists(atPath: folder.path), "folder created, name reserved")
+        let sent = ByteCounter()
+        do { try cfg.copy(source, to: dest, progress: { sent.value = $0 }) } catch { check(false, "copy failed: \(error)") }
+        check((try? Data(contentsOf: dest)) == payload && sent.value == Int64(payload.count), "copied in full with progress")
+        check(entries() == ["Shot.png"], "no partial file left behind (\(entries()))")
+        check((try? Data(contentsOf: source)) == payload, "source untouched")
+
+        // Re-upload of an edited capture replaces the same file atomically.
+        let edited = Data("edited".utf8)
+        try? edited.write(to: source)
+        do { try cfg.copy(source, to: dest, progress: { _ in }) } catch { check(false, "replace failed: \(error)") }
+        check((try? Data(contentsOf: dest)) == edited && entries() == ["Shot.png"], "existing file replaced, no leftovers")
+        check((try? cfg.reserveDestination(fileName: "Shot.png"))?.lastPathComponent == "Shot 2.png", "taken name gets a suffix")
+
+        // Missing source: clear failure, nothing written.
+        let dest2 = folder.appendingPathComponent("Missing.png")
+        do { try cfg.copy(base.appendingPathComponent("gone.png"), to: dest2, progress: { _ in }); check(false, "missing source must fail") } catch {}
+        check(entries() == ["Shot.png"], "failed copy leaves no partial file (\(entries()))")
+
+        // Cancelled mid-way: partial removed, destination absent.
+        let dest3 = folder.appendingPathComponent("Cancelled.png")
+        let task = Task.detached {
+            while !Task.isCancelled { await Task.yield() } // start the copy only once the cancel request is in
+            try cfg.copy(source, to: dest3, progress: { _ in })
+        }
+        task.cancel()
+        let cancelled = blocking { try await task.value }
+        if case .failure(let error) = cancelled { check(error is CancellationError, "cancelled copy reports cancellation (\(error))") }
+        else { check(false, "cancelled copy must not succeed") }
+        check(entries() == ["Shot.png"], "cancelled copy leaves nothing (\(entries()))")
+
+        // Read-only folder (synced folder without write access, external disk): clear message, nothing written.
+        try? fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+        let dest4 = folder.appendingPathComponent("Denied.png")
+        do {
+            try cfg.copy(source, to: dest4, progress: { _ in })
+            check(false, "read-only folder must fail")
+        } catch {
+            check(error.localizedDescription.contains("can't write") && error.localizedDescription.contains("permissions"),
+                  "read-only folder explained (\(error.localizedDescription))")
+        }
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+        check(entries() == ["Shot.png"], "read-only failure leaves nothing (\(entries()))")
+        check((try? Data(contentsOf: source)) == edited, "source still untouched after failures")
+    }))
+
+    SelfTest.cases.append(("UploadKit.preparation.sourceProblems", {
+        let fm = FileManager.default
+        let base = scratchDirectory("prepare")
+        defer { try? fm.removeItem(at: base) }
+        func failure(_ url: URL) -> String? {
+            do { _ = try UploadPreparation.prepare(fileURL: url, isImage: true, maxWidth: 0); return nil } catch { return error.localizedDescription }
+        }
+        check(failure(base.appendingPathComponent("gone.png"))?.contains("no longer exists") == true, "missing file")
+        let project = base.appendingPathComponent("Clip.superscreenshot", isDirectory: true)
+        try? fm.createDirectory(at: project, withIntermediateDirectories: true)
+        check(failure(project)?.contains("Export the video first") == true, "project folder")
+        let locked = base.appendingPathComponent("locked.png")
+        try? Data([1, 2, 3]).write(to: locked)
+        try? fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        check(failure(locked)?.contains("can't be read") == true, "unreadable file (\(failure(locked) ?? "nil"))")
+        try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: locked.path)
+
+        // A down-scaled copy goes to its own temp folder; the capture itself is never touched.
+        let wide = base.appendingPathComponent("wide.png")
+        guard let ctx = ImageTools.context(width: 3000, height: 100), let image = ctx.makeImage(),
+              (try? ImageTools.write(image, to: wide, format: .png)) != nil, let before = try? Data(contentsOf: wide) else { check(false, "fixture"); return }
+        do {
+            let scaled = try UploadPreparation.prepare(fileURL: wide, isImage: true, maxWidth: 1500)
+            guard let temp = scaled.temporaryDirectory else { check(false, "scaled copy needs a temp dir"); return }
+            check(scaled.item.fileURL.path.hasPrefix(temp.path) && scaled.item.fileURL != wide, "copy lives in the temp dir")
+            check(ImageTools.load(scaled.item.fileURL)?.width == 1500 && scaled.item.size > 0, "scaled to the maximum width")
+            check(!temp.path.hasPrefix(base.path), "temp dir is not next to the capture")
+            try? fm.removeItem(at: temp)
+            let original = try UploadPreparation.prepare(fileURL: wide, isImage: true, maxWidth: 0)
+            check(original.temporaryDirectory == nil && original.item.fileURL == wide && original.item.size == Int64(before.count),
+                  "unscaled upload uses the capture in place")
+        } catch { check(false, "prepare failed: \(error)") }
+        check((try? Data(contentsOf: wide)) == before, "capture untouched")
     }))
 }

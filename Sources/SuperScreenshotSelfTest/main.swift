@@ -14,6 +14,19 @@ enum SelfTest {
     nonisolated(unsafe) static var cases: [(String, () -> Void)] = []
 }
 
+final class ResultBox<T>: @unchecked Sendable { var result: Result<T, Error>? }
+
+/// Runs async work to completion from the synchronous self-test loop.
+func blocking<T>(_ body: @escaping @Sendable () async throws -> T) -> Result<T, Error> {
+    let box = ResultBox<T>(), done = DispatchSemaphore(value: 0)
+    Task.detached {
+        do { box.result = .success(try await body()) } catch { box.result = .failure(error) }
+        done.signal()
+    }
+    done.wait()
+    return box.result!
+}
+
 // Core
 SelfTest.cases.append(("FileNameTemplate", {
     var c = DateComponents(); c.year = 2026; c.month = 3; c.day = 7; c.hour = 14; c.minute = 5; c.second = 9

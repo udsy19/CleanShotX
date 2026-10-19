@@ -18,7 +18,14 @@ public enum UploadKitModule {
         let stop = Alerts.confirm("The upload is still in progress. Do you want to cancel it?",
                                   info: "The upload progress will be lost.",
                                   confirmTitle: "Cancel Upload", cancelTitle: "Keep Uploading", destructive: true)
-        if stop { UploadService.shared.cancelAll() }
-        return stop
+        guard stop else { return false }
+        UploadService.shared.cancelAll()
+        // Give the cancelled transfer a moment to wind down and tell the storage to discard its partial multipart
+        // upload (the request is lost once the process exits). Bounded, so quitting never hangs on a dead network.
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while (UploadService.shared.isUploading || UploadTransport.shared.hasBackgroundWork) && Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
+        }
+        return true
     }
 }

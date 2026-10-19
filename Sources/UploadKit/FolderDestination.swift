@@ -2,9 +2,14 @@ import Foundation
 import SuperScreenshotCore
 
 /// "Upload" by copying into a (typically synced) folder; the link is built from a URL prefix.
-struct FolderConfiguration: Sendable {
-    var folder: URL
-    var urlPrefix: String
+public struct FolderConfiguration: Sendable {
+    public var folder: URL
+    public var urlPrefix: String
+
+    public init(folder: URL, urlPrefix: String) {
+        self.folder = folder
+        self.urlPrefix = urlPrefix
+    }
 
     static func current() throws -> FolderConfiguration {
         let path = Defaults[.uploadFolderPath].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -19,14 +24,14 @@ struct FolderConfiguration: Sendable {
     }
 
     /// Unused destination for `fileName` inside the folder.
-    func reserveDestination(fileName: String) throws -> URL {
+    public func reserveDestination(fileName: String) throws -> URL {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return AppPaths.uniqueURL(folder.appendingPathComponent(fileName))
     }
 
-    /// Chunked copy with progress into a hidden partial file, then an atomic move so sync clients
-    /// never pick up a half-written file.
-    func copy(_ source: URL, to destination: URL, progress: @Sendable (Int64) -> Void) throws {
+    /// Chunked copy with progress into a hidden partial file, then an atomic move so sync clients never pick up
+    /// a half-written file. A failed or cancelled copy removes the partial file; the source is never touched.
+    public func copy(_ source: URL, to destination: URL, progress: @Sendable (Int64) -> Void) throws {
         let fm = FileManager.default
         let partial = destination.deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString.prefix(8)).partial")

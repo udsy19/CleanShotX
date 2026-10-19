@@ -85,7 +85,7 @@ public final class UploadService: UploadServicing {
     private func run(_ job: UploadJob) async {
         let media = job.media
         var tempDir: URL?
-        var copiedAtStart = false
+        var copiedAtStart: URL?
         let result: Result<URL, Error>
         do {
             let destination = try UploadDestination.current()
@@ -101,7 +101,7 @@ public final class UploadService: UploadServicing {
             let reservation = try destination.reserve(prepared.item, reusing: previous)
             if Defaults[.uploadCopyLinkWhenStarts], let link = reservation.link {
                 copyLink(link)
-                copiedAtStart = true
+                copiedAtStart = link
             }
             let jobID = job.id
             let link = try await destination.transfer(prepared.item, to: reservation) { [weak self] sent in
@@ -111,31 +111,65 @@ public final class UploadService: UploadServicing {
             reservations[media.id] = reservation
             result = .success(link)
         } catch {
-            result = .failure(job.isCancelled ? CancellationError() : error)
+            if job.isCancelled || error is CancellationError {
+                result = .failure(CancellationError())
+            } else if !(error is UploadError), !(error is UploadHTTPError), !FileManager.default.fileExists(atPath: media.url.path) {
+                // The transfer streams straight from the capture; a vanished source shows up as an opaque read error.
+                result = .failure(UploadError.failed("The file “\(media.url.lastPathComponent)” was moved or deleted before the upload finished."))
+            } else {
+                result = .failure(error)
+            }
         }
+        // Only the down-scaled temp copy is removed; the capture itself stays where it is whatever happened.
         if let tempDir { try? FileManager.default.removeItem(at: tempDir) }
-        finish(job, result, linkAlreadyCopied: copiedAtStart)
+        finish(job, result, copiedAtStart: copiedAtStart)
     }
 
-    private func finish(_ job: UploadJob, _ result: Result<URL, Error>, linkAlreadyCopied: Bool) {
+    private func finish(_ job: UploadJob, _ result: Result<URL, Error>, copiedAtStart: URL?) {
         let media = job.media
         switch result {
         case .success(let url):
             Log.upload.info("Uploaded \(media.url.lastPathComponent, privacy: .public)")
             media.uploadedURL = url
             media.notifyChanged()
-            if !linkAlreadyCopied { copyLink(url) }
+            if copiedAtStart == nil { copyLink(url) }
             record(UploadRecord(fileName: media.url.lastPathComponent, url: url))
             Sound.play(.uploadDone)
         case .failure(let error):
-            if error is CancellationError || job.isCancelled {
+            if error is CancellationError {
                 Log.upload.info("Upload of \(media.url.lastPathComponent, privacy: .public) cancelled")
             } else {
+                Log.upload.error("Upload of \(media.url.lastPathComponent, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                // A link copied at the start points at nothing unless it re-used the link of an earlier upload.
+                let deadLink = copiedAtStart != nil && copiedAtStart != media.uploadedURL ? copiedAtStart : nil
                 // Async so a modal alert doesn't hold up the next queued upload.
-                DispatchQueue.main.async { Alerts.error("There was an error while uploading your file.", error) }
+                DispatchQueue.main.async { [weak self] in self?.presentFailure(error, for: media, deadLink: deadLink) }
             }
         }
         job.completionHandlers.forEach { $0(result) }
+    }
+
+    /// Failure alert: explains what went wrong, undoes a copied link that won't work, and offers the way out —
+    /// "Try Again" (one more attempt, after the automatic retries), or Settings when the credentials were refused.
+    private func presentFailure(_ error: Error, for media: CapturedMedia, deadLink: URL?) {
+        var info = error.localizedDescription
+        if let deadLink {
+            if NSPasteboard.general.string(forType: .string) == deadLink.absoluteString {
+                NSPasteboard.general.clearContents()
+                info += "\n\nThe link copied when the upload started won't work, so it was removed from the clipboard."
+            } else {
+                info += "\n\nThe link copied when the upload started won't work."
+            }
+        }
+        let authFailure = (error as? UploadHTTPError)?.isAuthFailure == true
+        let confirmed = Alerts.confirm("There was an error while uploading your file.", info: info,
+                                       confirmTitle: authFailure ? "Open Settings" : "Try Again", cancelTitle: "Close")
+        guard confirmed else { return }
+        if authFailure {
+            Services.preferences?.show(pane: "upload")
+        } else {
+            upload(media, progress: nil, completion: nil)
+        }
     }
 
     private func copyLink(_ url: URL) {

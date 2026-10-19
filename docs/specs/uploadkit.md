@@ -57,17 +57,17 @@ stays the same.
 | CleanShot | Super Screenshot |
 |---|---|
 | `UploadQueueController` + `UploadJob` | `UploadQueueController` (serial, `@MainActor`) + `UploadJob` (handlers, bytes, cancel) |
-| Alamofire session + retrying session | `UploadTransport`: one `URLSession`, per-task `URLSessionTaskDelegate` for byte progress, 2 retries with back-off on transient `URLError`s and HTTP 429/5xx |
+| Alamofire session + retrying session | `UploadTransport`: one `URLSession`, per-task `URLSessionTaskDelegate` for byte progress; `UploadRetryPolicy` retries transient failures (network `URLError`s, HTTP 429/5xx) up to 3 times after 1 s / 3 s / 9 s — never 4xx, never cancellation. Non-2xx → `UploadHTTPError` (status + server detail; 401/403 = credentials). Only 307/308 redirects are followed, so a Wi-Fi sign-in page or S3's "wrong region" 301 surfaces as an error instead of a GET of a web page passing as success. |
 | optimize / max resolution, temp location | images wider than `uploadMaxImageWidth` are re-encoded at that width into a temp copy (same format); videos/GIFs uploaded as-is; temp removed after the job |
 | init upload → link known up front | S3: object key chosen locally (`<s3PathPrefix><10-char id>/<sanitized name>`); folder: unique file name chosen before copying. Both give the link before the transfer. Custom HTTP only knows the link from the response. |
-| `S3MultiPartUpload` (pre-signed parts) | Direct S3 API with AWS Signature V4 (header auth): files > 16 MB use CreateMultipartUpload → UploadPart (8 MB, hashed payload) → CompleteMultipartUpload (XML, `<Error>` in 200 bodies detected); AbortMultipartUpload on failure or cancel. Smaller files: single `PUT` (streamed from disk, `UNSIGNED-PAYLOAD` over HTTPS, hashed over HTTP). |
+| `S3MultiPartUpload` (pre-signed parts) | Direct S3 API with AWS Signature V4 (header auth): files > 16 MB use CreateMultipartUpload → UploadPart (8 MB, hashed payload, read to EOF so a capture re-saved while queued still goes up whole) → CompleteMultipartUpload (XML, `<Error>` and HTML in 200 bodies detected); AbortMultipartUpload in the background on failure or cancel (so no orphan parts are billed; a bucket lifecycle rule for incomplete uploads is the backstop if the app dies first). Smaller files: single `PUT` (streamed from disk, `UNSIGNED-PAYLOAD` over HTTPS, hashed over HTTP). |
 | `LegacyChunkedUpload` to own server | Custom HTTP: `multipart/form-data` POST (body streamed from a temp file) with user headers; link from a plain-text body or a JSON key path (`data.link`, `files[0].url`). |
 | — | Synced folder: chunked copy with progress to a hidden partial file, then atomic move; link = `uploadFolderURLPrefix` + percent-encoded name, or a `file://` URL. |
 | `copyLinkBeforeUpload` | `uploadCopyLinkWhenStarts`: copy + HUD "Link has been copied" at start when the link is known (S3/folder), else on completion |
 | `StatusMenuCloudProgressIndicator` | `StatusBar.setProgress(fraction)` with the aggregate of the current batch (bytes), `nil` when idle |
 | `CloudMedia` list in menu | `recentUploads` (`UploadRecord`, newest first, last 50 persisted in `upload.recentUploads`) |
 | "Update uploaded screenshot" | re-uploading the same `CapturedMedia` in a session reuses its S3 key / folder file, so the link stays stable |
-| cancel prompt | `UploadKitModule.confirmTerminationIfUploading()` and `cancelAll()` |
+| cancel prompt | `UploadKitModule.confirmTerminationIfUploading()` and `cancelAll()`; after confirming, quitting waits up to 2 s for the cancelled transfer to wind down and its multipart abort to go out |
 
 ### S3 addressing
 
@@ -82,9 +82,19 @@ stays the same.
 ### Success / failure
 
 Success: `media.uploadedURL`, `media.notifyChanged()`, record appended to recents, `Sound.play(.uploadDone)`,
-link copied (unless already copied at start). Failure: `Alerts.error("There was an error while uploading
-your file.", error)`; cancellation is silent. Not configured: alert offering "Open Settings" →
-`Services.preferences.show(pane: "upload")`.
+link copied (unless already copied at start). Failure: "There was an error while uploading your file." with the
+reason and a way out — "Try Again" re-queues the capture; a credentials failure (401/403) offers "Open Settings"
+instead. If the link was copied when the upload started and the transfer then failed, the alert says the link
+won't work and removes it from the clipboard when it is still there (a re-upload that re-used an earlier link
+keeps it, since the earlier file is still in place). The queue moves on to the next job while the alert is up;
+cancellation is silent. Not configured: alert offering "Open Settings" → `Services.preferences.show(pane: "upload")`.
+
+The capture is never deleted or moved by UploadKit: preparation only removes its own temp folder, a failed or
+cancelled folder copy removes its partial file, and a source that vanishes mid-transfer is reported as
+"moved or deleted before the upload finished". A capture re-saved by Annotate during an upload is written
+atomically, so an open transfer keeps streaming the old version (consistent bytes); re-uploading afterwards
+refreshes the link. System sleep drops the socket; the transfer fails with a network error after wake and the
+retry policy picks it up.
 
 `testConnection` uploads a generated 16×16 PNG named `super-screenshot-test.png` through the same destination,
 returns its link, then deletes it (S3 `DELETE`, folder removal; custom HTTP has no delete).
