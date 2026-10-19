@@ -341,7 +341,12 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate, M
                 let scale = max(1, self.media.scale * CGFloat(o.scale))
                 if replacing {
                     self.player.replaceCurrentItem(with: nil)
-                    _ = try FileManager.default.replaceItemAt(source, withItemAt: target)
+                    if FileManager.default.fileExists(atPath: source.path) {
+                        _ = try FileManager.default.replaceItemAt(source, withItemAt: target)
+                    } else {
+                        // The original was moved or deleted while the editor was open: the export becomes the file.
+                        try FileManager.default.moveItem(at: target, to: source)
+                    }
                     self.media.pixelSize = size
                     self.media.scale = scale
                     self.media.notifyChanged()
@@ -358,8 +363,10 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate, M
                 then?()
             } catch {
                 try? FileManager.default.removeItem(at: target)
-                self?.endProgress()
-                if replacing, self?.player.currentItem == nil { self?.loadMedia() }
+                guard let self else { return }
+                self.endProgress()
+                // A failed replace leaves the player empty; reload the (untouched) original unless the window is gone.
+                if replacing, self.player.currentItem == nil, self.window?.isVisible == true { self.loadMedia() }
                 if case VideoExportError.cancelled = error { return }
                 Alerts.error("The video cannot be trimmed. Please try again.", error)
             }
@@ -413,7 +420,14 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate, M
     // MARK: NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if exportTask != nil { NSSound.beep(); return false }
+        if exportTask != nil {
+            // The original is only replaced once an export completes, so stopping here loses nothing on disk.
+            guard Alerts.confirm("The export is still in progress. Do you want to cancel it?",
+                                 info: "The original video is not changed until the export finishes.",
+                                 confirmTitle: "Cancel Export", cancelTitle: "Continue") else { return false }
+            exportTask?.cancel()
+            return true
+        }
         guard hasPendingEdits else { return true }
         let a = NSAlert()
         a.messageText = "Do you want to save the changes to this video?"

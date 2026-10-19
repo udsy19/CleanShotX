@@ -1,26 +1,33 @@
 import AVFoundation
 import SuperScreenshotCore
 
-struct VideoExportOptions {
-    var timeRange: CMTimeRange
-    var includeAudio: Bool
+public struct VideoExportOptions {
+    public var timeRange: CMTimeRange
+    public var includeAudio: Bool
     /// Audio gain, 0…1.
-    var volume: Float
-    var quality: VideoQuality
+    public var volume: Float
+    public var quality: VideoQuality
     /// Resolution factor, 0 < scale ≤ 1.
-    var scale: Double
-    var fileType: AVFileType
+    public var scale: Double
+    public var fileType: AVFileType
+
+    public init(timeRange: CMTimeRange, includeAudio: Bool, volume: Float, quality: VideoQuality, scale: Double, fileType: AVFileType) {
+        self.timeRange = timeRange; self.includeAudio = includeAudio; self.volume = volume
+        self.quality = quality; self.scale = scale; self.fileType = fileType
+    }
 
     var changesVolume: Bool { includeAudio && abs(volume - 1) > 0.001 }
     /// Original quality at full size with untouched audio needs no re-encode.
     var isPassthrough: Bool { quality == .original && scale >= 0.999 && !changesVolume }
 }
 
-enum VideoExportError: LocalizedError {
-    case noVideo, failed(String), cancelled
-    var errorDescription: String? {
+public enum VideoExportError: LocalizedError {
+    case noVideo, missingSource, destinationIsFolder(String), failed(String), cancelled
+    public var errorDescription: String? {
         switch self {
         case .noVideo: "The source file does not contain a video track."
+        case .missingSource: "The video file could not be found. It may have been moved or deleted."
+        case .destinationIsFolder(let name): "Cannot save to “\(name)”: a folder with that name is in the way."
         case .failed(let m): m.isEmpty ? "Failed to prepare the video composition for export." : m
         case .cancelled: "Export was canceled."
         }
@@ -28,8 +35,12 @@ enum VideoExportError: LocalizedError {
 }
 
 /// Trims / strips audio / re-encodes a video file.
-enum VideoExporter {
-    static func fileType(for url: URL) -> AVFileType { url.pathExtension.lowercased() == "mov" ? .mov : .mp4 }
+///
+/// The source is never modified while an export runs: exporting onto the source's own path writes to a
+/// temporary file and swaps it in only once the export is complete. Failure or cancellation removes the
+/// partial output and leaves the source untouched.
+public enum VideoExporter {
+    public static func fileType(for url: URL) -> AVFileType { url.pathExtension.lowercased() == "mov" ? .mov : .mp4 }
 
     /// Builds a composition containing `range` of the asset's video (and, unless removed, audio) tracks.
     static func composition(of asset: AVAsset, range: CMTimeRange, includeAudio: Bool) async throws -> AVMutableComposition {
@@ -49,21 +60,47 @@ enum VideoExporter {
     }
 
     /// Exports and returns the output's pixel size.
-    static func export(source url: URL, options: VideoExportOptions, to output: URL,
-                       progress: @escaping @Sendable (Double) -> Void) async throws -> CGSize {
+    public static func export(source url: URL, options: VideoExportOptions, to output: URL,
+                              progress: @escaping @Sendable (Double) -> Void) async throws -> CGSize {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { throw VideoExportError.missingSource }
+        // An existing file at `output` is replaced; a folder never is (it would be deleted with its contents).
+        var isFolder: ObjCBool = false
+        if fm.fileExists(atPath: output.path, isDirectory: &isFolder), isFolder.boolValue {
+            throw VideoExportError.destinationIsFolder(output.lastPathComponent)
+        }
         let asset = AVURLAsset(url: url)
         let comp = try await composition(of: asset, range: options.timeRange, includeAudio: options.includeAudio)
-        try? FileManager.default.removeItem(at: output)
-        if options.isPassthrough {
-            try await passthrough(comp, to: output, fileType: options.fileType, progress: progress)
-        } else {
-            try await Transcoder(asset: comp, options: options, output: output, progress: progress).run()
+        let overwritesSource = isSameFile(url, output)
+        let target = overwritesSource
+            ? AppPaths.temporary.appendingPathComponent(UUID().uuidString).appendingPathExtension(output.pathExtension)
+            : output
+        do {
+            try? fm.removeItem(at: target)
+            if options.isPassthrough {
+                try await passthrough(comp, to: target, fileType: options.fileType, progress: progress)
+            } else {
+                try await Transcoder(asset: comp, options: options, output: target, progress: progress).run()
+            }
+            let out = AVURLAsset(url: target)
+            guard let track = try await out.loadTracks(withMediaType: .video).first else { throw VideoExportError.noVideo }
+            let (size, t) = try await track.load(.naturalSize, .preferredTransform)
+            if overwritesSource { _ = try fm.replaceItemAt(url, withItemAt: target) }
+            let r = size.applying(t)
+            return CGSize(width: abs(r.width), height: abs(r.height))
+        } catch {
+            // `target` is never the source, so a failed or cancelled export only ever removes its own partial file.
+            try? fm.removeItem(at: target)
+            throw error
         }
-        let out = AVURLAsset(url: output)
-        guard let track = try await out.loadTracks(withMediaType: .video).first else { throw VideoExportError.noVideo }
-        let (size, t) = try await track.load(.naturalSize, .preferredTransform)
-        let r = size.applying(t)
-        return CGSize(width: abs(r.width), height: abs(r.height))
+    }
+
+    /// True when both URLs name the same file (also through symlinks or differently spelled paths).
+    public static func isSameFile(_ a: URL, _ b: URL) -> Bool {
+        if a.standardizedFileURL.resolvingSymlinksInPath().path == b.standardizedFileURL.resolvingSymlinksInPath().path { return true }
+        guard let ida = try? a.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier,
+              let idb = try? b.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { return false }
+        return ida.isEqual(idb)
     }
 
     private static func passthrough(_ asset: AVAsset, to output: URL, fileType: AVFileType,
@@ -74,25 +111,21 @@ enum VideoExporter {
         session.outputURL = output
         session.outputFileType = fileType
         session.shouldOptimizeForNetworkUse = fileType == .mp4
-        let box = UncheckedBox(session)
+        let gate = PassthroughGate(session)
         let poll = Task {
             while !Task.isCancelled {
-                progress(Double(box.value.progress))
+                progress(Double(gate.progress))
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
         defer { poll.cancel() }
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                box.value.exportAsynchronously {
-                    switch box.value.status {
-                    case .completed: cont.resume()
-                    case .cancelled: cont.resume(throwing: VideoExportError.cancelled)
-                    default: cont.resume(throwing: box.value.error ?? VideoExportError.failed(""))
-                    }
-                }
+                // A task cancelled before this point (e.g. the editor closed while the composition was
+                // loading) must not start the session: cancelling an unstarted export session throws.
+                guard gate.start({ cont.resume(with: gate.outcome) }) else { cont.resume(throwing: VideoExportError.cancelled); return }
             }
-        } onCancel: { box.value.cancelExport() }
+        } onCancel: { gate.cancel() }
         progress(1)
     }
 
@@ -109,6 +142,41 @@ enum VideoExporter {
         // Re-encoding mixes every audio track into one stereo track.
         let audio = options.includeAudio && audioTracks > 0 ? [RecordingMath.audioBitrate(mono: false)] : []
         return RecordingMath.estimatedFileSize(videoBitrate: video, audioBitrates: audio, duration: duration)
+    }
+}
+
+/// Orders `exportAsynchronously` and `cancelExport` so the session is only cancelled once it has started,
+/// and never started once cancelled.
+private final class PassthroughGate: @unchecked Sendable {
+    private let session: AVAssetExportSession
+    private let lock = NSLock()
+    private var started = false
+    private var cancelled = false
+    init(_ session: AVAssetExportSession) { self.session = session }
+
+    /// Starts the export unless it was already cancelled; returns false in that case.
+    func start(_ handler: @escaping @Sendable () -> Void) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !cancelled else { return false }
+        started = true
+        session.exportAsynchronously(completionHandler: handler)
+        return true
+    }
+
+    func cancel() {
+        lock.lock(); cancelled = true; let running = started; lock.unlock()
+        if running { session.cancelExport() }
+    }
+
+    var progress: Float { session.progress }
+
+    /// The session's result once its completion handler has run.
+    var outcome: Result<Void, Error> {
+        switch session.status {
+        case .completed: .success(())
+        case .cancelled: .failure(VideoExportError.cancelled)
+        default: .failure(session.error ?? VideoExportError.failed(""))
+        }
     }
 }
 
@@ -215,7 +283,6 @@ private final class Transcoder: @unchecked Sendable {
         }
         if Task.isCancelled || reader.status == .cancelled {
             writer.cancelWriting()
-            try? FileManager.default.removeItem(at: output)
             throw VideoExportError.cancelled
         }
         if reader.status == .failed {
@@ -228,18 +295,22 @@ private final class Transcoder: @unchecked Sendable {
     }
 
     /// Feeds pair `i` while its input accepts data. Returns true exactly once, when the pair finishes.
+    /// Each sample is appended inside its own autorelease pool so a long export never piles up frames.
     private func pump(_ i: Int) -> Bool {
         guard !finished[i], let reader else { return false }
         let (out, input, isVideo) = pairs[i]
         while input.isReadyForMoreMediaData {
-            if reader.status == .reading, let sb = out.copyNextSampleBuffer() {
-                if isVideo, duration > 0 { progress(min(1, sb.presentationTimeStamp.seconds / duration)) }
-                if !input.append(sb) { reader.cancelReading() }
-            } else {
+            let done: Bool = autoreleasepool {
+                if reader.status == .reading, let sb = out.copyNextSampleBuffer() {
+                    if isVideo, duration > 0 { progress(min(1, sb.presentationTimeStamp.seconds / duration)) }
+                    if !input.append(sb) { reader.cancelReading() }
+                    return false
+                }
                 input.markAsFinished()
                 finished[i] = true
                 return true
             }
+            if done { return true }
         }
         return false
     }

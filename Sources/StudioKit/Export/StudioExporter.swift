@@ -1,14 +1,15 @@
 import AVFoundation
 import CoreImage
-import ImageIO
-import UniformTypeIdentifiers
 import SuperScreenshotCore
 
-/// Renders a project to MP4 (AVAssetReader → custom compositor → AVAssetWriter) or GIF (FLVideoEncoder).
-final class StudioExporter: @unchecked Sendable {
-    enum ExportError: LocalizedError {
+/// Renders a project to MP4 (AVAssetReader → custom compositor → AVAssetWriter) or GIF (streamed frame by frame).
+///
+/// Output is written to a temporary file and moved to `outputURL` only when the export completes, so a
+/// cancelled, failed or crashed export never leaves a partial file at the destination.
+public final class StudioExporter: @unchecked Sendable {
+    public enum ExportError: LocalizedError {
         case cancelled, failed(String)
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .cancelled: "Export was canceled."
             case .failed(let m): m
@@ -16,8 +17,8 @@ final class StudioExporter: @unchecked Sendable {
         }
     }
 
-    let outputURL: URL
-    let outputSize: CGSize
+    public let outputURL: URL
+    public let outputSize: CGSize
     private let built: BuiltComposition
     private let settings: ExportSettings
     private let lock = NSLock()
@@ -38,26 +39,64 @@ final class StudioExporter: @unchecked Sendable {
         built = try CompositionBuilder.build(project: project, media: media, box: box, renderSize: outputSize, fps: settings.effectiveFPS)
     }
 
-    func cancel() {
+    /// Prepares an export of the project saved in `package` (the editor passes its live state to `init`).
+    @MainActor
+    public static func load(package: StudioPackage, settings: ExportSettings, outputURL: URL) async throws -> StudioExporter {
+        let (project, _) = try package.readProject()
+        let media = try await ProjectMedia.load(package: package, recording: project.recording)
+        return try StudioExporter(project: project, events: package.readEvents(), package: package, media: media,
+                                  settings: settings, outputURL: outputURL)
+    }
+
+    public func cancel() {
         lock.lock(); _cancelled = true; lock.unlock()
         generator?.cancelAllCGImageGeneration()
         reader?.cancelReading()
     }
 
     /// Runs the export. `progress` (0…1) and `completion` are called on the main queue.
-    func start(progress: @escaping @Sendable (Double) -> Void, completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
-        try? FileManager.default.removeItem(at: outputURL)
-        let done: @Sendable (Result<URL, Error>) -> Void = { [outputURL] r in
-            if case .failure = r { try? FileManager.default.removeItem(at: outputURL) }
-            DispatchQueue.main.async { completion(r) }
+    public func start(progress: @escaping @Sendable (Double) -> Void, completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
+        let fm = FileManager.default
+        let finish: @Sendable (Result<URL, Error>) -> Void = { r in DispatchQueue.main.async { completion(r) } }
+        // Fail before rendering anything when the destination can't take the file.
+        let folder = outputURL.deletingLastPathComponent()
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: outputURL.path, isDirectory: &isDir), isDir.boolValue {
+            finish(.failure(ExportError.failed("Cannot save to “\(outputURL.lastPathComponent)”: a folder with that name is in the way.")))
+            return
+        }
+        guard fm.isWritableFile(atPath: folder.path) else {
+            finish(.failure(ExportError.failed("Cannot save to the folder “\(folder.lastPathComponent)”. You don't have permission to write there.")))
+            return
+        }
+        let temp = AppPaths.temporary.appendingPathComponent(UUID().uuidString).appendingPathExtension(outputURL.pathExtension)
+        let done: @Sendable (Result<Void, Error>) -> Void = { [outputURL] r in
+            let fm = FileManager.default
+            switch r {
+            case .success:
+                do {
+                    if fm.fileExists(atPath: outputURL.path) {
+                        _ = try fm.replaceItemAt(outputURL, withItemAt: temp)
+                    } else {
+                        try fm.moveItem(at: temp, to: outputURL)
+                    }
+                    finish(.success(outputURL))
+                } catch {
+                    try? fm.removeItem(at: temp)
+                    finish(.failure(error))
+                }
+            case .failure(let error):
+                try? fm.removeItem(at: temp)
+                finish(.failure(error))
+            }
         }
         let report: @Sendable (Double) -> Void = { p in DispatchQueue.main.async { progress(min(max(p, 0), 1)) } }
-        if settings.format == .gif { exportGIF(progress: report, completion: done) } else { exportVideo(progress: report, completion: done) }
+        if settings.format == .gif { exportGIF(to: temp, progress: report, completion: done) } else { exportVideo(to: temp, progress: report, completion: done) }
     }
 
     // MARK: MP4
 
-    private func exportVideo(progress: @escaping @Sendable (Double) -> Void, completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
+    private func exportVideo(to output: URL, progress: @escaping @Sendable (Double) -> Void, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         let comp = built.composition
         let duration = built.duration.seconds
         do {
@@ -83,7 +122,7 @@ final class StudioExporter: @unchecked Sendable {
                 if reader.canAdd(o) { reader.add(o); aOut = o }
             }
 
-            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            let writer = try AVAssetWriter(outputURL: output, fileType: .mp4)
             writer.shouldOptimizeForNetworkUse = true
             let format = settings.format
             let fps = settings.effectiveFPS
@@ -119,15 +158,20 @@ final class StudioExporter: @unchecked Sendable {
             guard writer.startWriting() else { throw ExportError.failed(writer.error?.localizedDescription ?? "Could not create the video writer.") }
             writer.startSession(atSourceTime: .zero)
 
+            // Each sample is appended inside its own autorelease pool so frames never pile up during a long export.
             let group = DispatchGroup()
             group.enter()
             let vQueue = DispatchQueue(label: "superscreenshot.studio.export.video")
             vIn.requestMediaDataWhenReady(on: vQueue) { [self] in
                 while vIn.isReadyForMoreMediaData {
-                    if cancelled { vIn.markAsFinished(); group.leave(); return }
-                    guard let sb = vOut.copyNextSampleBuffer() else { vIn.markAsFinished(); group.leave(); return }
-                    if !vIn.append(sb) { reader.cancelReading(); vIn.markAsFinished(); group.leave(); return }
-                    progress(CMSampleBufferGetPresentationTimeStamp(sb).seconds / max(duration, 0.001))
+                    let finished: Bool = autoreleasepool {
+                        if cancelled { return true }
+                        guard let sb = vOut.copyNextSampleBuffer() else { return true }
+                        if !vIn.append(sb) { reader.cancelReading(); return true }
+                        progress(CMSampleBufferGetPresentationTimeStamp(sb).seconds / max(duration, 0.001))
+                        return false
+                    }
+                    if finished { vIn.markAsFinished(); group.leave(); return }
                 }
             }
             if let aIn, let aOut {
@@ -135,9 +179,12 @@ final class StudioExporter: @unchecked Sendable {
                 let aQueue = DispatchQueue(label: "superscreenshot.studio.export.audio")
                 aIn.requestMediaDataWhenReady(on: aQueue) { [self] in
                     while aIn.isReadyForMoreMediaData {
-                        if cancelled { aIn.markAsFinished(); group.leave(); return }
-                        guard let sb = aOut.copyNextSampleBuffer() else { aIn.markAsFinished(); group.leave(); return }
-                        if !aIn.append(sb) { aIn.markAsFinished(); group.leave(); return }
+                        let finished: Bool = autoreleasepool {
+                            if cancelled { return true }
+                            guard let sb = aOut.copyNextSampleBuffer() else { return true }
+                            return !aIn.append(sb)
+                        }
+                        if finished { aIn.markAsFinished(); group.leave(); return }
                     }
                 }
             }
@@ -151,8 +198,8 @@ final class StudioExporter: @unchecked Sendable {
                     let msg = (writer.error ?? reader.error)?.localizedDescription ?? "An error occurred while processing the video file."
                     completion(.failure(ExportError.failed(msg))); return
                 }
-                writer.finishWriting { [outputURL] in
-                    if writer.status == .completed { progress(1); completion(.success(outputURL)) }
+                writer.finishWriting {
+                    if writer.status == .completed { progress(1); completion(.success(())) }
                     else { completion(.failure(ExportError.failed(writer.error?.localizedDescription ?? "Failed to write the video."))) }
                 }
             }
@@ -163,38 +210,46 @@ final class StudioExporter: @unchecked Sendable {
 
     // MARK: GIF
 
-    private func exportGIF(progress: @escaping @Sendable (Double) -> Void, completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
+    /// Frames arrive one at a time, in request order, and go straight into a `StreamingGIFWriter`, so a long
+    /// project exports with flat memory (a multi-frame `CGImageDestination` would hold every frame until the end).
+    private func exportGIF(to output: URL, progress: @escaping @Sendable (Double) -> Void, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         let duration = built.duration.seconds
         let fps = Double(max(1, settings.gifFPS))
         let count = max(1, Int(duration * fps))
         let times = (0..<count).map { NSValue(time: CMTime(seconds: Double($0) / fps, preferredTimescale: CompositionBuilder.timescale)) }
-        guard let dest = CGImageDestinationCreateWithURL(outputURL as CFURL, UTType.gif.identifier as CFString, count, nil) else {
-            completion(.failure(ExportError.failed("Could not create the GIF file."))); return
-        }
-        CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-        let frameProps = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / fps,
-                                                          kCGImagePropertyGIFUnclampedDelayTime: 1 / fps]] as CFDictionary
+        let writer: StreamingGIFWriter
+        do { writer = try StreamingGIFWriter(url: output) } catch { completion(.failure(error)); return }
         let gen = AVAssetImageGenerator(asset: built.composition)
         gen.videoComposition = built.videoComposition
         gen.requestedTimeToleranceBefore = .zero
         gen.requestedTimeToleranceAfter = .zero
         generator = gen
         let state = GIFState(total: count)
-        // Results arrive in request order on a background queue.
         gen.generateCGImagesAsynchronously(forTimes: times) { [self] _, image, _, result, error in
-            let finished: Bool = state.withLock {
-                guard !$0.done else { return false }
-                if cancelled || result == .cancelled { $0.done = true; completion(.failure(ExportError.cancelled)); return false }
-                if let image { CGImageDestinationAddImage(dest, image, frameProps); $0.added += 1 }
-                else if result == .failed, $0.added == 0, $0.handled == 0, let error { Log.recording.error("GIF frame failed: \(error.localizedDescription, privacy: .public)") }
-                $0.handled += 1
-                progress(Double($0.handled) / Double($0.total))
-                if $0.handled == $0.total { $0.done = true; return true }
-                return false
+            // The generator calls back serially, so the writer is only ever touched from here.
+            let outcome: Result<Void, Error>? = state.withLock { s in
+                guard !s.done else { return nil }
+                if cancelled || result == .cancelled { s.done = true; return .failure(ExportError.cancelled) }
+                if let image {
+                    do { try autoreleasepool { try writer.add(image, delay: 1 / fps) }; s.added += 1 }
+                    catch { s.done = true; return .failure(error) }
+                } else if result == .failed, s.added == 0, s.handled == 0, let error {
+                    Log.recording.error("GIF frame failed: \(error.localizedDescription, privacy: .public)")
+                }
+                s.handled += 1
+                progress(Double(s.handled) / Double(s.total))
+                guard s.handled == s.total else { return nil }
+                s.done = true
+                guard s.added > 0 else { return .failure(ExportError.failed("An error occurred while processing the video file.")) }
+                do { try writer.finish(); return .success(()) } catch { return .failure(error) }
             }
-            guard finished else { return }
-            if state.withLock({ $0.added }) > 0, CGImageDestinationFinalize(dest) { completion(.success(outputURL)) }
-            else { completion(.failure(ExportError.failed("An error occurred while processing the video file."))) }
+            guard let outcome else { return }
+            if case .failure = outcome {
+                writer.abort()
+                // Stop generating the remaining frames; not from inside the generator's own callback.
+                DispatchQueue.global(qos: .utility).async { gen.cancelAllCGImageGeneration() }
+            }
+            completion(outcome)
         }
     }
 }

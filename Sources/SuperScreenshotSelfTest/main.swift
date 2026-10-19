@@ -16,7 +16,7 @@ enum SelfTest {
 
 final class ResultBox<T>: @unchecked Sendable { var result: Result<T, Error>? }
 
-/// Runs async work to completion from the synchronous self-test loop.
+/// Runs async work to completion from the synchronous self-test loop (the main thread blocks meanwhile).
 func blocking<T>(_ body: @escaping @Sendable () async throws -> T) -> Result<T, Error> {
     let box = ResultBox<T>(), done = DispatchSemaphore(value: 0)
     Task.detached {
@@ -25,6 +25,27 @@ func blocking<T>(_ body: @escaping @Sendable () async throws -> T) -> Result<T, 
     }
     done.wait()
     return box.result!
+}
+
+/// Like `blocking`, for work that needs the main actor or main-queue callbacks: pumps the main run loop while waiting.
+func blockingOnMain<T>(timeout: TimeInterval = 120, _ body: @escaping @MainActor () async throws -> T) -> Result<T, Error> {
+    let box = ResultBox<T>()
+    Task { @MainActor in
+        do { box.result = .success(try await body()) } catch { box.result = .failure(error) }
+    }
+    let deadline = Date().addingTimeInterval(timeout)
+    while box.result == nil, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    return box.result ?? .failure(NSError(domain: "SelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: "timed out after \(Int(timeout)) s"]))
+}
+
+/// Resident memory of this process, for "memory stays flat" checks.
+func residentMemoryBytes() -> UInt64 {
+    var info = mach_task_basic_info()
+    var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count) }
+    }
+    return kr == KERN_SUCCESS ? info.resident_size : 0
 }
 
 // Core
