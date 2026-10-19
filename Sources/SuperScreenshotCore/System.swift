@@ -79,14 +79,20 @@ public enum Permissions {
     public static func ensureScreenRecording() -> Bool {
         if hasScreenRecording { return true }
         if requestScreenRecording() { return true }
+        explainScreenRecordingProblem("In order to continue working properly, Super Screenshot needs Screen Recording permission.")
+        return false
+    }
+
+    /// "Screen Recording permission required" alert with an "Open System Settings" button; `detail` says what
+    /// went wrong (missing permission, or a capture that came back empty after the permission changed).
+    public static func explainScreenRecordingProblem(_ detail: String) {
         let a = NSAlert()
         a.messageText = "Screen Recording permission required"
-        a.informativeText = "In order to continue working properly, Super Screenshot needs Screen Recording permission. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch Super Screenshot."
+        a.informativeText = detail + " Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then relaunch Super Screenshot."
         a.addButton(withTitle: "Open System Settings")
         a.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         if a.runModal() == .alertFirstButtonReturn { openSettings(.screenRecording) }
-        return false
     }
 }
 

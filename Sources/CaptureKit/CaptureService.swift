@@ -162,7 +162,9 @@ final class CaptureService: CaptureServicing {
             let held = await icons.beginTemporaryHide(waitUntilVisible: freeze)
             var config = base
             if freeze {
-                do { config.frozen = try await CaptureEngine.captureAllScreens() }
+                // A system that never answers must not leave `preparing` stuck (every hotkey would then be
+                // swallowed): give up on freezing after a few seconds and show the live overlay instead.
+                do { config.frozen = try await withTimeout(seconds: Self.freezeTimeout) { try await CaptureEngine.captureAllScreens() } }
                 catch { Log.capture.error("Freeze failed: \(error.localizedDescription, privacy: .public)") }
             }
             guard generation == prepareGeneration else {
@@ -170,6 +172,11 @@ final class CaptureService: CaptureServicing {
                 return
             }
             preparing = false
+            if freeze, config.frozen == nil, !Permissions.hasScreenRecording {
+                if held { icons.endTemporaryHide() }
+                Permissions.explainScreenRecordingProblem(ScreenCapturer.CaptureError.permissionDenied.localizedDescription)
+                return
+            }
             let frozen = config.frozen
             let s = SelectionSession(config: config) { [weak self] outcome, mods in
                 self?.session = nil
@@ -261,15 +268,19 @@ final class CaptureService: CaptureServicing {
 
     // MARK: Pixels → pipeline
 
-    /// Grabs `rect` (from frozen pixels when available) and returns image + scale, alerting on failure.
+    /// How long to wait for the screens to freeze before showing the overlay live.
+    static let freezeTimeout: TimeInterval = 5
+
+    /// Grabs `rect` (from frozen pixels when available) and returns image + scale, alerting on failure. Nothing
+    /// is written when the capture fails, times out or comes back empty (missing permission).
     private func grab(_ rect: CGRect, frozen: FrozenScreens?) async -> (CGImage, CGFloat)? {
         if let frozen, let cropped = frozen.crop(rect) { return cropped }
         // Let the overlay leave the screen and the previously active windows repaint.
         try? await Task.sleep(nanoseconds: 80_000_000)
         do {
-            return try await ScreenCapturer.capture(globalRect: rect)
+            return try await withTimeout(seconds: ScreenCapturer.timeout) { try await ScreenCapturer.capture(globalRect: rect) }
         } catch {
-            Alerts.error("Couldn't capture the screen.", error)
+            ScreenCapturer.report(error, "Couldn't capture the screen.")
             return nil
         }
     }
@@ -287,13 +298,15 @@ final class CaptureService: CaptureServicing {
         Defaults[.lastCaptureArea] = CodableRect(w.cocoaFrame.intersection(ScreenGeometry.desktopFrame))
         let shadow = Defaults[.captureWindowShadow]
         do {
-            let (image, scale) = try await ScreenCapturer.capture(windowID: w.id, shadow: shadow)
+            let (image, scale) = try await withTimeout(seconds: ScreenCapturer.timeout) {
+                try await ScreenCapturer.capture(windowID: w.id, shadow: shadow)
+            }
             let style = WindowBackgroundComposer.effectiveStyle(preference: Defaults[.windowBackgroundStyle], shiftHeld: shift)
             let final = await WindowBackgroundComposer.compose(image, scale: scale, style: style,
                                                                screen: screenShowingMost(of: w.cocoaFrame), hasSystemShadow: shadow)
             MediaPipeline.didCaptureImage(final, scale: scale, mode: mode, actions: actions)
         } catch {
-            Alerts.error("Couldn't capture the window.", error)
+            ScreenCapturer.report(error, "Couldn't capture the window.")
         }
     }
 

@@ -1,10 +1,79 @@
 import CoreGraphics
+import Foundation
+import ScreenCaptureKit
 import SuperScreenshotCore
 import CaptureKit
 
 /// Append cases with `SelfTest.cases.append(("name", { check(..., "msg") }))`.
 func registerCaptureKitTests() {
     typealias G = SelectionGeometry
+
+    SelfTest.cases.append(("CaptureKit.captureFailures", {
+        // Permission problems get the "Open System Settings" treatment; a stale cache that returns nothing too.
+        let declined = NSError(domain: SCStreamErrorDomain, code: SCStreamError.userDeclined.rawValue)
+        check(ScreenCapturer.classified(declined) as? ScreenCapturer.CaptureError == .permissionDenied, "SCStream userDeclined → permission problem")
+        check(ScreenCapturer.CaptureError.permissionDenied.isPermissionProblem && ScreenCapturer.CaptureError.blank.isPermissionProblem,
+              "denied and blank both point at System Settings")
+        check(!ScreenCapturer.CaptureError.timedOut.isPermissionProblem && !ScreenCapturer.CaptureError.noWindow.isPermissionProblem,
+              "other failures are ordinary errors")
+        check(ScreenCapturer.classified(ScreenCapturer.CaptureError.timedOut) as? ScreenCapturer.CaptureError == .timedOut, "own errors pass through")
+        for e: ScreenCapturer.CaptureError in [.noDisplay, .noWindow, .failed, .permissionDenied, .blank, .timedOut] {
+            check(!(e.errorDescription ?? "").isEmpty, "\(e) has a message")
+        }
+
+        // Empty pixels (what a revoked permission yields) are detected; real content is not.
+        let n = 64
+        let ctx = ImageTools.context(width: n, height: n)!
+        check(ImageTools.isFullyTransparent(ctx.makeImage()!), "all-transparent image detected")
+        ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: n, height: n))
+        check(!ImageTools.isFullyTransparent(ctx.makeImage()!), "an opaque black image is content, not a failure")
+        let half = ImageTools.context(width: n, height: n)!
+        half.setFillColor(CGColor(gray: 1, alpha: 1)); half.fill(CGRect(x: 0, y: 0, width: n / 2, height: n))
+        check(!ImageTools.isFullyTransparent(half.makeImage()!), "partly transparent image is content")
+        let opaque = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+                               space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        check(!ImageTools.isFullyTransparent(opaque.makeImage()!), "images without alpha are never 'empty'")
+    }))
+
+    SelfTest.cases.append(("CaptureKit.hugeCaptures", {
+        // Three 5K displays side by side fit; absurd sizes fail with a clear message instead of a 4 GB allocation.
+        check((try? ImageTools.validateSize(width: 3 * 5120, height: 2880)) != nil, "3 × 5K all-in-one is allowed")
+        var message = ""
+        do { try ImageTools.validateSize(width: 40_000, height: 40_000) } catch { message = error.localizedDescription }
+        check(message.contains("40000 × 40000") && message.contains("smaller area"), "too-large error names the size and the fix: \(message)")
+        let start = Date()
+        check(ImageTools.context(width: 40_000, height: 40_000) == nil, "no bitmap is attempted for an absurd size")
+        check(Date().timeIntervalSince(start) < 0.5, "…and it is refused immediately")
+        check((try? ImageTools.validateSize(width: 0, height: 10)) == nil, "zero size refused")
+        check((try? ImageTools.validateSize(width: Int.max, height: 2)) == nil, "overflowing size refused")
+        check(ImageError.outOfMemory(width: 1, height: 2).errorDescription?.contains("memory") == true, "out-of-memory text")
+    }))
+
+    SelfTest.cases.append(("CaptureKit.timeout", {
+        // A capture that never returns must not leave the overlay or the service stuck: it is abandoned on time.
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var slow: Error?
+        nonisolated(unsafe) var fast: Int?
+        nonisolated(unsafe) var waited: TimeInterval = 0
+        Task.detached {
+            let start = Date()
+            do {
+                // Like SCScreenshotManager, this work ignores cancellation: it just keeps going for a second.
+                _ = try await withTimeout(seconds: 0.05) {
+                    let deadline = Date().addingTimeInterval(1)
+                    while Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+                    return 1
+                }
+            } catch { slow = error }
+            waited = Date().timeIntervalSince(start)
+            fast = try? await withTimeout(seconds: 1) { 42 }
+            done.signal()
+        }
+        check(done.wait(timeout: .now() + 5) == .success, "timeout harness finished")
+        check(slow as? ScreenCapturer.CaptureError == .timedOut, "hung operation reports a timeout")
+        check(waited < 0.5, "the caller is released at the timeout, not when the hung work ends (\(Int(waited * 1000)) ms)")
+        check(fast == 42, "fast operation returns its result")
+    }))
 
     SelfTest.cases.append(("CaptureKit.dragRect", {
         check(G.rect(from: CGPoint(x: 10, y: 10), to: CGPoint(x: 40, y: 30)) == CGRect(x: 10, y: 10, width: 30, height: 20), "plain drag")

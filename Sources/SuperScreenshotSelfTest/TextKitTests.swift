@@ -95,6 +95,49 @@ func registerTextKitTests() {
         check(flat.render().map { $0.width == 80 && $0.height == 120 } ?? false, "first frame kept as the result")
     }))
 
+    SelfTest.cases.append(("TextKit.stitchKeepsPartialResult", {
+        // The window closes (or another app comes to the front) mid-capture: later frames show unrelated content.
+        // Whatever was stitched before must survive and render; nothing is thrown away.
+        let content = TextKitFixture.content(length: 800, breadth: 120, seed: 11)
+        let other = TextKitFixture.content(length: 800, breadth: 120, seed: 12)
+        let stitcher = ScrollStitcher(axis: .vertical)
+        for s in [0, 50, 100, 150] { _ = stitcher.add(TextKitFixture.window(content, start: s, length: 200, header: nil, footer: nil, axis: .vertical)) }
+        let before = stitcher.pixelSize
+        var events: [ScrollStitcher.Event] = []
+        for s in [0, 40, 90] { events.append(stitcher.add(TextKitFixture.window(other, start: s, length: 200, header: nil, footer: nil, axis: .vertical))) }
+        check(events.allSatisfy { $0 == .noOverlap }, "unrelated content never stitches (\(events))")
+        check(stitcher.pixelSize == before && before.height == 350, "stitched length unchanged by the foreign frames")
+        check(stitcher.render().map { $0.height == 350 } ?? false, "partial result renders after the failure")
+
+        // Frames of another size (display or window geometry changed) are rejected, the result still renders.
+        let resized = TextKitFixture.window(content, start: 0, length: 120, header: nil, footer: nil, axis: .vertical)
+        check(stitcher.add(resized) == .noOverlap && stitcher.render() != nil, "size change rejected, result kept")
+
+        // A single frame is a valid result (the user pressed Done without scrolling).
+        let single = ScrollStitcher(axis: .vertical)
+        check(single.render() == nil && single.pixelSize == .zero, "nothing captured → no image, no crash")
+        _ = single.add(TextKitFixture.window(content, start: 0, length: 200, header: nil, footer: nil, axis: .vertical))
+        check(single.render().map { $0.height == 200 } ?? false, "one frame renders as-is")
+    }))
+
+    SelfTest.cases.append(("TextKit.ocrRobustness", {
+        // Vision on degenerate input must not crash; failures surface as errors or empty results.
+        func blank(_ w: Int, _ h: Int) -> CGImage {
+            let ctx = ImageTools.context(width: w, height: h)!
+            ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            return ctx.makeImage()!
+        }
+        let auto = TextRecognizer.Configuration(automaticLanguage: true, languages: [])
+        let r = try? TextRecognizer.recognize(in: blank(64, 64), configuration: auto)
+        check(r.map { $0.lines.isEmpty && $0.barcodes.isEmpty } ?? true, "blank image → no text (or a clean error), no crash")
+        _ = try? TextRecognizer.recognize(in: blank(1, 1), configuration: auto)
+        check(true, "1 × 1 image survives")
+        let bogus = TextRecognizer.Configuration(automaticLanguage: false, languages: ["xx-YY", "klingon"])
+        check(TextRecognizer.normalizedLanguages(bogus.languages).isEmpty, "unsupported languages are dropped…")
+        _ = try? TextRecognizer.recognize(in: blank(64, 64), configuration: bogus)
+        check(true, "…and recognition with only unsupported languages still runs")
+    }))
+
     SelfTest.cases.append(("TextKit.offsetDetection", {
         let content = TextKitFixture.content(length: 600, breadth: 160, seed: 7)
         func frame(_ start: Int, jitter: Bool = false) -> ScrollFrame {

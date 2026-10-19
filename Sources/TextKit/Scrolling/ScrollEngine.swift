@@ -53,6 +53,9 @@ final class ScrollEngine: @unchecked Sendable {   // confined to `queue`
     }
 
     func render() -> CGImage? { (locked ?? candidates.first)?.render() }
+
+    /// Size of the image `render()` would produce (for error messages; safe to read after rendering).
+    var pixelSize: CGSize { (locked ?? candidates.first)?.pixelSize ?? .zero }
 }
 
 /// Vision's translational registration as an offset hint for frames pixel matching couldn't align.

@@ -28,14 +28,19 @@ public enum TextKitModule {
             let screen = selection.screen
             Task { @MainActor in
                 do {
-                    let image = try await Self.grab(selection)
-                    self.recognize(image, keepLineBreaks: keep) { text, barcodes in
+                    let image = try await withTimeout(seconds: ScreenCapturer.timeout) { try await Self.grab(selection) }
+                    self.recognize(image, keepLineBreaks: keep) { text, barcodes, error in
                         self.isBusy = false
+                        if let error {
+                            Toast.show("Couldn't recognize text", symbol: "exclamationmark.triangle.fill", on: screen)
+                            Log.capture.error("Text recognition failed: \(error.localizedDescription, privacy: .public)")
+                            return
+                        }
                         self.deliver(text, barcodes: barcodes, on: screen)
                     }
                 } catch {
                     self.isBusy = false
-                    Alerts.error("Screen content error", error)
+                    ScreenCapturer.report(error, "Couldn't capture the screen.")
                 }
             }
         }
@@ -50,14 +55,19 @@ public enum TextKitModule {
     }
 
     func recognizeText(in image: CGImage, keepLineBreaks: Bool, completion: @escaping (String) -> Void) {
-        recognize(image, keepLineBreaks: keepLineBreaks) { text, _ in completion(text) }
+        recognize(image, keepLineBreaks: keepLineBreaks) { text, _, error in
+            // Callers only get text; a failure (unsupported language set, damaged image) is explained here.
+            if let error { Alerts.error("Couldn't recognize text.", error) }
+            completion(text)
+        }
     }
 
-    /// Runs Vision off the main thread; `completion` gets the composed text and the barcode payloads on main.
-    private func recognize(_ image: CGImage, keepLineBreaks: Bool, completion: @escaping (String, [String]) -> Void) {
+    /// Runs Vision off the main thread; `completion` gets the composed text, the barcode payloads and the error
+    /// if recognition failed (text is then empty), on main.
+    private func recognize(_ image: CGImage, keepLineBreaks: Bool, completion: @escaping (String, [String], Error?) -> Void) {
         let configuration = TextRecognizer.Configuration.current()
         DispatchQueue.global(qos: .userInitiated).async {
-            var text = "", barcodes: [String] = []
+            var text = "", barcodes: [String] = [], failure: Error?
             do {
                 let result = try TextRecognizer.recognize(in: image, configuration: configuration)
                 barcodes = result.barcodes
@@ -65,8 +75,9 @@ public enum TextKitModule {
                                               barcodes: barcodes)
             } catch {
                 Log.capture.error("Text recognition failed: \(error.localizedDescription, privacy: .public)")
+                failure = error
             }
-            DispatchQueue.main.async { completion(text, barcodes) }
+            DispatchQueue.main.async { completion(text, barcodes, failure) }
         }
     }
 
