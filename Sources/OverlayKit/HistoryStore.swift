@@ -124,8 +124,7 @@ final class HistoryStore: ObservableObject, HistoryServicing {
     // MARK: Persistence
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        items = HistoryIndex.decode(data).map { $0.makeMedia() }
+        items = HistoryIndex.load(from: fileURL).map { $0.makeMedia() }
     }
 
     /// Coalesces bursts of changes (save + upload + rename …) into one write on the next run-loop turn.

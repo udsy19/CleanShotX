@@ -1,6 +1,9 @@
 import AppKit
 import SuperScreenshotCore
 
+/// `NSScreen` handed to the capture timeout closure (ScreenCaptureKit reads its geometry off the main thread anyway).
+private struct ScreenRef: @unchecked Sendable { let screen: NSScreen }
+
 /// One scrolling capture, from the selected area to the stitched image (SGOverlay + ScrollingGrabber).
 @MainActor final class ScrollingCaptureSession {
     private enum State { case ready, capturing, finishing, ended }
@@ -141,13 +144,24 @@ import SuperScreenshotCore
         defer { captureInFlight = false }
         let image: CGImage
         do {
-            image = try await ScreenCapturer.capture(rect: area, on: screen, showsCursor: false)
+            let (area, target) = (self.area, ScreenRef(screen: screen))
+            image = try await withTimeout(seconds: ScreenCapturer.timeout) {
+                try await ScreenCapturer.capture(rect: area, on: target.screen, showsCursor: false)
+            }
             captureErrors = 0
         } catch {
             captureErrors += 1
             if captureErrors >= 5, state == .capturing {
-                end()
-                Alerts.error("Screen content error", error)
+                // The screen stopped answering (display unplugged, permission revoked, system stall): keep what
+                // was captured so far rather than throwing it away; with nothing captured, explain and stop.
+                let hasFrames = await withCheckedContinuation { c in engine.queue.async { c.resume(returning: engine.hasFrames) } }
+                if hasFrames, state == .capturing {
+                    Toast.show("The screen couldn't be read — kept what was captured so far", symbol: "exclamationmark.triangle.fill", on: screen)
+                    finish()
+                } else {
+                    end()
+                    ScreenCapturer.report(error, "Couldn't capture the screen.")
+                }
             }
             return nil
         }
@@ -330,7 +344,11 @@ import SuperScreenshotCore
             let scale = self.screen.backingScaleFactor
             let actions = self.options.actions
             self.end()
-            guard let image else { Alerts.error("Screen content error"); return }
+            guard let image else {
+                Alerts.error("Couldn't build the scrolling screenshot.",
+                             ImageError.outOfMemory(width: Int(engine.pixelSize.width), height: Int(engine.pixelSize.height)))
+                return
+            }
             MediaPipeline.didCaptureImage(image, scale: scale, mode: .scrolling, actions: actions)
         }
     }

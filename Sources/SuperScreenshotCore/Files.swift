@@ -39,6 +39,15 @@ public enum AppPaths {
         return url
     }
 
+    /// Whether files can be created in `url` right now: it exists, is a folder (not a file or a placeholder) and the
+    /// current user may write to it (not read-only, not on an unmounted or locked volume).
+    public static func isWritableDirectory(_ url: URL) -> Bool {
+        var isDir: ObjCBool = false
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return false }
+        return fm.isWritableFile(atPath: url.path)
+    }
+
     /// Returns `url` or, if taken, `name 2.ext`, `name 3.ext`, …
     public static func uniqueURL(_ url: URL) -> URL {
         let fm = FileManager.default

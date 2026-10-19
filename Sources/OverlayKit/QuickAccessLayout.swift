@@ -149,6 +149,21 @@ public enum PinGeometry {
         return max(minMagnification, min(1, fit))
     }
 
+    /// `frame` when at least `minVisible` pt of it (or all of a smaller frame) shows on one of `screens`; otherwise
+    /// the same-size frame moved into the first screen (a display was unplugged or rearranged), as close to where
+    /// it was as possible, with its top edge on screen when it is taller than the display.
+    public static func frameKeptOnScreen(_ frame: CGRect, screens: [CGRect], minVisible: CGFloat = 40) -> CGRect {
+        guard let home = screens.first else { return frame }
+        for s in screens {
+            let i = frame.intersection(s)
+            if !i.isNull, i.width >= min(minVisible, frame.width), i.height >= min(minVisible, frame.height) { return frame }
+        }
+        var f = frame
+        f.origin.x = frame.width > home.width ? home.minX : min(max(f.minX, home.minX), home.maxX - f.width)
+        f.origin.y = frame.height > home.height ? home.maxY - f.height : min(max(f.minY, home.minY), home.maxY - f.height)
+        return f
+    }
+
     /// Resizes `frame` to `imageSize × magnification`, keeping `anchor` (a global point inside the frame) fixed.
     public static func scaled(frame: CGRect, imageSize: CGSize, magnification: CGFloat, anchor: CGPoint) -> CGRect {
         let m = min(max(magnification, minMagnification), maxMagnification)

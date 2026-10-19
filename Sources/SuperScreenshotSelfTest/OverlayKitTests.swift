@@ -160,6 +160,110 @@ func registerOverlayKitTests() {
         check(!HistoryIndex.shouldDeleteFile(of: sibling, managedDirectories: managed), "prefix-named sibling folder kept")
     }))
 
+    SelfTest.cases.append(("OverlayKit.historyCorruption", {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("superscreenshot-history-\(UUID().uuidString)")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("history.json"), backup = dir.appendingPathComponent("history.json.bak")
+        func entry(_ name: String, _ t: Double) -> HistoryEntry {
+            HistoryEntry(id: UUID(), url: URL(fileURLWithPath: "/tmp/\(name).png"), kind: .image, mode: .area,
+                         date: Date(timeIntervalSince1970: t), width: 10, height: 10, scale: 1, isSaved: false)
+        }
+        let good = try! HistoryIndex.encode([entry("a", 1), entry("b", 2)])
+        try? good.write(to: file)
+        check(HistoryIndex.load(from: file).count == 2 && !fm.fileExists(atPath: backup.path), "intact index loads without a backup")
+
+        check(HistoryIndex.load(from: dir.appendingPathComponent("missing.json")).isEmpty, "missing file → empty history")
+        try? Data().write(to: file)
+        check(HistoryIndex.load(from: file).isEmpty && !fm.fileExists(atPath: backup.path), "empty file → empty history, no backup")
+
+        // Truncated mid-write: whatever parses is kept and the original bytes are preserved in history.json.bak.
+        let truncated = good.prefix(good.count / 2)
+        try? truncated.write(to: file)
+        let salvaged = HistoryIndex.load(from: file)
+        check(salvaged.count <= 2, "truncated index never invents entries")
+        check((try? Data(contentsOf: backup)) == truncated, "truncated index backed up byte for byte before anything rewrites it")
+
+        try? Data("garbage".utf8).write(to: file)
+        check(HistoryIndex.load(from: file).isEmpty && (try? Data(contentsOf: backup)) == Data("garbage".utf8), "garbage → empty, newer backup replaces the old one")
+        try? Data("{\"version\": 1, \"items\": \"nope\"}".utf8).write(to: file)
+        check(HistoryIndex.load(from: file).isEmpty, "wrong item type → empty, no crash")
+        try? Data("[1, 2, 3]".utf8).write(to: file)
+        check(HistoryIndex.load(from: file).isEmpty, "wrong top-level type → empty, no crash")
+
+        // A newer file version with an extra field still loads what it can.
+        var obj = try! JSONSerialization.jsonObject(with: good) as! [String: Any]
+        obj["version"] = 99; obj["future"] = ["x": 1]
+        try? JSONSerialization.data(withJSONObject: obj).write(to: file)
+        check(HistoryIndex.load(from: file).count == 2, "future version with extra fields loads")
+        if var items = obj["items"] as? [[String: Any]] {
+            items[0]["kind"] = "hologram"
+            obj["items"] = items
+            try? JSONSerialization.data(withJSONObject: obj).write(to: file)
+            check(HistoryIndex.load(from: file).count == 1, "unknown media kind skips that item only")
+        }
+
+        // Huge index: 5000 entries round-trip quickly.
+        let many = (0..<5000).map { entry("m\($0)", Double($0)) }
+        let start = Date()
+        let big = try! HistoryIndex.encode(many)
+        try? big.write(to: file)
+        let loaded = HistoryIndex.load(from: file)
+        check(loaded.count == 5000 && loaded.first?.date == Date(timeIntervalSince1970: 4999), "5000 entries survive, newest first")
+        check(Date().timeIntervalSince(start) < 3, "large index loads in reasonable time (\(Date().timeIntervalSince(start)) s)")
+
+        // Prune never reaches outside the managed folders, whatever the path looks like.
+        let managed = [URL(fileURLWithPath: "/managed/Media")]
+        var sneaky = entry("s", 1); sneaky.url = URL(fileURLWithPath: "/managed/Media/../../Users/x/Desktop/keep.png")
+        check(!HistoryIndex.shouldDeleteFile(of: sneaky, managedDirectories: managed), "'..' traversal out of the managed folder is not deleted")
+        var inside = entry("i", 1); inside.url = URL(fileURLWithPath: "/managed/Media/sub/../x.png")
+        check(HistoryIndex.shouldDeleteFile(of: inside, managedDirectories: managed), "'..' that stays inside is still managed")
+        var exact = entry("e", 1); exact.url = URL(fileURLWithPath: "/managed/Media")
+        check(!HistoryIndex.shouldDeleteFile(of: exact, managedDirectories: managed), "the managed folder itself is never a deletable entry")
+    }))
+
+    SelfTest.cases.append(("OverlayKit.pinsStayOnScreen", {
+        let main = CGRect(x: 0, y: 0, width: 1512, height: 900), side = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+        let onMain = CGRect(x: 100, y: 100, width: 300, height: 200)
+        check(PinGeometry.frameKeptOnScreen(onMain, screens: [main, side]) == onMain, "pin on a screen stays put")
+        let onSide = CGRect(x: 2000, y: 300, width: 300, height: 200)
+        check(PinGeometry.frameKeptOnScreen(onSide, screens: [main, side]) == onSide, "pin on the second display stays while it is attached")
+        let moved = PinGeometry.frameKeptOnScreen(onSide, screens: [main])
+        check(moved == CGRect(x: 1212, y: 300, width: 300, height: 200), "display unplugged: pin slides onto the remaining screen, same size, nearest spot")
+        let peeking = CGRect(x: 1480, y: 300, width: 300, height: 200)   // 32 pt visible
+        check(PinGeometry.frameKeptOnScreen(peeking, screens: [main]).maxX == 1512, "barely visible pin is pulled fully on screen")
+        let partly = CGRect(x: 1400, y: 300, width: 300, height: 200)    // 112 pt visible
+        check(PinGeometry.frameKeptOnScreen(partly, screens: [main]) == partly, "a pin that is reasonably visible is left where the user put it")
+        let huge = CGRect(x: 3000, y: -500, width: 4000, height: 3000)
+        let h = PinGeometry.frameKeptOnScreen(huge, screens: [main])
+        check(h.minX == 0 && h.maxY == 900 && h.size == huge.size, "oversized pin aligns its top-left corner, never resized")
+        check(PinGeometry.frameKeptOnScreen(onSide, screens: []) == onSide, "no screens at all: nothing to do")
+    }))
+
+    SelfTest.cases.append(("OverlayKit.hugeImagePreview", {
+        // Pins and cards show a downsampled copy read straight from the file, never the full decode.
+        let side = 4000   // 16 MP; a 10000 × 10000 all-in-one behaves the same, just slower to encode here
+        let ctx = ImageTools.context(width: side, height: side)!
+        ctx.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 0, alpha: 1)); ctx.fill(CGRect(x: 100, y: 100, width: 1500, height: 900))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("superscreenshot-huge-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        _ = try? ImageTools.write(ctx.makeImage()!, to: url, format: .png)
+        let t0 = Date()
+        let small = Thumbnailer.downsample(url, maxPixel: 3024)
+        let downsampleTime = Date().timeIntervalSince(t0)
+        check(small != nil && max(small!.width, small!.height) <= 3024, "preview bounded to one display's pixels (\(small?.width ?? 0) px)")
+        let t1 = Date()
+        let full = ImageTools.load(url)
+        let fullBytes = ImageTools.context(width: full!.width, height: full!.height)
+        fullBytes?.draw(full!, in: CGRect(x: 0, y: 0, width: full!.width, height: full!.height))
+        let fullTime = Date().timeIntervalSince(t1)
+        print("   huge image \(side)×\(side): downsampled preview \(small!.width)×\(small!.height) in \(Int(downsampleTime * 1000)) ms "
+              + "(\(small!.width * small!.height * 4 / 1_000_000) MB) vs full decode in \(Int(fullTime * 1000)) ms (\(side * side * 4 / 1_000_000) MB)")
+        check(downsampleTime < 5, "downsampling a 16 MP file is quick")
+    }))
+
     SelfTest.cases.append(("OverlayKit.historyFilter", {
         check(HistoryIndex.Filter.screenshots.matches(.image) && !HistoryIndex.Filter.screenshots.matches(.gif), "screenshots")
         check(HistoryIndex.Filter.videos.matches(.video) && HistoryIndex.Filter.videos.matches(.studioProject), "videos")

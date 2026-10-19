@@ -13,10 +13,15 @@ public final class HotkeyCenter {
     private var handlerInstalled = false
     /// While a shortcut recorder is focused, hotkeys are suspended so they can be re-recorded.
     public var isSuspended = false
+    /// Shortcuts macOS refused to register (held by another app); the Shortcuts pane flags them.
+    public private(set) var unavailable: Set<Shortcut> = []
+    /// Posted (on the main thread) whenever `unavailable` changes.
+    public static let unavailableDidChange = Notification.Name("SuperScreenshotHotkeyUnavailableDidChange")
 
     private init() {}
 
-    /// Registers a hotkey and returns a token for `unregister`. Returns nil if the combo is taken.
+    /// Registers a hotkey and returns a token for `unregister`. Returns nil if the combo is taken by another app:
+    /// the failure is logged and listed in `unavailable`; everything else keeps working.
     @discardableResult
     public func register(_ shortcut: Shortcut, handler: @escaping () -> Void) -> UInt32? {
         installHandlerIfNeeded()
@@ -25,7 +30,12 @@ public final class HotkeyCenter {
         let hotKeyID = EventHotKeyID(signature: OSType(0x5348_4354) /* 'SHCT' */, id: id)
         let status = RegisterEventHotKey(shortcut.keyCode, shortcut.carbonModifiers, hotKeyID,
                                          GetApplicationEventTarget(), 0, &ref)
-        guard status == noErr, let ref else { return nil }
+        guard status == noErr, let ref else {
+            Log.app.error("Couldn't register the shortcut \(shortcut.displayString, privacy: .public) (error \(status)): another app may be using it.")
+            if unavailable.insert(shortcut).inserted { NotificationCenter.default.post(name: Self.unavailableDidChange, object: nil) }
+            return nil
+        }
+        if unavailable.remove(shortcut) != nil { NotificationCenter.default.post(name: Self.unavailableDidChange, object: nil) }
         registrations[id] = Registration(ref: ref, handler: handler)
         return id
     }
