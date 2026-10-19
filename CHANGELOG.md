@@ -3,7 +3,7 @@
 All notable changes to Super Screenshot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.3.2] — 2026-10-19
 
 ### Added
 - Crash-safe recordings: videos, GIFs and Studio recordings are written with movie fragments into an in-progress
