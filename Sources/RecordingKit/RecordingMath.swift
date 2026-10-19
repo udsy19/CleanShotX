@@ -164,9 +164,6 @@ public enum RecordingMath {
         return delays.count - 1
     }
 
-    /// GIF delay field value (centiseconds, ≥ 2).
-    public static func gifDelayCentiseconds(_ seconds: Double) -> Int { max(2, Int((seconds * 100).rounded())) }
-
     // MARK: Keystrokes
 
     /// "⌃⌥⇧⌘K" style label; modifiers in the macOS menu order.

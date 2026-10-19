@@ -1,5 +1,5 @@
 import AppKit
-import CoreMedia
+import AVFoundation
 import ImageIO
 import SuperScreenshotCore
 import RecordingKit
@@ -138,7 +138,7 @@ func registerRecordingKitTests() {
         check(RecordingMath.frameIndex(at: 0.3, delays: delays) == 2, "boundary belongs to the next frame")
         check(RecordingMath.frameIndex(at: 10, delays: delays) == 2, "clamped to last")
         check(RecordingMath.frameIndex(at: 1, delays: []) == 0, "empty")
-        check(RecordingMath.gifDelayCentiseconds(0.066) == 7 && RecordingMath.gifDelayCentiseconds(0) == 2, "centiseconds ≥ 2")
+        check(StreamingGIFWriter.delayCentiseconds(0.066) == 7 && StreamingGIFWriter.delayCentiseconds(0) == 2, "centiseconds ≥ 2")
     }))
 
     SelfTest.cases.append(("RecordingKit.streamingGIF", {
@@ -171,4 +171,241 @@ func registerRecordingKitTests() {
         let last = CGImageSourceCreateImageAtIndex(src, 2, nil)
         check(last?.width == 64 && last?.height == 40, "frames decode at full size")
     }))
+
+    // MARK: Export safety (synthetic videos only; the screen is never captured)
+
+    SelfTest.cases.append(("RecordingKit.exportTrim", {
+        let dir = TestDir.make("rk-export")
+        defer { dir.remove() }
+        let source = dir.url.appendingPathComponent("source.mov")
+        guard SyntheticVideo.write(to: source, seconds: 3) else { check(false, "synthetic video"); return }
+        let before = fingerprint(source)
+        let out = dir.url.appendingPathComponent("trimmed.mov")
+        let r1 = blocking { try await VideoExporter.export(source: source, options: passthrough(0.5, 1.5), to: out) { _ in } }
+        check((try? r1.get()) != nil, "passthrough trim succeeds: \(r1)")
+        check(abs(duration(out) - 1) < 0.1, "trimmed to 1 s: \(duration(out))")
+        let out2 = dir.url.appendingPathComponent("small.mp4")
+        let small: VideoExportOptions = { var o = reencode(0, 2); o.fileType = .mp4; return o }()
+        let r2 = blocking { try await VideoExporter.export(source: source, options: small, to: out2) { _ in } }
+        check((try? r2.get()).map { $0.width == 160 && $0.height == 100 } ?? false, "re-encode halves the size: \(r2)")
+        check(abs(duration(out2) - 2) < 0.1, "re-encoded 2 s: \(duration(out2))")
+        check(fingerprint(source) == before, "source untouched after exports")
+    }))
+
+    SelfTest.cases.append(("RecordingKit.exportOverSource", {
+        let dir = TestDir.make("rk-export-over")
+        defer { dir.remove() }
+        let source = dir.url.appendingPathComponent("clip.mov")
+        guard SyntheticVideo.write(to: source, seconds: 3) else { check(false, "synthetic video"); return }
+        let link = dir.url.appendingPathComponent("alias.mov")
+        try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+        check(VideoExporter.isSameFile(source, link) && VideoExporter.isSameFile(source, URL(fileURLWithPath: source.path)), "same-file detection")
+        check(!VideoExporter.isSameFile(source, dir.url.appendingPathComponent("other.mov")), "different files")
+        let temps = tempFileCount()
+        // Exporting onto the source itself: the file must be replaced only by a complete export.
+        let r = blocking { try await VideoExporter.export(source: source, options: passthrough(1, 2), to: source) { _ in } }
+        check((try? r.get()) != nil, "export over the source succeeds: \(r)")
+        check(abs(duration(source) - 1) < 0.1, "source now holds the 1 s trim: \(duration(source))")
+        check(tempFileCount() == temps, "no temporary file left behind")
+        // A failing export over the source (empty trim range → no video) leaves the source exactly as it was.
+        let before = fingerprint(source)
+        let bad = blocking { try await VideoExporter.export(source: source, options: passthrough(5, 6), to: source) { _ in } }
+        check((try? bad.get()) == nil, "empty range fails")
+        check(fingerprint(source) == before && abs(duration(source) - 1) < 0.1, "failed export never touches the source")
+        check(tempFileCount() == temps, "no temporary file left behind after failure")
+    }))
+
+    SelfTest.cases.append(("RecordingKit.exportCancel", {
+        let dir = TestDir.make("rk-export-cancel")
+        defer { dir.remove() }
+        let source = dir.url.appendingPathComponent("long.mov")
+        guard SyntheticVideo.write(to: source, seconds: 10, size: CGSize(width: 640, height: 400)) else { check(false, "synthetic video"); return }
+        let before = fingerprint(source)
+        let out = dir.url.appendingPathComponent("out.mov")
+        let slow: VideoExportOptions = { var o = reencode(0, 10); o.scale = 1; return o }()
+        let gate = CancelGate()
+        let task = Task.detached { try await VideoExporter.export(source: source, options: slow, to: out) { p in if p > 0 { gate.cancel() } } }
+        gate.attach(task)
+        let r = blocking { try await task.value }
+        if case .failure(VideoExportError.cancelled) = r {} else { check(false, "cancel mid-way throws cancelled, got \(r)") }
+        check(!FileManager.default.fileExists(atPath: out.path), "partial output removed after cancel")
+        check(fingerprint(source) == before, "source untouched after cancel")
+        // A passthrough export whose task is cancelled before it starts also leaves nothing behind.
+        let pre = Task.detached { try await VideoExporter.export(source: source, options: passthrough(0, 10), to: out) { _ in } }
+        pre.cancel()
+        let r2 = blocking { try await pre.value }
+        check((try? r2.get()) == nil && !FileManager.default.fileExists(atPath: out.path), "pre-cancelled passthrough writes nothing: \(r2)")
+        // The same source exports fine afterwards (a second export can start).
+        let r3 = blocking { try await VideoExporter.export(source: source, options: passthrough(0, 1), to: out) { _ in } }
+        check((try? r3.get()) != nil && FileManager.default.fileExists(atPath: out.path), "export after cancel works: \(r3)")
+    }))
+
+    SelfTest.cases.append(("RecordingKit.exportFailure", {
+        let dir = TestDir.make("rk-export-fail")
+        defer { dir.remove() }
+        let fm = FileManager.default
+        let source = dir.url.appendingPathComponent("source.mov")
+        guard SyntheticVideo.write(to: source, seconds: 2) else { check(false, "synthetic video"); return }
+        let before = fingerprint(source)
+        let locked = dir.url.appendingPathComponent("locked", isDirectory: true)
+        try? fm.createDirectory(at: locked, withIntermediateDirectories: true)
+        chmod(locked.path, 0o500)
+        defer { chmod(locked.path, 0o700) }
+        for (name, options) in [("passthrough", passthrough(0, 1)), ("re-encode", reencode(0, 1))] {
+            let out = locked.appendingPathComponent("out.mov")
+            let r = blocking { try await VideoExporter.export(source: source, options: options, to: out) { _ in } }
+            if case .failure(let e) = r { check(!e.localizedDescription.isEmpty, "\(name) into unwritable folder has a message") }
+            else { check(false, "\(name) into unwritable folder fails") }
+            check(!fm.fileExists(atPath: out.path), "\(name): nothing written into the unwritable folder")
+        }
+        let asDir = dir.url.appendingPathComponent("taken.mov", isDirectory: true)
+        try? fm.createDirectory(at: asDir, withIntermediateDirectories: true)
+        try? Data([1]).write(to: asDir.appendingPathComponent("keep"))
+        let rd = blocking { try await VideoExporter.export(source: source, options: passthrough(0, 1), to: asDir) { _ in } }
+        check((try? rd.get()) == nil && rd.failureDescription.contains("folder"), "destination that is a folder fails: \(rd)")
+        check(fm.fileExists(atPath: asDir.appendingPathComponent("keep").path), "the folder in the way is left alone")
+        let rgd = blocking { try await GIFEncoder.convert(video: source, to: asDir, fps: 10, maxWidth: 320) { _ in } }
+        check((try? rgd.get()) == nil && fm.fileExists(atPath: asDir.appendingPathComponent("keep").path), "GIF onto a folder fails and leaves it alone: \(rgd)")
+        check(fingerprint(source) == before, "source untouched after failures")
+        let missing = dir.url.appendingPathComponent("gone.mov")
+        let rm = blocking { try await VideoExporter.export(source: missing, options: passthrough(0, 1), to: dir.url.appendingPathComponent("x.mov")) { _ in } }
+        if case .failure(VideoExportError.missingSource) = rm { check(rm.failureDescription.contains("moved or deleted"), "missing source message") }
+        else { check(false, "missing source → clear error, got \(rm)") }
+        let empty = dir.url.appendingPathComponent("empty.mov")
+        try? Data().write(to: empty)
+        let re = blocking { try await VideoExporter.export(source: empty, options: passthrough(0, 1), to: dir.url.appendingPathComponent("y.mov")) { _ in } }
+        check((try? re.get()) == nil && !re.failureDescription.isEmpty, "zero-length source fails with a message, no crash: \(re)")
+        let rg = blocking { try await GIFEncoder.convert(video: missing, to: dir.url.appendingPathComponent("z.gif"), fps: 10, maxWidth: 320) { _ in } }
+        if case .failure(GIFError.missingSource) = rg {} else { check(false, "GIF from a missing source → clear error, got \(rg)") }
+    }))
+
+    SelfTest.cases.append(("RecordingKit.gifConvertStreams", {
+        let dir = TestDir.make("rk-gif")
+        defer { dir.remove() }
+        let fm = FileManager.default
+        let source = dir.url.appendingPathComponent("source.mov")
+        guard SyntheticVideo.write(to: source, seconds: 20, size: CGSize(width: 640, height: 400)) else { check(false, "synthetic video"); return }
+        func convert(_ seconds: Double, to out: URL) -> Result<CGSize, Error> {
+            let range = CMTimeRange(start: .zero, duration: CMTime(seconds: seconds, preferredTimescale: 600))
+            return blocking { try await GIFEncoder.convert(video: source, to: out, timeRange: range, fps: 15, maxWidth: 640) { _ in } }
+        }
+        // Warm up (decoder, ImageIO, colour management), then measure a 300-frame conversion: held frames
+        // would cost 640×400×4 B × 300 ≈ 300 MB, so growth well under that proves frames are streamed.
+        let warm = convert(2, to: dir.url.appendingPathComponent("warm.gif"))
+        check((try? warm.get()) != nil, "warm-up conversion: \(warm)")
+        let rssBefore = residentMemoryBytes()
+        let out = dir.url.appendingPathComponent("long.gif")
+        let r = convert(20, to: out)
+        let growth = Double(residentMemoryBytes()) - Double(rssBefore)
+        check((try? r.get()).map { $0.width == 640 } ?? false, "20 s conversion: \(r)")
+        if let src = CGImageSourceCreateWithURL(out as CFURL, nil) { check(CGImageSourceGetCount(src) == 300, "300 frames, got \(CGImageSourceGetCount(src))") }
+        else { check(false, "readable GIF") }
+        check(growth < 100 * 1024 * 1024, "memory stays flat while converting (grew \(Int(growth / 1_048_576)) MB)")
+        // Cancellation removes the partial GIF; the source is untouched.
+        let before = fingerprint(source)
+        let partial = dir.url.appendingPathComponent("partial.gif")
+        let gate = CancelGate()
+        let task = Task.detached {
+            try await GIFEncoder.convert(video: source, to: partial, fps: 15, maxWidth: 640) { p in if p > 0.1 { gate.cancel() } }
+        }
+        gate.attach(task)
+        let rc = blocking { try await task.value }
+        if case .failure(GIFError.cancelled) = rc {} else { check(false, "cancelled conversion throws cancelled, got \(rc)") }
+        check(!fm.fileExists(atPath: partial.path), "partial GIF removed after cancel")
+        check(fingerprint(source) == before, "source untouched")
+        // Unwritable destination: clear system error, nothing left behind.
+        let locked = dir.url.appendingPathComponent("locked", isDirectory: true)
+        try? fm.createDirectory(at: locked, withIntermediateDirectories: true)
+        chmod(locked.path, 0o500)
+        defer { chmod(locked.path, 0o700) }
+        let rl = convert(1, to: locked.appendingPathComponent("no.gif"))
+        check((try? rl.get()) == nil && rl.failureDescription.localizedCaseInsensitiveContains("permission"), "unwritable folder → permission error: \(rl)")
+        check(!fm.fileExists(atPath: locked.appendingPathComponent("no.gif").path), "nothing written into the unwritable folder")
+    }))
+}
+
+// MARK: - Shared fixtures
+
+private func passthrough(_ s: Double, _ e: Double) -> VideoExportOptions {
+    VideoExportOptions(timeRange: CMTimeRange(start: CMTime(seconds: s, preferredTimescale: 600), end: CMTime(seconds: e, preferredTimescale: 600)),
+                       includeAudio: true, volume: 1, quality: .original, scale: 1, fileType: .mov)
+}
+private func reencode(_ s: Double, _ e: Double) -> VideoExportOptions {
+    var o = passthrough(s, e); o.quality = .high; o.scale = 0.5; return o
+}
+private func duration(_ url: URL) -> Double {
+    (try? blocking { try await AVURLAsset(url: url).load(.duration).seconds }.get()) ?? -1
+}
+/// Size + modification date: enough to prove a file was not rewritten.
+private func fingerprint(_ url: URL) -> (Int, Date?) {
+    let v = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    return (v?.fileSize ?? -1, v?.contentModificationDate)
+}
+private func tempFileCount() -> Int { (try? FileManager.default.contentsOfDirectory(atPath: AppPaths.temporary.path).count) ?? -1 }
+
+extension Result {
+    var failureDescription: String { if case .failure(let e) = self { return e.localizedDescription }; return "" }
+}
+
+/// A throw-away folder under the system temporary directory.
+struct TestDir {
+    let url: URL
+    static func make(_ name: String) -> TestDir {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("superscreenshot-\(name)-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return TestDir(url: url)
+    }
+    func remove() { try? FileManager.default.removeItem(at: url) }
+}
+
+/// Cancels a task from a progress callback that may fire before the task handle exists.
+final class CancelGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<CGSize, Error>?
+    private var wanted = false
+    func attach(_ t: Task<CGSize, Error>) { lock.lock(); task = t; let w = wanted; lock.unlock(); if w { t.cancel() } }
+    func cancel() { lock.lock(); wanted = true; let t = task; lock.unlock(); t?.cancel() }
+}
+
+/// Solid-colour H.264 test videos written with AVAssetWriter; never records the screen or audio.
+enum SyntheticVideo {
+    @discardableResult
+    static func write(to url: URL, seconds: Double, fps: Int = 30, size: CGSize = CGSize(width: 320, height: 200)) -> Bool {
+        let (w, h) = (Int(size.width), Int(size.height))
+        try? FileManager.default.removeItem(at: url)
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: url.pathExtension == "mp4" ? .mp4 : .mov) else { return false }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: w, AVVideoHeightKey: h,
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: w, kCVPixelBufferHeightKey as String: h,
+        ])
+        guard writer.canAdd(input) else { return false }
+        writer.add(input)
+        guard writer.startWriting() else { return false }
+        writer.startSession(atSourceTime: .zero)
+        let count = Int(seconds * Double(fps))
+        for i in 0..<count {
+            while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.002) }
+            guard let pool = adaptor.pixelBufferPool else { return false }
+            var pb: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pb)
+            guard let pb else { return false }
+            CVPixelBufferLockBaseAddress(pb, [])
+            if let base = CVPixelBufferGetBaseAddress(pb) {
+                // BGRA; the colour drifts per frame so the encoder has real changes to encode.
+                var pixel: UInt32 = 0xFF00_0000 | UInt32((i * 7) % 256) << 16 | UInt32((i * 3) % 256) << 8 | UInt32(255 - i % 256)
+                memset_pattern4(base, &pixel, CVPixelBufferGetBytesPerRow(pb) * h)
+            }
+            CVPixelBufferUnlockBaseAddress(pb, [])
+            guard adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(i), timescale: CMTimeScale(fps))) else { return false }
+        }
+        input.markAsFinished()
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        return writer.status == .completed
+    }
 }

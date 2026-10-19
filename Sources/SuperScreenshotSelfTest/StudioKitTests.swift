@@ -1,5 +1,6 @@
 import Foundation
-import CoreGraphics
+import AVFoundation
+import ImageIO
 import SuperScreenshotCore
 import StudioKit
 
@@ -275,6 +276,120 @@ func registerStudioKitTests() {
         check(z.isDynamic && z.animation == .quick, "dynamic zoom preset")
         z.setDynamic(false)
         check(!z.isDynamic, "smooth zoom preset")
+    }))
+
+    SelfTest.cases.append(("Studio.PackageRecovery", {
+        let fm = FileManager.default
+        let dir = TestDir.make("studio-recovery")
+        defer { dir.remove() }
+        let pkg = StudioPackage(url: dir.url.appendingPathComponent("p.superscreenshotvideo"))
+        try? fm.createDirectory(at: pkg.url, withIntermediateDirectories: true)
+        let info = RecordingInfo(pixelWidth: 100, pixelHeight: 50, scale: 1, duration: 2, fps: 30, hasCamera: false, hasSystemAudio: false, hasMicrophone: false)
+        let saved = StudioProject(title: "Saved", recording: info)
+        var edited = saved; edited.title = "Edited"
+        // No screen.mov at all → a clear error rather than an empty editor.
+        try? pkg.write(project: saved)
+        switch Result(catching: { try pkg.readProject() }) {
+        case .success: check(false, "missing screen.mov is an error")
+        case .failure(let e): check(e.localizedDescription.contains("screen.mov is missing"), "missing screen.mov: \(e.localizedDescription)")
+        }
+        try? Data().write(to: pkg.screenURL)
+        // Save is atomic: the file is complete JSON right after write, and the autosave is gone.
+        pkg.autosave(project: edited)
+        try? pkg.write(project: saved)
+        check((try? StudioPackage.decodeProject(Data(contentsOf: pkg.projectURL)))?.title == "Saved", "project.json is complete after save")
+        check(!fm.fileExists(atPath: pkg.autosaveURL.path), "save removes autosave.json")
+        // Crash between autosave and save: the autosave wins on the next open.
+        pkg.autosave(project: edited)
+        check((try? pkg.readProject()).map { $0.recovered && $0.project.title == "Edited" } ?? false, "autosave recovered on open")
+        // "Don't Save" discards the autosave; the saved project is what opens.
+        pkg.discardAutosave()
+        check((try? pkg.readProject()).map { !$0.recovered && $0.project.title == "Saved" } ?? false, "discarded autosave is not recovered")
+        // A corrupt autosave.json falls back to project.json.
+        try? Data("{not json".utf8).write(to: pkg.autosaveURL)
+        check((try? pkg.readProject()).map { !$0.recovered && $0.project.title == "Saved" } ?? false, "corrupt autosave falls back to project.json")
+        pkg.discardAutosave()
+        // A corrupt project.json with no autosave is a clear error, not a crash or a blank project.
+        try? Data("{\"title\":1".utf8).write(to: pkg.projectURL)
+        switch Result(catching: { try pkg.readProject() }) {
+        case .success: check(false, "corrupt project.json must not open")
+        case .failure(let e): check(e.localizedDescription.hasPrefix("Failed to read the video project package.") && e.localizedDescription.contains("decode"),
+                                    "corrupt project.json error is clear: \(e.localizedDescription)")
+        }
+        // …unless a good autosave exists, which recovers the edits.
+        pkg.autosave(project: edited)
+        check((try? pkg.readProject()).map { $0.recovered && $0.project.title == "Edited" } ?? false, "autosave rescues a corrupt project.json")
+    }))
+
+    SelfTest.cases.append(("Studio.ExportLifecycle", {
+        let fm = FileManager.default
+        let dir = TestDir.make("studio-export")
+        defer { dir.remove() }
+        let pkg = StudioPackage(url: dir.url.appendingPathComponent("demo.superscreenshotvideo"))
+        try? fm.createDirectory(at: pkg.url, withIntermediateDirectories: true)
+        guard SyntheticVideo.write(to: pkg.screenURL, seconds: 3, size: CGSize(width: 320, height: 200)) else { check(false, "synthetic screen.mov"); return }
+        let info = RecordingInfo(pixelWidth: 320, pixelHeight: 200, scale: 1, duration: 3, fps: 30, hasCamera: false, hasSystemAudio: false, hasMicrophone: false)
+        var project = StudioProject(title: "Demo", recording: info)
+        project.zooms = [ZoomSegment(start: 0.5, end: 2, level: 2)]
+        try? pkg.write(project: project)
+        try? pkg.write(events: StudioEvents())
+        let screenBefore = (try? pkg.screenURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        var settings = ExportSettings()
+        settings.resolution = .original
+        settings.fps = 30
+        let tempDir = AppPaths.temporary
+        func tempCount() -> Int { (try? fm.contentsOfDirectory(atPath: tempDir.path).count) ?? -1 }
+
+        /// Runs one export to completion, optionally cancelling once progress passes `cancelAt`.
+        func run(_ s: ExportSettings, to out: URL, cancelAt: Double? = nil) -> Result<URL, Error> {
+            blockingOnMain {
+                let exporter = try await StudioExporter.load(package: pkg, settings: s, outputURL: out)
+                return try await withCheckedThrowingContinuation { cont in
+                    exporter.start(progress: { p in if let cancelAt, p > cancelAt { exporter.cancel() } },
+                                   completion: { cont.resume(with: $0) })
+                }
+            }
+        }
+        let temps = tempCount()
+        let mp4 = dir.url.appendingPathComponent("out.mp4")
+        let ok = run(settings, to: mp4)
+        check((try? ok.get()) == mp4 && fm.fileExists(atPath: mp4.path), "MP4 export lands at the destination: \(ok)")
+        let d = (try? blocking { try await AVURLAsset(url: mp4).load(.duration).seconds }.get()) ?? -1
+        check(abs(d - 3) < 0.15, "exported duration ≈ 3 s: \(d)")
+        check(tempCount() == temps, "no temporary file left after success")
+
+        let cancelled = run(settings, to: dir.url.appendingPathComponent("cancelled.mp4"), cancelAt: 0.05)
+        if case .failure(StudioExporter.ExportError.cancelled) = cancelled {} else { check(false, "cancel reports cancelled: \(cancelled)") }
+        check(!fm.fileExists(atPath: dir.url.appendingPathComponent("cancelled.mp4").path), "cancelled export leaves no file at the destination")
+        check(tempCount() == temps, "cancelled export leaves no temporary file")
+
+        let locked = dir.url.appendingPathComponent("locked", isDirectory: true)
+        try? fm.createDirectory(at: locked, withIntermediateDirectories: true)
+        chmod(locked.path, 0o500)
+        defer { chmod(locked.path, 0o700) }
+        let denied = run(settings, to: locked.appendingPathComponent("no.mp4"))
+        check((try? denied.get()) == nil && denied.failureDescription.contains("permission"), "unwritable folder fails up front with a clear message: \(denied)")
+        check((try? fm.contentsOfDirectory(atPath: locked.path))?.isEmpty ?? false, "nothing written into the unwritable folder")
+        let asDir = dir.url.appendingPathComponent("taken.mp4", isDirectory: true)
+        try? fm.createDirectory(at: asDir, withIntermediateDirectories: true)
+        let blocked = run(settings, to: asDir)
+        check((try? blocked.get()) == nil && blocked.failureDescription.contains("folder"), "destination that is a folder fails clearly: \(blocked)")
+
+        var gif = settings
+        gif.format = .gif
+        gif.gifFPS = 10
+        let gifURL = dir.url.appendingPathComponent("out.gif")
+        let rssBefore = residentMemoryBytes()
+        let g = run(gif, to: gifURL)
+        let growth = Double(residentMemoryBytes()) - Double(rssBefore)
+        check((try? g.get()) == gifURL, "GIF export succeeds: \(g)")
+        if let src = CGImageSourceCreateWithURL(gifURL as CFURL, nil) { check(CGImageSourceGetCount(src) == 30, "30 GIF frames, got \(CGImageSourceGetCount(src))") }
+        else { check(false, "readable GIF") }
+        check(growth < 150 * 1024 * 1024, "GIF export streams frames (grew \(Int(growth / 1_048_576)) MB)")
+        let gc = run(gif, to: dir.url.appendingPathComponent("cancelled.gif"), cancelAt: 0.1)
+        if case .failure(StudioExporter.ExportError.cancelled) = gc {} else { check(false, "GIF cancel reports cancelled: \(gc)") }
+        check(!fm.fileExists(atPath: dir.url.appendingPathComponent("cancelled.gif").path) && tempCount() == temps, "cancelled GIF leaves nothing behind")
+        check((try? pkg.screenURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize == screenBefore, "screen.mov untouched throughout")
     }))
 
     SelfTest.cases.append(("Studio.RecordingClock", {
