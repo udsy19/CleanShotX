@@ -200,21 +200,26 @@ public struct S3XMLResponse {
 // MARK: - Client
 
 /// S3 REST calls signed with SigV4: single PUT, multipart upload, DELETE.
-struct S3Client: Sendable {
-    static let multipartThreshold: Int64 = 16 * 1024 * 1024
+public struct S3Client: Sendable {
+    public static let multipartThreshold: Int64 = 16 * 1024 * 1024
     static let partSize: Int64 = 8 * 1024 * 1024
 
     let config: S3Configuration
-    var transport: UploadTransport = .shared
+    let transport: UploadTransport
+
+    public init(config: S3Configuration, transport: UploadTransport = .shared) {
+        self.config = config
+        self.transport = transport
+    }
 
     private var signer: AWSSigV4 {
         AWSSigV4(accessKeyID: config.accessKeyID, secretAccessKey: config.secretAccessKey, region: config.region, service: "s3")
     }
 
     /// Uploads `file` to `key`, choosing single PUT or multipart by size. `progress` gets total bytes sent.
-    func upload(file: URL, size: Int64, key: String, contentType: String, progress: @escaping @Sendable (Int64) -> Void) async throws {
+    public func upload(file: URL, size: Int64, key: String, contentType: String, progress: @escaping @Sendable (Int64) -> Void) async throws {
         if size > Self.multipartThreshold {
-            try await multipartUpload(file: file, size: size, key: key, contentType: contentType, progress: progress)
+            try await multipartUpload(file: file, key: key, contentType: contentType, progress: progress)
         } else {
             try await putObject(file: file, key: key, contentType: contentType, progress: progress)
         }
@@ -233,7 +238,7 @@ struct S3Client: Sendable {
         try check(await transport.send(request, body: .none), stage: "deleting")
     }
 
-    func multipartUpload(file: URL, size: Int64, key: String, contentType: String,
+    func multipartUpload(file: URL, key: String, contentType: String,
                          progress: @escaping @Sendable (Int64) -> Void) async throws {
         let base = try objectURL(key).absoluteString
         // 1. CreateMultipartUpload
@@ -249,15 +254,15 @@ struct S3Client: Sendable {
             let handle = try FileHandle(forReadingFrom: file)
             defer { try? handle.close() }
             var etags: [String] = []
-            var offset: Int64 = 0
+            var sent: Int64 = 0
             var partNumber = 1
-            while offset < size {
+            // Reads the handle to its end rather than to a size measured earlier: the capture may have been
+            // re-saved in between, and a size from the old version would truncate the new one.
+            while let chunk = try handle.read(upToCount: Int(Self.partSize)), !chunk.isEmpty {
                 try Task.checkCancellation()
-                try handle.seek(toOffset: UInt64(offset))
-                guard let chunk = try handle.read(upToCount: Int(min(Self.partSize, size - offset))), !chunk.isEmpty else { break }
                 let url = URL(string: base + "?partNumber=\(partNumber)&uploadId=\(encodedID)")!
                 let request = signedRequest("PUT", url, headers: [:], payloadHash: AWSSigV4.sha256Hex(chunk))
-                let sentBefore = offset
+                let sentBefore = sent
                 let (data, response) = try await transport.send(request, body: .data(chunk)) { progress(sentBefore + $0) }
                 _ = try check((data, response), stage: "uploading")
                 guard let etag = response.value(forHTTPHeaderField: "ETag"), !etag.isEmpty else {
@@ -265,7 +270,7 @@ struct S3Client: Sendable {
                 }
                 Log.upload.debug("[S3MultiPartUpload] part \(partNumber) done")
                 etags.append(etag)
-                offset += Int64(chunk.count)
+                sent += Int64(chunk.count)
                 partNumber += 1
             }
             // 3. CompleteMultipartUpload
@@ -274,11 +279,11 @@ struct S3Client: Sendable {
                                          headers: ["Content-Type": "application/xml"], payloadHash: AWSSigV4.sha256Hex(body))
             _ = try check(await transport.send(complete, body: .data(body)), stage: "completing")
         } catch {
-            // AbortMultipartUpload so the storage frees the parts — run detached because this task may be cancelled.
+            // AbortMultipartUpload so the storage frees the parts (orphaned parts are billed until a lifecycle rule
+            // removes them) — in the background because this task may be the one being cancelled.
             let abort = signedRequest("DELETE", URL(string: base + "?uploadId=\(encodedID)")!, headers: [:],
                                       payloadHash: AWSSigV4.emptyPayloadHash)
-            let transport = self.transport
-            Task.detached { _ = try? await transport.send(abort, body: .none) }
+            transport.sendInBackground(abort, body: .none)
             throw error
         }
     }
@@ -302,17 +307,16 @@ struct S3Client: Sendable {
         return request
     }
 
-    /// Throws for non-2xx responses and for `<Error>` documents S3 can return with status 200 (CompleteMultipartUpload).
+    /// A 2xx from S3 can still be a failure: an `<Error>` document (CompleteMultipartUpload does that), or a web
+    /// page from a Wi-Fi sign-in portal standing in for the storage.
     @discardableResult
     private func check(_ result: (Data, HTTPURLResponse), stage: String) throws -> Data {
         let (data, response) = result
-        let xml = S3XMLResponse(data)
-        if !(200..<300).contains(response.statusCode) {
-            let detail = xml?.error.map { "\($0.code): \($0.message)" }
-            throw UploadTransport.statusError(response, detail: detail)
-        }
-        if let err = xml?.error {
+        if let err = S3XMLResponse(data)?.error {
             throw UploadError.failed("The storage reported an error while \(stage) the file — \(err.code): \(err.message)")
+        }
+        if response.mimeType?.lowercased().contains("html") == true {
+            throw UploadError.failed("The storage answered with a web page instead of confirming the upload. If you're on public Wi-Fi, sign in to the network first, then try again.")
         }
         return data
     }

@@ -164,11 +164,9 @@ struct HTTPEndpointClient: Sendable {
         request.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
         request.setValue("application/json, text/plain;q=0.9, */*;q=0.5", forHTTPHeaderField: "Accept")
 
+        // Only a 2xx with a link counts as success; the transport throws for anything else, so a rejected or
+        // half-received file is never reported as uploaded.
         let (data, response) = try await transport.send(request, body: .file(bodyURL)) { progress(min($0, size)) }
-        guard (200..<300).contains(response.statusCode) else {
-            let snippet = String(data: data.prefix(300), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw UploadTransport.statusError(response, detail: snippet)
-        }
         if let url = HTTPResponseLink.parse(data, keyPath: config.responseURLPath) { return url }
         if let location = response.value(forHTTPHeaderField: "Location"), let url = URL(string: location, relativeTo: config.endpoint)?.absoluteURL {
             return url
