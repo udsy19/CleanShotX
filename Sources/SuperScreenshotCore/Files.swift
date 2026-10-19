@@ -22,6 +22,8 @@ public enum AppPaths {
     public static var history: URL { ensure(support.appendingPathComponent("History", isDirectory: true)) }
     public static var recordings: URL { ensure(support.appendingPathComponent("Recordings", isDirectory: true)) }
     public static var projects: URL { ensure(support.appendingPathComponent("Projects", isDirectory: true)) }
+    /// Crash-recovery copies of documents with unsaved edits (one per open editor, removed on a clean close).
+    public static var recovery: URL { ensure(support.appendingPathComponent("Recovery", isDirectory: true)) }
     public static var temporary: URL {
         ensure(FileManager.default.temporaryDirectory.appendingPathComponent(folderName, isDirectory: true))
     }

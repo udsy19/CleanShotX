@@ -98,6 +98,71 @@ public final class AnnotateService: AnnotateServicing {
         for url in panel.urls { open(fileURL: url) }
     }
 
+    // MARK: Crash recovery & quitting
+
+    /// At launch: offers to reopen documents whose editors never closed cleanly (crash, force quit, power loss).
+    func recoverUnsavedDocuments() {
+        let found = AnnotateRecovery.load(in: AppPaths.recovery)
+        guard !found.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Super Screenshot quit before your annotation edits were saved."
+        alert.informativeText = found.count == 1 ? "Do you want to reopen the unsaved annotation?"
+                                                 : "Do you want to reopen the \(found.count) unsaved annotations?"
+        alert.addButton(withTitle: "Reopen")
+        let delete = alert.addButton(withTitle: "Delete")
+        delete.hasDestructiveAction = true
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            for f in found { try? FileManager.default.removeItem(at: f.url) }
+            return
+        }
+        for f in found { reopen(f.document, from: f.url) }
+    }
+
+    /// Reopens a recovery copy as an unsaved document with the same id, so it keeps refreshing the same file.
+    private func reopen(_ doc: SuperScreenshotDocument.Loaded, from url: URL) {
+        let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+        guard !editors.contains(where: { $0.recoveryID == id }) else { return }
+        let state = doc.state, createdAt = doc.createdAt
+        let editor: AnnotateEditorController
+        if let src = doc.sourceURL, SuperScreenshotDocument.isDocument(src) {
+            editor = AnnotateEditorController(state: state, origin: .project, media: nil, projectURL: src, createdAt: createdAt,
+                                              recoveryID: id, recovered: true)
+        } else if let src = doc.sourceURL, FileManager.default.fileExists(atPath: src.path) {
+            // Prefer the History entry so Done updates the capture the user already sees there.
+            let media = Services.history?.items.first { $0.url.standardizedFileURL == src.standardizedFileURL }
+                ?? CapturedMedia(url: src, kind: .image, mode: .imported,
+                                 pixelSize: CGSize(width: state.image.width, height: state.image.height), scale: state.scale,
+                                 isSaved: !src.path.hasPrefix(AppPaths.media.path))
+            editor = AnnotateEditorController(state: state, origin: .media, media: media, projectURL: nil, createdAt: createdAt,
+                                              recoveryID: id, recovered: true)
+        } else {
+            // Clipboard session, or the source image is gone: Done creates a new file in the media folder.
+            editor = AnnotateEditorController(state: state, origin: .clipboard, media: nil, projectURL: nil, createdAt: createdAt,
+                                              recoveryID: id, recovered: true)
+        }
+        present(editor)
+    }
+
+    /// For `applicationShouldTerminate`: asks Save / Don't Save / Cancel for every editor with unsaved edits.
+    /// Returns false when the user cancels or a save didn't complete (the editor is still open).
+    func confirmTerminationIfUnsaved() -> Bool {
+        for editor in editors where editor.session.isDirty {
+            focus(editor)
+            switch editor.unsavedChangesAlert().runModal() {
+            case .alertFirstButtonReturn:
+                editor.done()
+                // Still open: the save failed or needs a destination; the user deals with that first.
+                if editors.contains(where: { $0 === editor }) { return false }
+            case .alertSecondButtonReturn:
+                editor.finishAndClose()
+            default:
+                return false
+            }
+        }
+        return true
+    }
+
     // MARK: Window management
 
     private func present(_ editor: AnnotateEditorController) {

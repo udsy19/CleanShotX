@@ -260,6 +260,75 @@ func registerAnnotateKitTests() {
         check(RecentProjects.updated(["/a", "/b", "/c"], adding: "/d", limit: 3) == ["/d", "/a", "/b"], "recent projects are capped")
     }))
 
+    SelfTest.cases.append(("Annotate.Recovery", {
+        let fm = FileManager.default
+        let folder = fm.temporaryDirectory.appendingPathComponent("superscreenshot-recovery-\(UUID().uuidString)", isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: folder) }
+        var s = CanvasState(image: testImage(8, 6), scale: 2)
+        s.objects = [Annotation(kind: .rectangle, start: .zero, end: CGPoint(x: 2, y: 2), color: .black, lineWidth: 1, shadow: false)]
+        // What the recovery writer stores: a full document minus the Quick Look preview.
+        do {
+            let data = try SuperScreenshotDocument.encode(s, sourceURL: nil, includePreview: false)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            check(json?["preview"] == nil, "recovery copies skip the preview render")
+            let decoded = try SuperScreenshotDocument.decode(data)
+            check(decoded.state.objects == s.objects, "preview-free document round-trips")
+        } catch { check(false, "recovery encoding threw \(error)") }
+        // Scan: one good copy, one damaged copy (crash mid-write), one unrelated file.
+        let good = AnnotateRecovery.fileURL(for: UUID(), in: folder)
+        try? SuperScreenshotDocument.encode(s, sourceURL: nil, includePreview: false).write(to: good)
+        let bad = AnnotateRecovery.fileURL(for: UUID(), in: folder)
+        try? Data("{\"format\":\"\(SuperScreenshotDocument.typeIdentifier)\",\"version\":1,\"objects\":[".utf8).write(to: bad)
+        let other = folder.appendingPathComponent("notes.txt")
+        try? Data("x".utf8).write(to: other)
+        check(AnnotateRecovery.pendingDocuments(in: folder).count == 2, "only .superscreenshot files are candidates")
+        let loaded = AnnotateRecovery.load(in: folder)
+        check(loaded.count == 1 && loaded.first?.url.lastPathComponent == good.lastPathComponent
+              && loaded.first?.document.state.objects == s.objects, "readable copy is loaded")
+        check(!fm.fileExists(atPath: bad.path) && fm.fileExists(atPath: other.path), "damaged copy is deleted, unrelated file untouched")
+        check(AnnotateRecovery.pendingDocuments(in: folder.appendingPathComponent("missing")).isEmpty, "missing folder has nothing pending")
+        // Writer: flush writes a pending copy now; discard removes it and beats a pending write.
+        let w = RecoveryWriter(url: AnnotateRecovery.fileURL(for: UUID(), in: folder))
+        w.schedule(s, sourceURL: URL(fileURLWithPath: "/tmp/src.png"), createdAt: Date(), delay: 60)
+        check(!fm.fileExists(atPath: w.url.path), "write is debounced")
+        w.flush()
+        RecoveryWriter.drain()
+        let back = (try? Data(contentsOf: w.url)).flatMap { try? SuperScreenshotDocument.decode($0) }
+        check(back?.sourceURL?.path == "/tmp/src.png" && back?.state.objects == s.objects, "flushed copy is a complete document")
+        w.discard()
+        RecoveryWriter.drain()
+        check(!fm.fileExists(atPath: w.url.path), "discard removes the copy")
+        w.schedule(s, sourceURL: nil, createdAt: Date(), delay: 60)
+        w.discard()
+        w.flush()
+        RecoveryWriter.drain()
+        check(!fm.fileExists(atPath: w.url.path), "a pending write cannot resurrect a discarded copy")
+    }))
+
+    SelfTest.cases.append(("Annotate.AtomicSave", {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("superscreenshot-atomic-\(UUID().uuidString)", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer {
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+            try? fm.removeItem(at: dir)
+        }
+        let file = dir.appendingPathComponent("shot.png")
+        do {
+            try ImageTools.write(testImage(4, 4), to: file, format: .png)
+            let original = try Data(contentsOf: file)
+            // Fault injection: the folder stops accepting new files (read-only disk, revoked permission).
+            try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+            var threw = false
+            do { try ImageTools.write(testImage(9, 9), to: file, format: .png) } catch { threw = true }
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+            check(threw, "saving over a file in a read-only folder reports an error")
+            check((try? Data(contentsOf: file)) == original, "the original file is left intact")
+            check((try? fm.contentsOfDirectory(atPath: dir.path)) == ["shot.png"], "no half-written file is left behind")
+        } catch { check(false, "atomic save test threw \(error)") }
+    }))
+
     SelfTest.cases.append(("Annotate.ToolbarParity", {
         let tools = AnnotateTool.toolbarTools
         check(!tools.contains(.crop) && tools.first == .select && tools.last == .highlighter, "segmented tools exclude Crop and run Move → Highlighter")

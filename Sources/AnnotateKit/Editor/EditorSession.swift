@@ -184,6 +184,12 @@ final class EditorSession {
 
     func markClean() { isDirty = false }
 
+    /// A document reopened from a crash-recovery copy starts out unsaved.
+    func markDirty() {
+        isDirty = true
+        notify(.content)
+    }
+
     // MARK: Layout & export
 
     var expandCanvas: Bool { Defaults[.annotateExpandCanvas] }

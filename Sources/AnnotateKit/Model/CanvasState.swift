@@ -146,13 +146,15 @@ public enum SuperScreenshotDocument {
         public var createdAt: Date
     }
 
-    public static func encode(_ state: CanvasState, sourceURL: URL?, createdAt: Date = Date()) throws -> Data {
+    /// - Parameter includePreview: renders the Quick Look preview. Off for crash-recovery copies, which are
+    ///   written from a background queue and never previewed.
+    public static func encode(_ state: CanvasState, sourceURL: URL?, createdAt: Date = Date(), includePreview: Bool = true) throws -> Data {
         guard let png = ImageTools.pngData(state.image) else { throw DocumentError.encodeFailed }
         let file = File(format: typeIdentifier, version: currentVersion, createdAt: createdAt, modifiedAt: Date(),
                         sourcePath: sourceURL?.path, image: ImageBlob(scale: state.scale, png: png),
                         cropRect: state.cropRect, background: state.background,
                         spotlightOpacity: state.spotlightOpacity, counterStart: state.counterStart, objects: state.objects,
-                        preview: previewPNG(state))
+                        preview: includePreview ? previewPNG(state) : nil)
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
         enc.outputFormatting = [.sortedKeys]

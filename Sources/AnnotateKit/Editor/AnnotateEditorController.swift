@@ -40,6 +40,9 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private(set) var media: CapturedMedia?
     private(set) var projectURL: URL?
     private let createdAt: Date
+    /// Names this editor's crash-recovery copy in `AppPaths.recovery`.
+    let recoveryID: UUID
+    private let recovery: RecoveryWriter
     var onClose: ((AnnotateEditorController) -> Void)?
 
     private let canvas: CanvasView
@@ -81,12 +84,18 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
     private static let toolbarHeight: CGFloat = 52
     private static let bottomBarHeight: CGFloat = 40
 
-    init(state: CanvasState, origin: Origin, media: CapturedMedia?, projectURL: URL?, createdAt: Date = Date()) {
+    /// - Parameters:
+    ///   - recoveryID: id of the recovery copy; a document reopened from one keeps refreshing the same file.
+    ///   - recovered: the document comes from a recovery copy and starts out unsaved.
+    init(state: CanvasState, origin: Origin, media: CapturedMedia?, projectURL: URL?, createdAt: Date = Date(),
+         recoveryID: UUID = UUID(), recovered: Bool = false) {
         self.session = EditorSession(state: state)
         self.origin = origin
         self.media = media
         self.projectURL = projectURL
         self.createdAt = createdAt
+        self.recoveryID = recoveryID
+        self.recovery = RecoveryWriter(url: AnnotateRecovery.fileURL(for: recoveryID, in: AppPaths.recovery))
         self.canvas = CanvasView(session: session)
         self.stylePanel = ToolStylePanel(session: session, canvas: canvas)
         self.cropBar = CropBar(session: session, canvas: canvas)
@@ -109,6 +118,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             guard let s = window?.screen ?? NSScreen.main, let u = NSWorkspace.shared.desktopImageURL(for: s) else { return nil }
             return u.path
         }
+        if recovered { session.markDirty() }
         updateTitle()
         updateSizeLabel()
         updateToolbarState()
@@ -454,7 +464,26 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             updateTitle()
             updateSizeLabel()
             updateToolbarState()
+            scheduleRecoverySave()
         }
+    }
+
+    // MARK: - Crash recovery
+
+    /// Keeps the recovery copy in step with the document (debounced; see `RecoveryWriter`).
+    private func scheduleRecoverySave() {
+        guard session.isDirty else { recovery.discard(); return }
+        // Project sessions remember the project path so a recovered document saves back to the same file.
+        recovery.schedule(session.state, sourceURL: projectURL ?? media?.url, createdAt: createdAt)
+    }
+
+    /// Flush a pending recovery write as soon as the user switches away (a crash often follows).
+    func windowDidResignKey(_ notification: Notification) { recovery.flush() }
+
+    /// The document is on disk where the user expects it: no recovery copy needed until the next edit.
+    private func markClean() {
+        session.markClean()
+        recovery.discard()
     }
 
     /// Crop mode swaps the tool group for the crop bar and Save / Done for Cancel / Crop.
@@ -855,7 +884,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             m.scale = scale
             saveSidecarProject(for: m)
             m.notifyChanged()
-            session.markClean()
+            markClean()
             updateTitle()
             return m
         }
@@ -869,12 +898,14 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         media = m
         saveSidecarProject(for: m)
         MediaPipeline.ingest(m, actions: ingestNew)
-        if origin != .project { session.markClean() }
+        // A project session stays unsaved until the project file itself is written.
+        if origin != .project { markClean() }
         updateTitle()
         return m
     }
 
-    private func finishAndClose() {
+    /// Closes without the unsaved-changes prompt (after a save, or "Don't Save").
+    func finishAndClose() {
         closeConfirmed = true
         close()
     }
@@ -900,7 +931,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         if media == nil || media.map({ $0.url.path.hasPrefix(AppPaths.media.path) && !$0.isSaved }) == true {
             guard let m = commitToMedia(ingestNew: []) else { return }
             guard let dest = MediaPipeline.save(m, askForDestination: ask) else { return }
-            if origin == .project, let p = projectURL { writeProject(to: p) }
+            // The image is exported, but the editable project failed to write: stay open and unsaved.
+            if origin == .project, let p = projectURL, !writeProject(to: p) { return }
             HUD.show("Saved to \(dest.deletingLastPathComponent().lastPathComponent)", symbol: "checkmark.circle.fill")
             finishAndClose()
             return
@@ -975,7 +1007,7 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
             let data = try SuperScreenshotDocument.encode(session.state, sourceURL: media?.url, createdAt: createdAt)
             try data.write(to: url, options: .atomic)
             RecentProjects.add(url)
-            if origin == .project { session.markClean() }
+            if origin == .project { markClean() }
             updateTitle()
             return true
         } catch {
@@ -1040,9 +1072,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
 
     // MARK: - Closing
 
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        endEditing()
-        guard !closeConfirmed, session.isDirty else { return true }
+    /// Save / Don't Save / Cancel, shown as a sheet on close and modally when the app quits.
+    func unsavedChangesAlert() -> NSAlert {
         let alert = NSAlert()
         alert.messageText = origin == .project ? "Do you want to save the changes made to this project?"
                                                : "Do you want to save the changes you made to the screenshot?"
@@ -1051,7 +1082,13 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         let dont = alert.addButton(withTitle: "Don't Save")
         dont.hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: sender) { [weak self] response in
+        return alert
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        endEditing()
+        guard !closeConfirmed, session.isDirty else { return true }
+        unsavedChangesAlert().beginSheetModal(for: sender) { [weak self] response in
             guard let self else { return }
             switch response {
             case .alertFirstButtonReturn: self.done()
@@ -1066,6 +1103,8 @@ final class AnnotateEditorController: NSWindowController, NSWindowDelegate, NSTo
         popover?.close()
         NotificationCenter.default.removeObserver(self)
         bridge.detach()
+        // Every close is either clean or confirmed (saved / "Don't Save"), so the recovery copy goes too.
+        recovery.discard()
         onClose?(self)
     }
 }
