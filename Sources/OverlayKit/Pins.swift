@@ -10,13 +10,18 @@ final class PinController: PinServicing {
     private(set) var pins: [PinOverlay] = []
     var hasPins: Bool { !pins.isEmpty }
     private var hidden = false
-    private var observer: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
 
     private init() {
-        observer = NotificationCenter.default.addObserver(forName: CapturedMedia.didChange, object: nil, queue: .main) { [weak self] n in
+        observers.append(NotificationCenter.default.addObserver(forName: CapturedMedia.didChange, object: nil, queue: .main) { [weak self] n in
             guard let media = n.object as? CapturedMedia else { return }
             MainActor.assumeIsolated { self?.pins.filter { $0.media?.id == media.id }.forEach { $0.mediaDidChange() } }
-        }
+        })
+        // A display unplugged or rearranged: pins left in empty space come back onto a screen.
+        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pins.forEach { $0.keepOnScreen() } }
+        })
     }
 
     // MARK: PinServicing
@@ -151,7 +156,11 @@ final class PinDragHandle: NSVisualEffectView, NSDraggingSource {
 @MainActor
 final class PinOverlay: NSObject {
     private(set) var media: CapturedMedia?
+    /// The full image (for Copy / Save of pins that have no file); only `displayImage` is ever drawn.
     private var image: NSImage
+    /// What the window shows: at most one screen's worth of pixels, so a 10000 × 10000 capture doesn't decode
+    /// 400 MB and rescale it on every redraw or drag.
+    private var displayImage: NSImage
     private var sourceURL: URL?
     private var tempURL: URL?
     let panel: OverlayPanel
@@ -182,6 +191,7 @@ final class PinOverlay: NSObject {
         self.image = image
         self.media = media
         self.sourceURL = sourceURL
+        displayImage = Self.displayImage(for: image, file: media?.url ?? sourceURL)
         panel = OverlayWindow.makePanel(NSRect(origin: .zero, size: image.size), level: OverlayWindow.pinLevel)
         super.init()
         content.pin = self
@@ -190,12 +200,32 @@ final class PinOverlay: NSObject {
         applyChrome()
     }
 
+    /// Longest side, in pixels, worth keeping for display: the largest attached display's.
+    static var maxDisplayPixel: CGFloat {
+        NSScreen.screens.map { max($0.frame.width, $0.frame.height) * $0.backingScaleFactor }.max() ?? 2880
+    }
+
+    /// `image` reduced to `maxDisplayPixel` on its longest side (same point size), read straight from `file` when
+    /// there is one so the full-resolution bitmap is never decoded.
+    static func displayImage(for image: NSImage, file: URL?) -> NSImage {
+        let limit = maxDisplayPixel
+        let pixelWidth = CGFloat(image.representations.first?.pixelsWide ?? Int(image.size.width))
+        let pixelHeight = CGFloat(image.representations.first?.pixelsHigh ?? Int(image.size.height))
+        guard max(pixelWidth, pixelHeight) > limit else { return image }
+        let small: CGImage?
+        if let file { small = Thumbnailer.downsample(file, maxPixel: limit) }
+        else if let cg = image.cgImage { small = ImageTools.resized(cg, factor: limit / max(pixelWidth, pixelHeight)) }
+        else { small = nil }
+        guard let small else { return image }
+        return NSImage(cgImage: small, size: image.size)
+    }
+
     // MARK: UI
 
     private func buildUI() {
         content.wantsLayer = true
         content.layer?.masksToBounds = true
-        imageView.image = image
+        imageView.image = displayImage
         imageView.imageScaling = .scaleAxesIndependently
         imageView.autoresizingMask = [.width, .height]
         content.addSubview(imageView)
@@ -204,7 +234,7 @@ final class PinOverlay: NSObject {
         lockButton = OverlayButton(.icon("lock.open.fill"), tooltip: "Lock (click-through)") { [weak self] in self?.setLocked(true) }
         dragHandle.translatesAutoresizingMaskIntoConstraints = false
         dragHandle.fileURL = { [weak self] in self?.fileForDragging() }
-        dragHandle.dragImage = { [weak self] in self?.image }
+        dragHandle.dragImage = { [weak self] in self?.displayImage }
 
         zoomLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         zoomLabel.textColor = .white
@@ -451,9 +481,20 @@ final class PinOverlay: NSObject {
         guard let media, let img = media.image else { return }
         let topLeft = CGPoint(x: panel.frame.minX, y: panel.frame.maxY)
         image = img
-        imageView.image = img
+        displayImage = Self.displayImage(for: img, file: media.url)
+        imageView.image = displayImage
         let size = CGSize(width: (imageSize.width * magnification).rounded(), height: (imageSize.height * magnification).rounded())
         panel.setFrame(CGRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height), display: true)
+        panel.invalidateShadow()
+    }
+
+    /// After a display change, moves the pin back onto a screen if it was left in empty space.
+    func keepOnScreen() {
+        let main = NSScreen.main ?? NSScreen.screens.first
+        let frames = ([main].compactMap { $0 } + NSScreen.screens.filter { $0 != main }).map(\.visibleFrame)
+        let kept = PinGeometry.frameKeptOnScreen(panel.frame, screens: frames)
+        guard kept != panel.frame else { return }
+        panel.setFrame(kept, display: true)
         panel.invalidateShadow()
     }
 

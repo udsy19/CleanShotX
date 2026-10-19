@@ -59,7 +59,11 @@ public enum HistoryIndex {
     }
 
     /// Decodes an index file. Unknown/corrupt items are skipped rather than discarding the whole history.
-    public static func decode(_ data: Data) -> [HistoryEntry] {
+    public static func decode(_ data: Data) -> [HistoryEntry] { decodeReporting(data).entries }
+
+    /// `decode` plus whether the file was intact (`recovered` = the strict decode failed and whatever could be
+    /// salvaged item by item is returned, possibly nothing).
+    public static func decodeReporting(_ data: Data) -> (entries: [HistoryEntry], recovered: Bool) {
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
@@ -67,15 +71,34 @@ public enum HistoryIndex {
             if let d = dateFormatter().date(from: s) ?? ISO8601DateFormatter().date(from: s) { return d }
             throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date \(s)")
         }
-        if let file = try? dec.decode(File.self, from: data) { return sortedNewestFirst(file.items) }
+        if let file = try? dec.decode(File.self, from: data) { return (sortedNewestFirst(file.items), false) }
         // Lenient fallback: decode item by item.
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let items = obj["items"] as? [Any] else { return [] }
+              let items = obj["items"] as? [Any] else { return ([], true) }
         let entries = items.compactMap { item -> HistoryEntry? in
             guard let d = try? JSONSerialization.data(withJSONObject: item) else { return nil }
             return try? dec.decode(HistoryEntry.self, from: d)
         }
-        return sortedNewestFirst(entries)
+        return (sortedNewestFirst(entries), true)
+    }
+
+    /// Reads the index at `url`. A damaged file is first copied to `<name>.bak` (replacing an older backup), so
+    /// the next save, which rewrites the index with only what could be salvaged, never silently destroys the
+    /// original bytes. A missing or empty file is simply an empty history.
+    public static func load(from url: URL) -> [HistoryEntry] {
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return [] }
+        let (entries, recovered) = decodeReporting(data)
+        if recovered {
+            let backup = url.appendingPathExtension("bak")
+            do {
+                try? FileManager.default.removeItem(at: backup)
+                try FileManager.default.copyItem(at: url, to: backup)
+                Log.app.error("Capture history index was damaged: \(entries.count) item(s) recovered; the original was kept as \(backup.lastPathComponent, privacy: .public)")
+            } catch {
+                Log.app.error("Couldn't back up the damaged capture history index: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return entries
     }
 
     /// ISO-8601 with milliseconds, so ordering of captures taken within the same second survives a round-trip.

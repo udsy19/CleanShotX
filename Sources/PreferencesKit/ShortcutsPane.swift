@@ -44,6 +44,8 @@ struct ShortcutsPane: View {
     @StateObject private var system = SystemHotkeysModel()
     @State private var query = ""
     @State private var showingSystemHelper = false
+    /// Shortcuts macOS refused to register for us (held by another app).
+    @State private var unavailable = HotkeyCenter.shared.unavailable
 
     var body: some View {
         let effective = ShortcutPlanner.effective(stored)
@@ -77,7 +79,8 @@ struct ShortcutsPane: View {
                     ForEach(group.actions, id: \.self) { action in
                         ShortcutRow(action: action, current: effective[action],
                                     isDuplicate: effective[action].map { duplicates[$0] != nil } ?? false,
-                                    isShadowed: shadowed.contains(action))
+                                    isShadowed: shadowed.contains(action),
+                                    isUnavailable: effective[action].map { unavailable.contains($0) } ?? false)
                     }
                 } header: {
                     Label(group.group.title, systemImage: group.group.symbol)
@@ -104,7 +107,10 @@ struct ShortcutsPane: View {
         .sheet(isPresented: $showingSystemHelper) {
             SystemShortcutsHelper(system: system) { showingSystemHelper = false }
         }
-        .onAppear { system.refresh() }
+        .onAppear { system.refresh(); unavailable = HotkeyCenter.shared.unavailable }
+        .onReceive(NotificationCenter.default.publisher(for: HotkeyCenter.unavailableDidChange).receive(on: DispatchQueue.main)) { _ in
+            unavailable = HotkeyCenter.shared.unavailable
+        }
     }
 }
 
@@ -113,6 +119,7 @@ private struct ShortcutRow: View {
     let current: Shortcut?
     let isDuplicate: Bool
     let isShadowed: Bool
+    let isUnavailable: Bool
 
     var body: some View {
         // An HStack rather than LabeledContent: the AppKit recorder has no text baseline to align with.
@@ -130,6 +137,9 @@ private struct ShortcutRow: View {
             } else if isShadowed {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     .help("Shortcut is reserved for macOS")
+            } else if isUnavailable {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    .help("Another app is already using this shortcut, so it won't trigger. Choose a different one.")
             }
             ShortcutRecorder(for: action)
                 .frame(width: 156, height: 28)

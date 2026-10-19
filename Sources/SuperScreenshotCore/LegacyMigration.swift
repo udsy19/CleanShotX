@@ -17,8 +17,13 @@ public enum LegacyMigration {
         didMigratePreferences = migrate(supportBase: base, domain: bundleID, legacyDomain: legacyBundleID)
     }
 
-    /// Moves `<base>/Shotcraft` to `<base>/<AppPaths.folderName>` unless the new folder exists, and copies the
-    /// `legacyDomain` preferences into `domain` if that is empty. Returns whether preferences were copied.
+    /// Moves `<base>/Shotcraft` into `<base>/<AppPaths.folderName>` and copies the `legacyDomain` preferences
+    /// into `domain` if that is empty. Returns whether preferences were copied.
+    ///
+    /// Resumable: a whole-folder rename when the new folder doesn't exist yet; otherwise (a launch was interrupted,
+    /// or the new folder was created before the old one was found) the old folder's files are merged in one by
+    /// one, skipping names that already exist. The old folder is deleted only once it is empty, so an interrupted
+    /// move never loses anything.
     @discardableResult
     public static func migrate(supportBase base: URL, domain: String, legacyDomain: String) -> Bool {
         let fm = FileManager.default
@@ -26,9 +31,9 @@ public enum LegacyMigration {
         let newDir = base.appendingPathComponent(AppPaths.folderName, isDirectory: true)
         let (old, new) = (oldDir.path, newDir.path)
 
-        if fm.fileExists(atPath: old), !fm.fileExists(atPath: new) {
+        if fm.fileExists(atPath: old) {
             do {
-                try fm.moveItem(at: oldDir, to: newDir)
+                if fm.fileExists(atPath: new) { try mergeMove(from: oldDir, to: newDir) } else { try fm.moveItem(at: oldDir, to: newDir) }
                 // Capture History and Annotate's sidecar projects store absolute paths into the folder.
                 let projects = newDir.appendingPathComponent("Projects", isDirectory: true)
                 let sidecars = ((try? fm.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil)) ?? [])
@@ -49,6 +54,25 @@ public enum LegacyMigration {
         defaults.setPersistentDomain(rewritingPaths(in: legacy, from: old, to: new) as? [String: Any] ?? legacy,
                                      forName: domain)
         return true
+    }
+
+    /// Moves every item of `source` that doesn't exist in `destination` (recursing into folders present in both),
+    /// then removes `source` if nothing is left in it. Items that exist on both sides stay in `source`.
+    static func mergeMove(from source: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        for name in try fm.contentsOfDirectory(atPath: source.path) {
+            let from = source.appendingPathComponent(name), to = destination.appendingPathComponent(name)
+            var fromIsDir: ObjCBool = false, toIsDir: ObjCBool = false
+            if name == ".DS_Store" { try? fm.removeItem(at: from); continue }   // Finder's, never user data
+            guard fm.fileExists(atPath: from.path, isDirectory: &fromIsDir) else { continue }
+            if !fm.fileExists(atPath: to.path, isDirectory: &toIsDir) {
+                try fm.moveItem(at: from, to: to)
+            } else if fromIsDir.boolValue, toIsDir.boolValue {
+                try mergeMove(from: from, to: to)
+            }
+        }
+        if (try fm.contentsOfDirectory(atPath: source.path)).isEmpty { try fm.removeItem(at: source) }
     }
 
     /// `value` with every path or `file://` URL inside the folder `old` re-pointed into `new`. Walks strings, arrays,

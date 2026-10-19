@@ -359,7 +359,7 @@ final class CircularProgressView: NSView {
 // MARK: - Thumbnails
 
 @MainActor
-enum Thumbnailer {
+public enum Thumbnailer {
     private static let cache: NSCache<NSString, NSImage> = {
         let c = NSCache<NSString, NSImage>()
         c.countLimit = 400
@@ -398,7 +398,8 @@ enum Thumbnailer {
         }
     }
 
-    nonisolated static func downsample(_ url: URL, maxPixel: CGFloat) -> CGImage? {
+    /// Decodes the file straight to a `maxPixel`-bounded bitmap (pins and cards never hold the full image).
+    public nonisolated static func downsample(_ url: URL, maxPixel: CGFloat) -> CGImage? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
