@@ -1,9 +1,6 @@
 import AppKit
 import SuperScreenshotCore
 
-/// `NSScreen` handed to the capture timeout closure (ScreenCaptureKit reads its geometry off the main thread anyway).
-private struct ScreenRef: @unchecked Sendable { let screen: NSScreen }
-
 /// One scrolling capture, from the selected area to the stitched image (SGOverlay + ScrollingGrabber).
 @MainActor final class ScrollingCaptureSession {
     private enum State { case ready, capturing, finishing, ended }
@@ -144,9 +141,9 @@ private struct ScreenRef: @unchecked Sendable { let screen: NSScreen }
         defer { captureInFlight = false }
         let image: CGImage
         do {
-            let (area, target) = (self.area, ScreenRef(screen: screen))
+            let (area, target) = (self.area, UncheckedBox(screen))
             image = try await withTimeout(seconds: ScreenCapturer.timeout) {
-                try await ScreenCapturer.capture(rect: area, on: target.screen, showsCursor: false)
+                try await ScreenCapturer.capture(rect: area, on: target.value, showsCursor: false)
             }
             captureErrors = 0
         } catch {

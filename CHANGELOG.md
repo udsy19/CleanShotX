@@ -3,6 +3,26 @@
 All notable changes to Super Screenshot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+- Crash-safe recordings: videos, GIFs and Studio recordings are written with movie fragments into an in-progress
+  folder, so a crash, force quit, power loss or a stop by the system keeps everything up to the last two seconds.
+  The next launch recovers it as "<name> (recovered)" and shows it like any other recording. A writer that fails
+  mid-recording (disk full, display unplugged) keeps the part already on disk instead of deleting it.
+- Annotate keeps a recovery copy of unsaved edits (one second after every change); after a crash the next launch
+  offers to reopen them. Quitting with unsaved edits asks to save first.
+- Uploads retry transient network errors with backoff, say so when credentials are rejected, offer "Try Again",
+  and clear a pre-copied link that turned out dead.
+
+### Fixed
+- ⌘Q (and the on-quit update install) no longer truncates a running recording: the app stops it and waits for
+  the file before exiting.
+- A failed GIF conversion keeps the recording as a video; cancelling a video export while it starts no longer
+  crashes; exports write to a temporary file and never delete a folder given as the destination.
+- Studio GIF exports stream frames instead of holding them all in memory; S3 multipart uploads read to the end of
+  a file that grew while uploading.
+
 ## [1.3.1] — 2026-10-18
 
 ### Changed
