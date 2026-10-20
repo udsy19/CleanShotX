@@ -1,272 +1,319 @@
-// Super Screenshot website: drag-to-capture hero, Quick Access card, modes tabs, copy buttons.
+// Super Screenshot website: header, menus, sliders, carousels, modals, the "How it works" player and copy buttons.
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-  const place = (el, x, y) => { el.style.transform = `translate(${x}px, ${y}px)`; };
-  const spring = CSS.supports('transition-timing-function', 'linear(0, 1)')
-    ? getComputedStyle(document.documentElement).getPropertyValue('--spring').trim()
-    : 'cubic-bezier(.3, 1.35, .5, 1)';
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
 
-  /* Copy buttons */
-  $$('[data-copy]').forEach((btn) => {
-    btn.setAttribute('aria-live', 'polite');
-    btn.addEventListener('click', async () => {
-      const code = document.getElementById(btn.dataset.copy);
-      try {
-        await navigator.clipboard.writeText(code.textContent.trim());
-      } catch {
-        getSelection().selectAllChildren(code);
-        document.execCommand('copy');
+  /* Sticky header gets a background once the page scrolls */
+  const header = $('.app-header');
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { header.classList.toggle('scrolled', window.scrollY > 12); ticking = false; });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* Header dropdowns: hover with a mouse, click or keyboard everywhere */
+  const drops = $$('.navigation .item.drop');
+  const closeDrop = (li, focus) => {
+    const btn = $('button', li);
+    btn.setAttribute('aria-expanded', 'false');
+    $('.dropdown', li).classList.remove('open');
+    if (focus) btn.focus();
+  };
+  const openDrop = (li) => {
+    drops.forEach((o) => o !== li && closeDrop(o));
+    $('button', li).setAttribute('aria-expanded', 'true');
+    $('.dropdown', li).classList.add('open');
+  };
+  drops.forEach((li) => {
+    const btn = $('button', li);
+    btn.addEventListener('click', () => (btn.getAttribute('aria-expanded') === 'true' ? closeDrop(li) : openDrop(li)));
+    li.addEventListener('mouseenter', () => finePointer.matches && openDrop(li));
+    li.addEventListener('mouseleave', () => finePointer.matches && closeDrop(li));
+    li.addEventListener('focusout', (e) => { if (!li.contains(e.relatedTarget)) closeDrop(li); });
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeDrop(li, true); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const links = $$('.dropdown a', li);
+        if (!$('.dropdown', li).classList.contains('open')) openDrop(li);
+        const i = links.indexOf(document.activeElement);
+        const next = e.key === 'ArrowDown' ? (i + 1) % links.length : (i <= 0 ? links.length - 1 : i - 1);
+        links[next].focus();
+        e.preventDefault();
       }
-      btn.textContent = 'Copied';
-      clearTimeout(btn.reset);
-      btn.reset = setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
     });
   });
+  document.addEventListener('click', (e) => drops.forEach((li) => { if (!li.contains(e.target)) closeDrop(li); }));
 
-  /* Capture stage */
-  const stage = $('#stage');
-  const nav = $('.nav');
-  const cap = $('.cap', stage);
-  const [xy, sel, wh, flash] = ['.cap-xy', '.cap-sel', '.cap-wh', '.cap-flash'].map((s) => $(s, cap));
-  const qa = $('#qa');
-  const tryBtn = $('#try');
-  const NO_CAPTURE = 'a, button, input, textarea, select, label, [data-nocapture]';
-  const MIN = 6;
-  let drag = null;
-  let demo = null;
-
-  const onSurface = (t) => t instanceof Element && (stage.contains(t) || nav.contains(t)) && !t.closest(NO_CAPTURE);
-  const point = (e) => {
-    const r = stage.getBoundingClientRect();
-    return { x: Math.round(clamp(e.clientX - r.left, 0, r.width)), y: Math.round(clamp(e.clientY - r.top, 0, r.height)) };
+  /* Focus trap shared by the mobile menu and the dialogs */
+  const focusables = (root) => $$('a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])', root).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  const trap = (root, e) => {
+    if (e.key !== 'Tab') return;
+    const f = focusables(root);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   };
 
-  // "X, Y" pill 14 px below-right of the pointer, flipped at the edges (OverlayPanel.drawCoordinates).
-  document.addEventListener('pointermove', (e) => {
-    if (drag || demo || e.pointerType !== 'mouse') return;
-    const on = onSurface(e.target);
-    stage.classList.toggle('is-hover', on);
-    if (!on) return;
-    const p = point(e);
-    xy.textContent = `${p.x}, ${p.y}`;
-    const w = xy.offsetWidth;
-    const h = xy.offsetHeight;
-    place(xy, p.x + 14 + w > stage.clientWidth - 4 ? p.x - 14 - w : p.x + 14, p.y + 14 + h > stage.clientHeight - 4 ? p.y - 14 - h : p.y + 14);
+  /* Mobile menu */
+  const trigger = $('.m-header .trigger');
+  const menu = $('#m-menu');
+  const closeMenu = (restore = true) => {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('locked');
+    if (restore) trigger.focus();
+  };
+  trigger.addEventListener('click', () => {
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('locked');
+    $('.close', menu).focus();
   });
-  document.addEventListener('pointerout', (e) => { if (!e.relatedTarget) stage.classList.remove('is-hover'); });
-  addEventListener('scroll', () => stage.classList.remove('is-hover'), { passive: true });
+  $('.close', menu).addEventListener('click', () => closeMenu());
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); trap(menu, e); });
+  $$('a', menu).forEach((a) => a.addEventListener('click', () => closeMenu(false)));
+  window.matchMedia('(width > 920px)').addEventListener('change', (m) => m.matches && closeMenu(false));
 
-  // Selection plus the "W × H" pill just outside the corner being dragged (SelectionGeometry.badgeFrame).
-  function draw(r, cx, cy) {
-    sel.style.width = `${r.w}px`;
-    sel.style.height = `${r.h}px`;
-    place(sel, r.x, r.y);
-    wh.textContent = `${r.w} × ${r.h}`;
-    const W = stage.clientWidth;
-    const H = stage.clientHeight;
-    const w = wh.offsetWidth;
-    const h = wh.offsetHeight;
-    let x = cx >= r.x + r.w / 2 ? cx + 12 : cx - 12 - w;
-    let y = cy >= r.y + r.h / 2 ? cy + 12 : cy - 12 - h;
-    if (x < 4) x = cx + 12; else if (x + w > W - 4) x = cx - 12 - w;
-    if (y < 4) y = cy + 12; else if (y + h > H - 4) y = cy - 12 - h;
-    place(wh, clamp(x, 4, W - w - 4), clamp(y, 4, H - h - 4));
-  }
-
-  function stop() {
-    if (drag) { try { stage.releasePointerCapture(drag.id); } catch { /* already released */ } }
-    drag = null;
-    if (demo) { cancelAnimationFrame(demo.raf); clearTimeout(demo.timer); demo = null; }
-    stage.classList.remove('is-sel');
-  }
-
-  document.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || drag || demo || !onSurface(e.target)) return;
-    // Touch and pen start only on the empty space, so the copy below stays scrollable.
-    if (e.pointerType !== 'mouse' && !e.target.closest('.pad')) return;
-    const p = point(e);
-    drag = { id: e.pointerId, x: p.x, y: p.y, active: false, r: null };
-    if (e.pointerType === 'mouse') e.preventDefault();
-    try { stage.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  /* Hero highlights: one card at a time, sliding left or right, looping */
+  const facts = $$('.facts .fact');
+  let factIndex = 0;
+  const showFact = (dir) => {
+    const from = facts[factIndex];
+    factIndex = (factIndex + dir + facts.length) % facts.length;
+    const to = facts[factIndex];
+    facts.forEach((f) => f !== from && f !== to && f.classList.remove('current', 'prev', 'leaving'));
+    // Place the incoming card on the side it enters from, without animating that jump.
+    to.style.transition = 'none';
+    to.classList.remove('current', 'leaving');
+    to.classList.toggle('prev', dir < 0);
+    void to.offsetWidth;
+    to.style.transition = '';
+    to.classList.remove('prev');
+    to.classList.add('current');
+    from.classList.remove('current');
+    from.classList.add('leaving');
+    from.classList.toggle('prev', dir > 0);
+    from.addEventListener('transitionend', () => from.classList.remove('leaving'), { once: true });
+  };
+  $$('[data-fact]').forEach((b) => b.addEventListener('click', () => showFact(Number(b.dataset.fact))));
+  // Swipe or drag the card, as Swiper allows on the reference.
+  const factsBox = $('.facts');
+  let swipe = null;
+  factsBox.addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) swipe = { x: e.clientX, y: e.clientY }; });
+  factsBox.addEventListener('pointerup', (e) => {
+    if (!swipe) return;
+    const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+    swipe = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showFact(dx < 0 ? 1 : -1);
   });
+  factsBox.addEventListener('pointercancel', () => { swipe = null; });
 
-  stage.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const p = point(e);
-    if (!drag.active) {
-      if (Math.hypot(p.x - drag.x, p.y - drag.y) < 4) return;
-      drag.active = true;
-      stage.classList.remove('is-hover');
-      stage.classList.add('is-sel');
+  /* Carousels: slide to slide in 300 ms with CSS "ease" (as Swiper does), drag with a mouse, scroll natively on touch and trackpads */
+  // CSS "ease", cubic-bezier(.25, .1, .25, 1): solve x(a) = t by Newton's method, return y(a).
+  const ease = (t) => {
+    let a = t;
+    for (let i = 0; i < 6; i++) {
+      const x = .75 * a * (1 - a) ** 2 + .75 * a * a * (1 - a) + a ** 3 - t;
+      const dx = .75 * (1 - a) ** 2 + 2.25 * a * a;
+      if (Math.abs(x) < 1e-4) break;
+      a -= x / dx;
     }
-    drag.r = { x: Math.min(p.x, drag.x), y: Math.min(p.y, drag.y), w: Math.abs(p.x - drag.x), h: Math.abs(p.y - drag.y) };
-    draw(drag.r, p.x, p.y);
-  });
-
-  stage.addEventListener('pointerup', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const { active, r } = drag;
-    stop();
-    if (active && r.w >= MIN && r.h >= MIN) shoot(r);
-  });
-  stage.addEventListener('pointercancel', () => { if (drag) stop(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && (drag || demo)) { e.preventDefault(); stop(); }
-  });
-
-  /* Shutter, then the Quick Access card with a real thumbnail of the region */
-  function shoot(r) {
-    stage.classList.remove('is-sel');
-    const shot = snapshot(r);
-    if (reduced.matches) { show(shot, r); return; }
-    flash.style.width = `${r.w}px`;
-    flash.style.height = `${r.h}px`;
-    place(flash, r.x, r.y);
-    flash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out' });
-    setTimeout(() => show(shot, r), 120);
-  }
-
-  const MAX_W = 248;
-  const MAX_H = 156;
-  function snapshot(r) {
-    const W = stage.offsetWidth;
-    const H = stage.offsetHeight;
-    const k = Math.min(MAX_W / r.w, MAX_H / r.h, 2);
-    const src = document.createElement('div');
-    src.className = 'qa-src';
-    src.style.width = `${W}px`;
-    src.style.height = `${H}px`;
-    const s = stage.cloneNode(true);
-    s.querySelector('.cap').remove();
-    s.classList.remove('is-hover', 'is-sel');
-    s.style.height = `${H}px`;
-    src.append(s, nav.cloneNode(true));
-    src.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
-    src.setAttribute('aria-hidden', 'true');
-    src.inert = true;
-    src.style.transform = `scale(${k}) translate(${-r.x}px, ${-r.y}px)`;
-    return { src, w: Math.max(1, Math.round(r.w * k)), h: Math.max(1, Math.round(r.h * k)) };
-  }
-
-  let card = null;
-  let timer = 0;
-  const arm = () => { clearTimeout(timer); timer = setTimeout(() => dismiss(), 4000); };
-
-  function show(shot, r) {
-    dismiss(true);
-    card = document.createElement('div');
-    card.className = 'qa-card';
-    card.style.setProperty('--w', `${Math.max(shot.w, 208) + 12}px`);
-    card.innerHTML = `<div class="qa-thumb" style="height:${shot.h}px"><div class="qa-shot" style="width:${shot.w}px"></div></div>`
-      + `<div class="qa-foot"><span>Copied · ${r.w} × ${r.h}</span><button class="qa-x" type="button" aria-label="Dismiss capture"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>`;
-    $('.qa-shot', card).append(shot.src);
-    $('.qa-x', card).addEventListener('click', () => dismiss());
-    card.addEventListener('pointerenter', () => clearTimeout(timer));
-    card.addEventListener('pointerleave', arm);
-    card.addEventListener('focusin', () => clearTimeout(timer));
-    card.addEventListener('focusout', arm);
-    qa.append(card);
-    if (!reduced.matches) {
-      card.animate([{ transform: 'translateX(-69px)' }, { transform: 'none' }], { duration: 440, easing: spring });
-      card.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' });
-    }
-    arm();
-  }
-
-  function dismiss(instant) {
-    clearTimeout(timer);
-    const c = card;
-    card = null;
-    if (!c) return;
-    if (c.contains(document.activeElement)) tryBtn.focus();
-    if (instant || reduced.matches) { c.remove(); return; }
-    c.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(-69px)', opacity: 0 }], { duration: 200, easing: 'ease-in', fill: 'forwards' })
-      .onfinish = () => c.remove();
-  }
-
-  /* Keyboard alternative: draw a selection over the headline */
-  tryBtn.addEventListener('click', () => {
-    if (drag || demo) return;
-    const range = document.createRange();
-    range.selectNodeContents($('.hero h1'));
-    const t = range.getBoundingClientRect();
-    const s = stage.getBoundingClientRect();
-    const x = Math.round(clamp(t.left - s.left - 16, 0, s.width));
-    const y = Math.round(clamp(t.top - s.top - 12, 0, s.height));
-    const r = { x, y, w: Math.round(Math.min(t.width + 32, s.width - x)), h: Math.round(Math.min(t.height + 24, s.height - y)) };
-    dismiss(true);
-    stage.classList.remove('is-hover');
-    stage.classList.add('is-sel');
-    demo = { raf: 0, timer: 0 };
-    const finish = () => { demo.timer = setTimeout(() => { demo = null; shoot(r); }, reduced.matches ? 500 : 260); };
-    if (reduced.matches) { draw(r, r.x + r.w, r.y + r.h); finish(); return; }
-    const t0 = performance.now();
-    const step = (now) => {
-      const p = Math.min((now - t0) / 700, 1);
-      const e = 1 - (1 - p) ** 3;
-      const cur = { x: r.x, y: r.y, w: Math.max(1, Math.round(r.w * e)), h: Math.max(1, Math.round(r.h * e)) };
-      draw(cur, r.x + cur.w, r.y + cur.h);
-      if (p < 1) demo.raf = requestAnimationFrame(step); else finish();
+    return .3 * a * (1 - a) ** 2 + 3 * a * a * (1 - a) + a ** 3;
+  };
+  $$('[data-carousel]').forEach((c) => {
+    const vp = $('.viewport', c);
+    const slides = $$('.slide', vp);
+    const [prev, next] = $$('.navigation .nav-btn', c);
+    const max = () => vp.scrollWidth - vp.clientWidth;
+    const stops = () => {
+      const base = slides[0].getBoundingClientRect().left;
+      return slides.map((s) => Math.min(max(), Math.round(s.getBoundingClientRect().left - base)));
     };
-    demo.raf = requestAnimationFrame(step);
+    const nearest = () => {
+      const st = stops();
+      return st.reduce((best, x, i) => (Math.abs(x - vp.scrollLeft) < Math.abs(st[best] - vp.scrollLeft) ? i : best), 0);
+    };
+    let anim = 0;
+    const scrollToX = (x) => {
+      cancelAnimationFrame(anim);
+      const from = vp.scrollLeft, to = Math.max(0, Math.min(max(), x));
+      if (reduceMotion.matches || Math.abs(to - from) < 1) { vp.scrollLeft = to; return; }
+      vp.style.scrollSnapType = 'none';
+      const t0 = performance.now();
+      const tick = (now) => {
+        const p = Math.min(1, (now - t0) / 300);
+        vp.scrollLeft = from + (to - from) * ease(p);
+        if (p < 1) anim = requestAnimationFrame(tick);
+        else vp.style.scrollSnapType = '';
+      };
+      anim = requestAnimationFrame(tick);
+    };
+    const go = (dir) => {
+      const st = stops();
+      let i = nearest();
+      if (dir > 0) while (i < st.length - 1 && st[i] <= vp.scrollLeft + 1) i++;
+      else while (i > 0 && st[i] >= vp.scrollLeft - 1) i--;
+      scrollToX(st[i]);
+    };
+    const update = () => {
+      prev.disabled = vp.scrollLeft <= 2;
+      next.disabled = vp.scrollLeft >= max() - 2;
+    };
+    prev.addEventListener('click', () => go(-1));
+    next.addEventListener('click', () => go(1));
+    vp.addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
+    vp.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { go(e.key === 'ArrowRight' ? 1 : -1); e.preventDefault(); }
+    });
+    // Mouse drag; a quick flick moves one slide, a slow drag settles on the nearest one.
+    let drag = null;
+    vp.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      cancelAnimationFrame(anim);
+      drag = { x: e.clientX, left: vp.scrollLeft, t: performance.now(), start: nearest(), moved: false };
+    });
+    vp.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      if (!drag.moved && Math.abs(dx) > 4) { drag.moved = true; vp.setPointerCapture(e.pointerId); vp.style.scrollSnapType = 'none'; vp.classList.add('dragging'); }
+      if (drag.moved) vp.scrollLeft = drag.left - dx;
+    });
+    const endDrag = (e) => {
+      if (!drag) return;
+      const d = drag; drag = null;
+      vp.classList.remove('dragging');
+      if (!d.moved) return;
+      const dx = e.clientX - d.x, st = stops();
+      const quick = performance.now() - d.t < 300 && Math.abs(dx) > 10;
+      const i = quick ? Math.max(0, Math.min(st.length - 1, d.start + (dx < 0 ? 1 : -1))) : nearest();
+      scrollToX(st[i]);
+    };
+    vp.addEventListener('pointerup', endDrag);
+    vp.addEventListener('pointercancel', endDrag);
+    vp.addEventListener('dragstart', (e) => e.preventDefault());
+    window.addEventListener('resize', update);
+    update();
   });
 
-  /* Modes: a tablist that follows hover, focus and the arrow keys */
-  const tabs = $$('.mtab');
-  const mstage = $('.mstage');
-  const phone = matchMedia('(max-width: 699px)');
-  function select(tab, focus) {
-    if (focus) tab.focus();
-    if (tab.getAttribute('aria-selected') === 'true') return;
-    tabs.forEach((t) => {
-      const on = t === tab;
-      t.setAttribute('aria-selected', String(on));
-      t.tabIndex = on ? 0 : -1;
-      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
-    });
-    mstage.dataset.mode = tab.id.slice(2);
-    if (phone.matches) tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduced.matches ? 'auto' : 'smooth' });
+  /* Mockups play while at least a quarter is on screen, like the reference's in-view videos */
+  const anims = $$('[data-anim]');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => entries.forEach((en) => en.target.classList.toggle('on', en.isIntersecting)), { threshold: 0.25 });
+    anims.forEach((el) => io.observe(el));
+  } else {
+    anims.forEach((el) => el.classList.add('on'));
   }
-  tabs.forEach((t, i) => {
-    t.addEventListener('click', () => select(t));
-    t.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse' && !phone.matches) select(t); });
-    t.addEventListener('keydown', (e) => {
-      const n = tabs.length;
-      const to = { ArrowDown: i + 1, ArrowRight: i + 1, ArrowUp: i - 1, ArrowLeft: i - 1, Home: 0, End: n - 1 }[e.key];
-      if (to === undefined) return;
-      e.preventDefault();
-      select(tabs[(to + n) % n], true);
+
+  /* Dialogs */
+  let lastFocus = null;
+  const openOverlay = (ov, onOpen) => {
+    lastFocus = document.activeElement;
+    ov.hidden = false;
+    document.body.classList.add('locked');
+    requestAnimationFrame(() => requestAnimationFrame(() => ov.classList.add('open')));
+    $('[data-close]', ov).focus();
+    if (onOpen) onOpen();
+  };
+  const closeOverlay = (ov, onClose) => {
+    if (ov.hidden) return;
+    ov.classList.remove('open');
+    document.body.classList.remove('locked');
+    if (onClose) onClose();
+    setTimeout(() => { ov.hidden = true; }, reduceMotion.matches ? 0 : 200);
+    if (lastFocus) lastFocus.focus();
+  };
+  const wire = (ov, onOpen, onClose) => {
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-close]')) closeOverlay(ov, onClose); });
+    ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOverlay(ov, onClose); trap(ov, e); });
+    return () => openOverlay(ov, onOpen);
+  };
+
+  const ossModal = $('#oss-modal');
+  const openOss = wire(ossModal);
+  $$('[data-open-modal="oss-modal"]').forEach((b) => b.addEventListener('click', openOss));
+
+  /* "How it works" player: four scenes on a 14 second loop */
+  const player = $('#player');
+  const scenes = $$('.scene', player);
+  const dots = $$('.steps i', player);
+  const caption = $('.caption', player);
+  const bar = $('.controls .bar i', player);
+  const time = $('.controls .time', player);
+  const pp = $('.controls .pp', player);
+  const captions = [
+    'Press <kbd>⌥⇧4</kbd> and drag over anything',
+    'It waits in Quick Access, ready to use',
+    'Mark it up with <kbd>⌘E</kbd>',
+    'Drag the card into any app',
+  ];
+  const SCENE = 3500, TOTAL = SCENE * scenes.length;
+  let t0 = 0, elapsed = 0, playing = false, raf = 0, current = -1;
+  const fmt = (ms) => `0:${String(Math.floor(ms / 1000)).padStart(2, '0')}`;
+  const setScene = (i) => {
+    if (i === current) return;
+    current = i;
+    scenes.forEach((s, k) => s.classList.toggle('on', k === i));
+    dots.forEach((d, k) => d.classList.toggle('on', k <= i));
+    caption.innerHTML = `<b>${i + 1}</b><span>${captions[i]}</span>`;
+  };
+  const frame = (now) => {
+    elapsed = (now - t0) % TOTAL;
+    setScene(Math.floor(elapsed / SCENE));
+    bar.style.width = `${(elapsed / TOTAL) * 100}%`;
+    time.textContent = `${fmt(elapsed)} / ${fmt(TOTAL)}`;
+    if (playing) raf = requestAnimationFrame(frame);
+  };
+  const play = () => {
+    playing = true;
+    t0 = performance.now() - elapsed;
+    pp.setAttribute('aria-label', 'Pause');
+    $('use', pp).setAttribute('href', '#i-pause-f');
+    player.classList.remove('paused');
+    raf = requestAnimationFrame(frame);
+  };
+  const pause = () => {
+    playing = false;
+    cancelAnimationFrame(raf);
+    pp.setAttribute('aria-label', 'Play');
+    $('use', pp).setAttribute('href', '#i-play-f');
+    player.classList.add('paused');
+  };
+  pp.addEventListener('click', () => (playing ? pause() : play()));
+  const openPlayer = wire(player, () => { elapsed = 0; current = -1; play(); }, pause);
+  $$('[data-open-player]').forEach((b) => b.addEventListener('click', openPlayer));
+
+  /* Copy the install command */
+  const live = document.createElement('p');
+  live.className = 'sr-only';
+  live.setAttribute('aria-live', 'polite');
+  document.body.append(live);
+  $$('[data-copy]').forEach((btn) => {
+    const label = btn.textContent;
+    btn.addEventListener('click', async () => {
+      const src = document.getElementById(btn.dataset.copy);
+      const text = (src.value ?? src.textContent).trim();
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch {
+        const ta = Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
+        ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+        document.body.append(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        ta.remove();
+        btn.focus();
+      }
+      btn.textContent = ok ? 'Copied' : 'Select and copy';
+      live.textContent = ok ? 'Install command copied to the clipboard' : '';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(() => { btn.textContent = label; }, 1800);
     });
   });
-  phone.addEventListener('change', () => $('.mlist').setAttribute('aria-orientation', phone.matches ? 'horizontal' : 'vertical'));
-  if (phone.matches) $('.mlist').setAttribute('aria-orientation', 'horizontal');
-
-  // The frame's own size, live.
-  const frame = $('.mframe');
-  const frameWh = $('.mframe-wh');
-  new ResizeObserver(([entry]) => {
-    const { width, height } = entry.contentRect;
-    frameWh.textContent = `${Math.round(width)} × ${Math.round(height)}`;
-  }).observe(frame);
-
-  // Magnifier pixels: the rounded bottom-right corner of the card under the crosshair (15 × 15, centre cell = pointer).
-  const N = 15;
-  const C = 7;
-  const R = 5;
-  let px = '';
-  for (let row = 0; row < N; row += 1) {
-    for (let col = 0; col < N; col += 1) {
-      const dr = row - (C - R - 1);
-      const dc = col - (C - R - 1);
-      const d = dr > 0 && dc > 0 ? Math.hypot(dr, dc) : Math.max(dr, dc);
-      let cls = d <= R - 0.6 ? 'k' : d <= R + 0.4 ? 'e' : d <= R + 0.9 ? 'a' : '';
-      if (row === C || col === C) cls += ' g';
-      if (row === C && col === C) cls = 'x';
-      px += `<i class="${cls.trim()}"></i>`;
-    }
-  }
-  $('.loupe-px').innerHTML = px;
+  $$('.cmd-field').forEach((f) => f.addEventListener('focus', () => f.select()));
 })();
